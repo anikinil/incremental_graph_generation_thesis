@@ -7,6 +7,13 @@ import geopandas as gpd
 
 
 class VGraph:
+    
+    """
+    "An Algorithm for Planning Collision-Free Paths Among Polyhedral Obstacles", Thomas Lozano-Perez (1983)
+    
+    https://lis.csail.mit.edu/pubs/tlp/collision-free-planning-cacm.pdf
+    """
+    
     def __init__(self, width, height, free_space, obstacle_space, occupancy, agv_radius, io_points, access_points):
         self.width = width
         self.height = height
