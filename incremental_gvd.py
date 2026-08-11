@@ -6,7 +6,8 @@ Lau, Sprunk, Burgard
 
 from matplotlib import pyplot as plt
 import numpy as np
-from collections import defaultdict
+from collections import defaultdict, deque
+
 
 class BucketPriorityQueue:
     
@@ -82,6 +83,8 @@ class IncrementalGVD:
         
         # initialize with static brushfire algorithm
         self.computeDistanceMap()
+        
+        self.graph = None
         
     
     def distance(self, p1, p2):
@@ -211,7 +214,6 @@ class IncrementalGVD:
                     self.voro[s[0], s[1]] = False
                     self.lower(s) 
 
-
     def raise_(self, s):
         
         # for every neighbor of the current cell
@@ -272,11 +274,130 @@ class IncrementalGVD:
                 self.setObstacle(s_to, value)
 
     def update_access_points(self, access_points):
-        
         self.access_points = access_points
+        
+        
+    def build_graph(self):
+        """
+        "Sparse 3D Topological Graphs for Micro-Aerial Vehicle Planning",
+        Helen Oleynikova, Zachary Taylor, Roland Siegwart, Juan Nieto (2018)
+        
+        https://github.com/ethz-asl/mav_voxblox_planning/blob/master/voxblox_skeleton/src/skeleton_generator.cpp
+        
+        """
+        
+        # 0 = free cell, 1 = skeleton cell (on free cell), 2 = occupied cell
+        voronoi_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
+        voronoi_grid[self.voro] = 1
+        
+        obstacle_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
+        obstacle_grid[self.occupancy_grid > 0] = 2
+        
+        grid = voronoi_grid + obstacle_grid
+
+        def neighbors(cell):
+            """Returns 8-connected neighbors of a cell that are also part of the skeleton."""
+            r, c = cell
+            neighbors = []
+            for dr, dc in directions:
+                nr = r + dr
+                nc = c + dc
+                if (0 <= nr < height and 0 <= nc < width and grid[nr, nc] == 1):
+                    neighbors.append((nr, nc))
+            return neighbors
+
+        height, width = grid.shape
+            
+        # neighbor cell offsets for 8-connectivity
+        directions = [
+            (-1, -1), (-1, 0), (-1, 1),
+            ( 0, -1),          ( 0, 1),
+            ( 1, -1), ( 1, 0), ( 1, 1),
+        ]
+
+        # calculate the degree of each skeleton cell (number of neighbors that are also skeleton cells)
+        skeleton_points = np.argwhere(grid == 1)
+        degree = {}
+        for r, c in skeleton_points:
+            degree[(r, c)] = len(neighbors((r, c)))
+
+        # the coordinates of skeleton cells with degree!=2 are saved as vertex cells (all of them will later be graph nodes)
+        vertex_cells = {cell for cell, d in degree.items() if d != 2}
+        
+        # create mappings between vertex_id and vertex cell coordinates and vice versa
+        vertex_id_to_cell_coords = {} # maps from vertex_id to cell coordinates of vertex cells
+        cell_coords_to_vertex_id = {} # maps from cell coordinates of vertex cells to vertex_id
+        for vertex_id, cell in enumerate(vertex_cells):
+            vertex_id_to_cell_coords[vertex_id] = cell
+            cell_coords_to_vertex_id[cell] = vertex_id
+
+        # maps from skeleton cell coordinates to the vertex_id of the graph vertex that reached it
+        cell_coords_to_origin_id = {}
+
+        # queue for flood-fill propagation from each vertex to trace skeleton paths
+        floodfill_queue = deque()
+
+        # initialize the flood-fill queue with the neighbors of each vertex cell
+        for id, coords in vertex_id_to_cell_coords.items():
+            
+            # cells that are already graph vertices are assigned to themselves as their origin
+            cell_coords_to_origin_id[coords] = id
+
+            for neighbor in neighbors(coords):
+                floodfill_queue.append((neighbor, id))
+
+        # graph edges: touple of vertex_ids (sorted to avoid duplicate edges)
+        edges = set()
+
+        # while there are cells to process in the flood-fill queue
+        while floodfill_queue:
+            
+            # pop the next cell and its source vertex_id from the queue
+            curr_cell_coords, source_vertex_id = floodfill_queue.popleft()
+            
+            # stores the vertex_id of the vertex that reached this cell for later edge creation
+            connected_vertex_id = -1
+            
+            # get the vertex_id of the vertex that reached this cell, or -1 if it hasn't been reached yet
+            origin = cell_coords_to_origin_id.get(curr_cell_coords, -1)
+
+            # if the current cell is not a vertex cell
+            if curr_cell_coords not in cell_coords_to_vertex_id:
+
+                # if already visited by this flood fill, move on to the next cell in queue
+                if origin == source_vertex_id:
+                    continue
+
+                # if already visited by a different flood fill
+                if origin != -1:
+                    # two different vertices have become connected
+                    connected_vertex_id = origin
+                else: # cell has not been visited yet
+                    # mark the cell as visited by this flood fill
+                    cell_coords_to_origin_id[curr_cell_coords] = source_vertex_id
+
+                    # add the neighbors of the current cell to the flood-fill queue
+                    for neighbor in neighbors(curr_cell_coords):
+                        floodfill_queue.append((neighbor, source_vertex_id))
+            else: # cell IS a vertex cell
+                
+                # if the current cell is a vertex cell, get its vertex_id
+                connected_vertex_id = cell_coords_to_vertex_id[curr_cell_coords]
+                
+                # if the connected vertex is the same as the source vertex, skip to the next cell in queue
+                if connected_vertex_id == source_vertex_id:
+                    continue
+        
+            # a connection between two different vertices was found.
+            if connected_vertex_id >= 0:
+                edges.add(tuple(sorted((source_vertex_id, connected_vertex_id))))
+
+        self.graph = {
+            "vertices": vertex_id_to_cell_coords,
+            "edges": edges
+        }
 
     def visualize_gvd(self, title=None):
-        """Visualize the occupancy grid, distance map, and Voronoi diagram."""
         
         print(f"Visualizing GVD: {title if title else 'unnamed'}...")
         
@@ -321,6 +442,12 @@ class IncrementalGVD:
         io_x = [p[0] for p in self.io_points]
         io_y = [p[1] for p in self.io_points]
         ax.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
+        
+        # add gridlines with distance of 1 unit (staring at 1, since the outer walls are only one voroni cell thick)
+        scale_factor = 3
+        plt.gca().set_xticks(np.arange(1, incr_gvd.width, scale_factor))
+        plt.gca().set_yticks(np.arange(1, incr_gvd.height, scale_factor))
+        plt.gca().grid(True, color='gray', linestyle='-', linewidth=0.5)
 
         # axis setup
         ax.set_xlim(0, self.width)
@@ -335,6 +462,61 @@ class IncrementalGVD:
         plt.title(title if title else "Incremental GVD")
         plt.show()
 
+    def visualize_graph(self, title=None):
+        
+            # visualize the graph
+            plt.figure(figsize=(25, 20))
+            
+            vis_map = np.zeros((incr_gvd.height, incr_gvd.width, 4), dtype=np.float32)
+            
+            # highlight cells affected during dynamic updates (red)
+            affected_mask = np.zeros((incr_gvd.height, incr_gvd.width), dtype=bool)
+            for cell in incr_gvd.affected_cells:
+                affected_mask[cell[0], cell[1]] = True
+            vis_map[affected_mask] = [1, 0, 0, 0.2]
+            
+            # plot unit_loads (dark grey)
+            unit_load_mask = incr_gvd.occupancy_grid == 2
+            vis_map[unit_load_mask] = [0.3, 0.3, 0.3, 1]
+            
+            # plot obstacles (black)
+            obstacle_mask = incr_gvd.occupancy_grid == 1
+            vis_map[obstacle_mask] = [0, 0, 0, 1]
+                
+            # plot Voronoi cells (dark blue)
+            voronoi_mask = (incr_gvd.voro > 0) & (~obstacle_mask)
+            vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.5]
+            
+            plt.imshow(vis_map, origin='lower', extent=(0, incr_gvd.width, 0, incr_gvd.height))
+            
+            # access points
+            access_x = [p[0] for p in incr_gvd.access_points]
+            access_y = [p[1] for p in incr_gvd.access_points]
+            plt.scatter(access_x, access_y, s=30, color="red", zorder=3, label="Access points")
+            
+            # IO points
+            io_x = [p[0] for p in incr_gvd.io_points]
+            io_y = [p[1] for p in incr_gvd.io_points]
+            plt.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
+            
+            for edge in self.graph["edges"]:
+                vertex1, vertex2 = edge
+                y1, x1 = self.graph["vertices"][vertex1]
+                y2, x2 = self.graph["vertices"][vertex2]
+                plt.plot([x1, x2], [y1, y2], color='blue', linewidth=2, zorder=2)
+            for vertex_id, (y, x) in self.graph["vertices"].items():
+                plt.scatter(x, y, color='orange', s=50, zorder=3)
+                # plt.text(x, y, str(vertex_id), color='white', fontsize=8, ha='center', va='center')
+                
+            # add gridlines with distance of 1 unit (staring at 1, since the outer walls are only one voroni cell thick)
+            scale_factor = 3
+            plt.gca().set_xticks(np.arange(1, incr_gvd.width, scale_factor))
+            plt.gca().set_yticks(np.arange(1, incr_gvd.height, scale_factor))
+            plt.gca().grid(True, color='gray', linestyle='-', linewidth=0.5)
+
+            plt.title("Graph from Voronoi Diagram")
+            plt.gca().invert_yaxis()
+            plt.show()
 
 def add_outer_walls_to_scenario(scenario):
     
@@ -413,7 +595,11 @@ def increase_resolution(scenario, scale_factor=3):
     
     return scenario
 
-    
+
+# TODO: thinning ([21] in Oleynikova paper)
+# TODO: edge splitting (obstacle avoidance) -- necessary?
+
+
 if __name__ == "__main__":
     from load_scenario import load_scenario_as_numpy
     
@@ -434,6 +620,11 @@ if __name__ == "__main__":
     # visualize
     incr_gvd.visualize_gvd("Incremental GVD Results")
     
+    # build voronoi graph and visualize
+    incr_gvd.build_graph()
+    incr_gvd.visualize_graph("Incremental GVD Graph")
+    
+    
     # load new scenario and add outer walls
     print("\nApplying changes to the occupancy grid...")
     new_scenario = load_scenario_as_numpy(1)
@@ -447,7 +638,6 @@ if __name__ == "__main__":
     # recompute distance map and voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    # incr_gvd.compute_voronoi_diagram()
     
     # update access points of IncrementalGVD after changes
     new_access_points = new_scenario["access_points"]
@@ -456,6 +646,9 @@ if __name__ == "__main__":
     # visualize
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes")
     
+    # build voronoi graph and visualize
+    incr_gvd.build_graph()
+    incr_gvd.visualize_graph("Incremental GVD Graph After Changes")
     
     # load new scenario and add outer walls
     print("\nApplying changes to the occupancy grid...")
@@ -470,7 +663,6 @@ if __name__ == "__main__":
     # recompute distance map and voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    # incr_gvd.compute_voronoi_diagram()
     
     # update access points of IncrementalGVD after changes
     new_access_points = new_scenario["access_points"]
@@ -479,3 +671,6 @@ if __name__ == "__main__":
     # visualize
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes 2")
     
+    # build voronoi graph and visualize
+    incr_gvd.build_graph()
+    incr_gvd.visualize_graph("Incremental GVD Graph After Changes 2")
