@@ -413,7 +413,7 @@ def main():
 
     simple_obstacle_rate = 0.1 # how common non-unit-load (regular) obstacles should be
 
-    agv_radius = 0.3  # radius of the AGV in block units
+    agv_radius = 0.45  # radius of the AGV in block units
 
 
     # static_generator = ScenarioGenerator(

@@ -6,9 +6,14 @@ Lau, Sprunk, Burgard
 
 from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection
-from matplotlib.collections import LineCollection
 import numpy as np
 from collections import defaultdict, deque
+
+from matplotlib.path import Path
+from matplotlib.patches import PathPatch
+        
+from load_scenario import load_obstacle_collision_zone
+        
 
 import shapely
 
@@ -67,7 +72,7 @@ class IncrementalGVD:
         self.access_points = access_points
         self.io_points = io_points
         
-        self.agv_radius = agv_radius ** 2  # squared, since all distances are squared (efficiency)
+        self.agv_radius = agv_radius
         
         # distance map: stores distances to closest obstacle for each cell
         self.D = np.full((self.height, self.width), np.inf, dtype=np.float32)
@@ -96,7 +101,6 @@ class IncrementalGVD:
         self.computeDistanceMap()
         
         self.graph = None
-        
     
     def distance(self, p1, p2):
         dy = p1[0] - p2[0]
@@ -172,7 +176,8 @@ class IncrementalGVD:
                     self.open.insert(n, d)
                     self.affected_cells.add(n)  # track affected cells for visualization
                 else:
-                    self.checkVoro(s, n, threshold=self.agv_radius)  # check Voronoi condition between current cell and neighbor
+                    threshold = max(self.agv_radius, 1)
+                    self.checkVoro(s, n, threshold=threshold)  # check Voronoi condition between current cell and neighbors
     
     def setObstacle(self, s, value):
         
@@ -417,62 +422,77 @@ class IncrementalGVD:
             "edges": edges,
         }
 
-    def visualize_gvd(self, title=None, iteration=0):
-        
-        print(f"Visualizing GVD: {title if title else 'unnamed'}...")
-        
-        
+
+    def draw_grid(self, iteration=0):
         fig, ax = plt.subplots(figsize=(25, 20))
 
-        # convert squared distances to actual distances
-        distance_overlay = np.sqrt(np.copy(self.D))
-
-        # create RGBA visualization
         vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
-        
-        # highlight cells affected during dynamic updates
-        affected_mask = np.zeros((self.height, self.width), dtype=bool)
-        for cell in self.affected_cells:
-            affected_mask[cell[0], cell[1]] = True
-        vis_map[affected_mask] = [1, 0, 0, 0.2]
-        
-        # ---- buffer zone ----
-        from load_scenario import load_obstacle_collision_zone
-        
-        collision_zone = load_obstacle_collision_zone(iteration)
-        # scale and translate the obstacle space to match the grid resolution
+
+        if iteration > 0:
+            # cells affected by updates (red)
+            affected_mask = np.zeros((self.height, self.width), dtype=bool)
+            for cell in self.affected_cells:
+                affected_mask[cell[0], cell[1]] = True
+            vis_map[affected_mask] = [1, 0, 0, 0.2]
+
+        # buffer zone (light grey)
+        buffer_zone = load_obstacle_collision_zone(iteration)
         scale_factor = 3
-        collision_zone = shapely.affinity.scale(collision_zone, xfact=scale_factor, yfact=scale_factor, origin=(0, 0))
-        collision_zone = shapely.affinity.translate(collision_zone, xoff=1, yoff=1)
-        
-        # create a mask for the collision zone
-        collision_mask = np.zeros((self.height, self.width), dtype=bool)
-        for y in range(self.height):
-            for x in range(self.width):
-                cell_polygon = shapely.geometry.box(x, y, x + 1, y + 1)
-                if collision_zone.intersects(cell_polygon):
-                    collision_mask[y, x] = True
-        # add the buffer to the visualization map
-        vis_map[collision_mask] = BUFFER_COLOR
-        # -----------------------------
-        
-        # obstacles (black)
+        buffer_zone = shapely.affinity.scale(buffer_zone, xfact=scale_factor, yfact=scale_factor, origin=(0, 0))
+        buffer_zone = shapely.affinity.translate(buffer_zone, xoff=1, yoff=1)
+        vertices = []
+        codes = []
+        for poly in buffer_zone.geoms:
+            exterior = np.asarray(poly.exterior.coords)
+            vertices.extend(exterior)
+            codes.extend([Path.MOVETO] + [Path.LINETO] * (len(exterior) - 2) + [Path.CLOSEPOLY])
+            for interior in poly.interiors:
+                hole = np.asarray(interior.coords)
+                vertices.extend(hole)
+                codes.extend([Path.MOVETO] + [Path.LINETO] * (len(hole) - 2) + [Path.CLOSEPOLY])
+        path = Path(vertices, codes)
+        ax.add_patch(PathPatch(path, facecolor=BUFFER_COLOR[:3], alpha=BUFFER_COLOR[3], edgecolor="none", zorder=0))
+
+        # simple obstacles (dark grey)
         obstacle_mask = self.occupancy_grid == 1
         vis_map[obstacle_mask] = SIMPLE_OBSTACLE_COLOR
 
-        # unit loads (dark grey)
+
+        # unit loads (grey)
         unit_load_mask = self.occupancy_grid == 2
         vis_map[unit_load_mask] = UNIT_LOAD_COLOR
 
-        # Voronoi cells (dark blue)
-        voronoi_mask = (self.voro > 0) & (~obstacle_mask)
-        vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 1]
-
-        # plot maps
+        # voronoi cells (blue)
+        voronoi_mask = (self.voro > 0)
+        vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.7]
+        
+        # convert squared distances to actual distances
+        distance_overlay = np.sqrt(np.copy(self.D))
+        
+        # overlay the distance map on top of the occupancy grid visualization
         # distance_im = ax.imshow(distance_overlay, origin='lower', extent=(0, self.width, 0, self.height), cmap='viridis', alpha=0.5)
+        # fig.colorbar(distance_im, ax=ax, fraction=0.046, pad=0.04, label='Distance')
+
         ax.imshow(vis_map, origin='lower', extent=(0, self.width, 0, self.height))
 
-        # fig.colorbar(distance_im, ax=ax, fraction=0.046, pad=0.04, label='Distance')
+        scale_factor = 3
+        ax.set_xticks(np.arange(1, self.width, scale_factor))
+        ax.set_yticks(np.arange(1, self.height, scale_factor))
+        ax.grid(True, color='black', linestyle='-', linewidth=0.5)
+
+        ax.set_xlim(0, self.width)
+        ax.set_ylim(0, self.height)
+        ax.set_aspect('equal')
+        ax.margins(0)
+        ax.invert_yaxis()
+
+        return fig, ax
+
+    def visualize_gvd(self, title=None, iteration=0):
+        
+        print(f"Visualizing GVD: {title if title else 'unnamed'}...")
+
+        fig, ax = self.draw_grid(iteration=iteration)
 
         # access points in the center of the cell (x and y are swapped due to row/column indexing)
         access_x = [p[0] for p in self.access_points]
@@ -483,107 +503,31 @@ class IncrementalGVD:
         io_x = [p[0] for p in self.io_points]
         io_y = [p[1] for p in self.io_points]
         ax.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
-        
-        # add gridlines with distance of 1 unit (staring at 1, since the outer walls are only one voroni cell thick)
-        scale_factor = 3
-        plt.gca().set_xticks(np.arange(1, incr_gvd.width, scale_factor))
-        plt.gca().set_yticks(np.arange(1, incr_gvd.height, scale_factor))
-        plt.gca().grid(True, color='black', linestyle='-', linewidth=0.5)
-
-        # axis setup
-        ax.set_xlim(0, self.width)
-        ax.set_ylim(0, self.height)
-        ax.set_aspect('equal')
-        ax.margins(0)
 
         ax.legend(loc='upper right')
-        
-        ax.invert_yaxis()
-
         plt.title(title if title else "Incremental GVD")
         plt.show()
 
     def visualize_graph(self, title=None, iteration=0):
-        
-            print(f"Visualizing graph: {title if title else 'unnamed'}...")
-            
-            # visualize the graph
-            plt.figure(figsize=(25, 20))
-            
-            vis_map = np.zeros((incr_gvd.height, incr_gvd.width, 4), dtype=np.float32)
-            
-            # highlight cells affected during dynamic updates (red)
-            affected_mask = np.zeros((incr_gvd.height, incr_gvd.width), dtype=bool)
-            for cell in incr_gvd.affected_cells:
-                affected_mask[cell[0], cell[1]] = True
-            vis_map[affected_mask] = [1, 0, 0, 0.2]
-            
-            # ---- buffer zone ----
-            from load_scenario import load_obstacle_collision_zone
-            
-            collision_zone = load_obstacle_collision_zone(iteration)
-            # scale and translate the obstacle space to match the grid resolution
-            scale_factor = 3
-            collision_zone = shapely.affinity.scale(collision_zone, xfact=scale_factor, yfact=scale_factor, origin=(0, 0))
-            collision_zone = shapely.affinity.translate(collision_zone, xoff=1, yoff=1)
-            
-            # create a mask for the collision zone
-            collision_mask = np.zeros((self.height, self.width), dtype=bool)
-            for y in range(self.height):
-                for x in range(self.width):
-                    cell_polygon = shapely.geometry.box(x, y, x + 1, y + 1)
-                    if collision_zone.intersects(cell_polygon):
-                        collision_mask[y, x] = True
-            # add the buffer zone to the visualization map
-            vis_map[collision_mask] = BUFFER_COLOR
-            # -----------------------------
-    
-            # plot unit_loads
-            unit_load_mask = incr_gvd.occupancy_grid == 2
-            vis_map[unit_load_mask] = UNIT_LOAD_COLOR
-            
-            # plot obstacles
-            obstacle_mask = incr_gvd.occupancy_grid == 1
-            vis_map[obstacle_mask] = SIMPLE_OBSTACLE_COLOR
-                
-            # plot Voronoi cells (dark blue)
-            voronoi_mask = (incr_gvd.voro > 0) & (~obstacle_mask)
-            vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.7]
-            
-            plt.imshow(vis_map, origin='lower', extent=(0, incr_gvd.width, 0, incr_gvd.height))
-            
-            # access points
-            access_x = [p[0] for p in incr_gvd.access_points]
-            access_y = [p[1] for p in incr_gvd.access_points]
-            plt.scatter(access_x, access_y, s=30, color="red", zorder=3, label="Access points")
-            
-            # IO points
-            io_x = [p[0] for p in incr_gvd.io_points]
-            io_y = [p[1] for p in incr_gvd.io_points]
-            plt.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
-            
-            # edges
-            edge_segments = []
-            for vertex1, vertex2 in self.graph["edges"]:
-                y1, x1 = self.graph["vertices"][vertex1]
-                y2, x2 = self.graph["vertices"][vertex2]
-                edge_segments.append([(x1, y1), (x2, y2)])
-            edge_collection = LineCollection(edge_segments, colors="blue", linewidths=2, zorder=2)
-            plt.gca().add_collection(edge_collection)
+        print(f"Visualizing graph: {title if title else 'unnamed'}...")
 
-            # vertices
-            vertices = np.array([(x, y) for y, x in self.graph["vertices"].values()])
-            plt.scatter(vertices[:, 0], vertices[:, 1], color="orange", s=30, zorder=3)
-                
-            # add gridlines with distance of 1 unit (staring at 1, since the outer walls are only one voroni cell thick)
-            scale_factor = 3
-            plt.gca().set_xticks(np.arange(1, incr_gvd.width, scale_factor))
-            plt.gca().set_yticks(np.arange(1, incr_gvd.height, scale_factor))
-            plt.gca().grid(True, color='black', linestyle='-', linewidth=0.5)
+        fig, ax = self.draw_grid(iteration=iteration)
 
-            plt.title("Graph from Voronoi Diagram")
-            plt.gca().invert_yaxis()
-            plt.show()
+        # edges
+        edge_segments = []
+        for vertex1, vertex2 in self.graph["edges"]:
+            y1, x1 = self.graph["vertices"][vertex1]
+            y2, x2 = self.graph["vertices"][vertex2]
+            edge_segments.append([(x1, y1), (x2, y2)])
+        edge_collection = LineCollection(edge_segments, colors="blue", linewidths=2, zorder=2)
+        ax.add_collection(edge_collection)
+
+        # vertices
+        vertices = np.array([(x, y) for y, x in self.graph["vertices"].values()])
+        ax.scatter(vertices[:, 0], vertices[:, 1], color="orange", s=30, zorder=3)
+
+        plt.title("Graph from Voronoi Diagram")
+        plt.show()
 
 def add_outer_walls_to_scenario(scenario):
     
