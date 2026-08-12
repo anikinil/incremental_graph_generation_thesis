@@ -10,6 +10,14 @@ from matplotlib.collections import LineCollection
 import numpy as np
 from collections import defaultdict, deque
 
+import shapely
+
+
+BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
+FREE_SPACE_COLOR = [0, 0, 0, 0]  # transparent
+SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
+UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
+
 
 class BucketPriorityQueue:
     
@@ -409,9 +417,10 @@ class IncrementalGVD:
             "edges": edges,
         }
 
-    def visualize_gvd(self, title=None):
+    def visualize_gvd(self, title=None, iteration=0):
         
         print(f"Visualizing GVD: {title if title else 'unnamed'}...")
+        
         
         fig, ax = plt.subplots(figsize=(25, 20))
 
@@ -426,16 +435,36 @@ class IncrementalGVD:
         for cell in self.affected_cells:
             affected_mask[cell[0], cell[1]] = True
         vis_map[affected_mask] = [1, 0, 0, 0.2]
-
+        
+        # ---- buffer zone ----
+        from load_scenario import load_obstacle_collision_zone
+        
+        collision_zone = load_obstacle_collision_zone(iteration)
+        # scale and translate the obstacle space to match the grid resolution
+        scale_factor = 3
+        collision_zone = shapely.affinity.scale(collision_zone, xfact=scale_factor, yfact=scale_factor, origin=(0, 0))
+        collision_zone = shapely.affinity.translate(collision_zone, xoff=1, yoff=1)
+        
+        # create a mask for the collision zone
+        collision_mask = np.zeros((self.height, self.width), dtype=bool)
+        for y in range(self.height):
+            for x in range(self.width):
+                cell_polygon = shapely.geometry.box(x, y, x + 1, y + 1)
+                if collision_zone.intersects(cell_polygon):
+                    collision_mask[y, x] = True
+        # add the buffer to the visualization map
+        vis_map[collision_mask] = BUFFER_COLOR
+        # -----------------------------
+        
         # obstacles (black)
         obstacle_mask = self.occupancy_grid == 1
-        vis_map[obstacle_mask] = [0, 0, 0, 1]
+        vis_map[obstacle_mask] = SIMPLE_OBSTACLE_COLOR
 
         # unit loads (dark grey)
         unit_load_mask = self.occupancy_grid == 2
-        vis_map[unit_load_mask] = [0.3, 0.3, 0.3, 1]
+        vis_map[unit_load_mask] = UNIT_LOAD_COLOR
 
-        # Voronoi cells (dark grey)
+        # Voronoi cells (dark blue)
         voronoi_mask = (self.voro > 0) & (~obstacle_mask)
         vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 1]
 
@@ -459,7 +488,7 @@ class IncrementalGVD:
         scale_factor = 3
         plt.gca().set_xticks(np.arange(1, incr_gvd.width, scale_factor))
         plt.gca().set_yticks(np.arange(1, incr_gvd.height, scale_factor))
-        plt.gca().grid(True, color='gray', linestyle='-', linewidth=0.5)
+        plt.gca().grid(True, color='black', linestyle='-', linewidth=0.5)
 
         # axis setup
         ax.set_xlim(0, self.width)
@@ -474,10 +503,10 @@ class IncrementalGVD:
         plt.title(title if title else "Incremental GVD")
         plt.show()
 
-    def visualize_graph(self, title=None):
+    def visualize_graph(self, title=None, iteration=0):
         
             print(f"Visualizing graph: {title if title else 'unnamed'}...")
-        
+            
             # visualize the graph
             plt.figure(figsize=(25, 20))
             
@@ -489,17 +518,37 @@ class IncrementalGVD:
                 affected_mask[cell[0], cell[1]] = True
             vis_map[affected_mask] = [1, 0, 0, 0.2]
             
-            # plot unit_loads (dark grey)
-            unit_load_mask = incr_gvd.occupancy_grid == 2
-            vis_map[unit_load_mask] = [0.3, 0.3, 0.3, 1]
+            # ---- buffer zone ----
+            from load_scenario import load_obstacle_collision_zone
             
-            # plot obstacles (black)
+            collision_zone = load_obstacle_collision_zone(iteration)
+            # scale and translate the obstacle space to match the grid resolution
+            scale_factor = 3
+            collision_zone = shapely.affinity.scale(collision_zone, xfact=scale_factor, yfact=scale_factor, origin=(0, 0))
+            collision_zone = shapely.affinity.translate(collision_zone, xoff=1, yoff=1)
+            
+            # create a mask for the collision zone
+            collision_mask = np.zeros((self.height, self.width), dtype=bool)
+            for y in range(self.height):
+                for x in range(self.width):
+                    cell_polygon = shapely.geometry.box(x, y, x + 1, y + 1)
+                    if collision_zone.intersects(cell_polygon):
+                        collision_mask[y, x] = True
+            # add the buffer zone to the visualization map
+            vis_map[collision_mask] = BUFFER_COLOR
+            # -----------------------------
+    
+            # plot unit_loads
+            unit_load_mask = incr_gvd.occupancy_grid == 2
+            vis_map[unit_load_mask] = UNIT_LOAD_COLOR
+            
+            # plot obstacles
             obstacle_mask = incr_gvd.occupancy_grid == 1
-            vis_map[obstacle_mask] = [0, 0, 0, 1]
+            vis_map[obstacle_mask] = SIMPLE_OBSTACLE_COLOR
                 
             # plot Voronoi cells (dark blue)
             voronoi_mask = (incr_gvd.voro > 0) & (~obstacle_mask)
-            vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.5]
+            vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.7]
             
             plt.imshow(vis_map, origin='lower', extent=(0, incr_gvd.width, 0, incr_gvd.height))
             
@@ -530,7 +579,7 @@ class IncrementalGVD:
             scale_factor = 3
             plt.gca().set_xticks(np.arange(1, incr_gvd.width, scale_factor))
             plt.gca().set_yticks(np.arange(1, incr_gvd.height, scale_factor))
-            plt.gca().grid(True, color='gray', linestyle='-', linewidth=0.5)
+            plt.gca().grid(True, color='black', linestyle='-', linewidth=0.5)
 
             plt.title("Graph from Voronoi Diagram")
             plt.gca().invert_yaxis()
@@ -636,11 +685,11 @@ if __name__ == "__main__":
     )
     
     # visualize
-    incr_gvd.visualize_gvd("Incremental GVD Results")
+    incr_gvd.visualize_gvd("Incremental GVD Results", iteration=0)
     
     # build voronoi graph and visualize
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph("Incremental GVD Graph")
+    incr_gvd.visualize_graph("Incremental GVD Graph", iteration=0)
     
     
     # load new scenario and add outer walls
@@ -662,11 +711,11 @@ if __name__ == "__main__":
     incr_gvd.update_access_points(new_access_points)
     
     # visualize
-    incr_gvd.visualize_gvd("Incremental GVD Results After Changes")
+    incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=1)
     
     # build voronoi graph and visualize
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph("Incremental GVD Graph After Changes")
+    incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=1)
     
     # load new scenario and add outer walls
     print("\nApplying changes to the occupancy grid...")
@@ -687,8 +736,8 @@ if __name__ == "__main__":
     incr_gvd.update_access_points(new_access_points)
     
     # visualize
-    incr_gvd.visualize_gvd("Incremental GVD Results After Changes 2")
+    incr_gvd.visualize_gvd("Incremental GVD Results After Changes 2", iteration=2)
     
     # build voronoi graph and visualize
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph("Incremental GVD Graph After Changes 2")
+    incr_gvd.visualize_graph("Incremental GVD Graph After Changes 2", iteration=2)

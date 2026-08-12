@@ -404,23 +404,26 @@ class PRM:
         width = self.bounds[2] - self.bounds[0]
         height = self.bounds[3] - self.bounds[1]
 
-        LIGHT_GREY = (0.8, 0.8, 0.8)
+        BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
+        FREE_SPACE_COLOR = [0, 0, 0, 0]  # transparent
+        SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
+        UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
 
         # draw obstacle/free space first (light grey)
-        gpd.GeoSeries(self.obstacle_space).plot(ax=ax, color=LIGHT_GREY, zorder=0)
-        gpd.GeoSeries(self.free_space).plot(ax=ax, color="white", zorder=0)
+        gpd.GeoSeries(self.obstacle_space).plot(ax=ax, color=BUFFER_COLOR, zorder=0)
+        gpd.GeoSeries(self.free_space).plot(ax=ax, color=FREE_SPACE_COLOR[0:4], zorder=0)
         
         # draw wall buffer
-        ax.add_patch(plt.Rectangle((0, 0), width, self.agv_radius, color=LIGHT_GREY, zorder=0))
-        ax.add_patch(plt.Rectangle((0, height - self.agv_radius), width, self.agv_radius, color=LIGHT_GREY, zorder=0))
-        ax.add_patch(plt.Rectangle((0, 0), self.agv_radius, height, color=LIGHT_GREY, zorder=0))
-        ax.add_patch(plt.Rectangle((width - self.agv_radius, 0), self.agv_radius, height, color=LIGHT_GREY, zorder=0))
+        ax.add_patch(plt.Rectangle((0, 0), width, self.agv_radius, color=BUFFER_COLOR, zorder=0))
+        ax.add_patch(plt.Rectangle((0, height - self.agv_radius), width, self.agv_radius, color=BUFFER_COLOR, zorder=0))
+        ax.add_patch(plt.Rectangle((0, 0), self.agv_radius, height, color=BUFFER_COLOR, zorder=0))
+        ax.add_patch(plt.Rectangle((width - self.agv_radius, 0), self.agv_radius, height, color=BUFFER_COLOR, zorder=0))
 
         G = self.build_graph()
 
         # draw occupancy grid on top
         # [free space (transparent), simple obstacle (dark grey), unit load (grey)]
-        cmap = ListedColormap([(0, 0, 0, 0), (0.3, 0.3, 0.3, 1), (0.5, 0.5, 0.5, 1)])
+        cmap = ListedColormap([FREE_SPACE_COLOR, SIMPLE_OBSTACLE_COLOR, UNIT_LOAD_COLOR])
         ax.pcolormesh(self.occupancy, cmap=cmap, edgecolors="black", linewidth=0.5, shading="flat", zorder=1)
         
         # draw edges
