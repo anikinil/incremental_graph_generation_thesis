@@ -504,7 +504,7 @@ class IncrementalGVD:
             "vertices": vertex_id_to_cell_coords,
             "edges": edges,
         }
-
+    
     def draw_grid(self, iteration=0):
         fig, ax = plt.subplots(figsize=(25, 20))
 
@@ -566,6 +566,17 @@ class IncrementalGVD:
         ax.set_aspect('equal')
         ax.margins(0)
         ax.invert_yaxis()
+        
+        # access points
+        access_x = [p[0] for p in self.access_points]
+        access_y = [p[1] for p in self.access_points]
+        ax.scatter(access_x, access_y, s=30, color="red", zorder=3, label="Access points")
+
+        # IO points
+        io_x = [p[0] for p in self.io_points]
+        io_y = [p[1] for p in self.io_points]
+        ax.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
+        ax.legend(loc='upper right')
 
         return fig, ax
 
@@ -575,17 +586,6 @@ class IncrementalGVD:
 
         fig, ax = self.draw_grid(iteration=iteration)
 
-        # access points in the center of the cell (x and y are swapped due to row/column indexing)
-        access_x = [p[0] for p in self.access_points]
-        access_y = [p[1] for p in self.access_points]
-        ax.scatter(access_x, access_y, s=30, color="red", zorder=3, label="Access points")
-
-        # IO points in the center of the cell
-        io_x = [p[0] for p in self.io_points]
-        io_y = [p[1] for p in self.io_points]
-        ax.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
-
-        ax.legend(loc='upper right')
         plt.title(title if title else "Incremental GVD")
         plt.show()
 
