@@ -64,15 +64,21 @@ class BucketPriorityQueue:
 
 class IncrementalGVD:
     
-    def __init__(self, occupancy_grid, access_points, io_points, agv_radius):
+    def __init__(self, occupancy_grid, scale_factor, access_points, io_points, agv_radius):
         self.occupancy_grid = occupancy_grid
         
         self.height, self.width = occupancy_grid.shape
+        
+        self.scale_factor = scale_factor
         
         self.access_points = access_points
         self.io_points = io_points
         
         self.agv_radius = agv_radius
+                
+        # increase resolution and add outer walls
+        self.increase_resolution()
+        self.add_outer_walls()
         
         # distance map: stores distances to closest obstacle for each cell
         self.D = np.full((self.height, self.width), np.inf, dtype=np.float32)
@@ -94,6 +100,7 @@ class IncrementalGVD:
         
         # flag for raise/lower wavefronts
         self.toRaise = np.zeros((self.height, self.width), dtype=bool)
+        
         
         self.affected_cells = set()  # track affected cells after dynamic updates for visualization
         
@@ -212,9 +219,7 @@ class IncrementalGVD:
         return value  # return the type of obstacle that was removed (for move operations)
     
     def updateDistanceMap(self):
-        
-        self.affected_cells.clear()  # clear affected cells before processing
-        
+                
         # while there are cells to process
         while not self.open.is_empty():
             # pop cell with smallest distance
@@ -275,25 +280,103 @@ class IncrementalGVD:
             if dist_n_to_obst_s <= dist_s_to_obst_n:
                 self.voro[n] = True
 
-    def apply_changes(self, changes):
+    def apply_updates(self, updates, new_access_points, new_io_points):
         
-        for change in changes:
-            action = change["action"]
+        # scale update coords to the grid resolution
+        scaled_updates = []
+        for update in updates:
+            action = update["action"]
+            if action =='add':
+                (y, x), value = update["cell"], update["obstacle_type"]
+                for x_ in range(self.scale_factor):
+                    for y_ in range(self.scale_factor):
+                        scaled_updates.append({"action": action, "cell": (y * self.scale_factor + y_, x * self.scale_factor + x_), "obstacle_type": value})
+            if action == 'remove':
+                y, x = update["cell"]
+                for x_ in range(self.scale_factor):
+                    for y_ in range(self.scale_factor):
+                        scaled_updates.append({"action": action, "cell": (y * self.scale_factor + y_, x * self.scale_factor + x_)})
+            elif action == 'move':
+                (y_from, x_from), (y_to, x_to) = update["from_cell"], update["to_cell"]
+                for x_ in range(self.scale_factor):
+                    for y_ in range(self.scale_factor):
+                        scaled_updates.append({"action": action, "from_cell": (y_from * self.scale_factor + y_, x_from * self.scale_factor + x_), "to_cell": (y_to * self.scale_factor + y_, x_to * self.scale_factor + x_)})
+
+        # adjust changes to the wall offset
+        translated_updates = []
+        for update in scaled_updates:
+            action = update["action"]
+            if action =='add':
+                (y, x), value = update["cell"], update["obstacle_type"]
+                translated_updates.append({"action": action, "cell": (y + 1, x + 1), "obstacle_type": value})
+            if action == 'remove':
+                y, x = update["cell"]
+                translated_updates.append({"action": action, "cell": (y + 1, x + 1)})
+            elif action == 'move':
+                (y_from, x_from), (y_to, x_to) = update["from_cell"], update["to_cell"]
+                translated_updates.append({"action": action, "from_cell": (y_from + 1, x_from + 1), "to_cell": (y_to + 1, x_to + 1)})
+
+        # apply updates to the occupancy grid
+        for update in translated_updates:
+            action = update["action"]
             if action == 'add':
-                s, value = change["cell"], change["obstacle_type"]
+                s, value = update["cell"], update["obstacle_type"]
                 self.setObstacle(s, value)
             elif action == 'remove':
-                s = change["cell"]
+                s = update["cell"]
                 self.removeObstacle(s)
             elif action == 'move':
-                s_from, s_to = change["from_cell"], change["to_cell"]
+                s_from, s_to = update["from_cell"], update["to_cell"]
                 value = self.removeObstacle(s_from)
                 self.setObstacle(s_to, value)
+                
+        # adjust and update access points
+        self.access_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for (y, x) in new_access_points]
+        # adjust and update IO points (probably usually unchanged)
+        self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for (y, x) in new_io_points]
+        
+        self.affected_cells.clear()  # clear affected cells before updating distance map
 
-    def update_access_points(self, access_points):
-        self.access_points = access_points
+    def increase_resolution(self):
         
+        old_height, old_width = self.height, self.width
         
+        self.height *= self.scale_factor
+        self.width *= self.scale_factor
+        
+        # create a new high-resolution occupancy grid
+        new_occupancy_grid = np.zeros((self.height, self.width), dtype=self.occupancy_grid.dtype)
+        
+        # fill in the high-resolution grid based on the original occupancy values
+        for y in range(old_height):
+            for x in range(old_width):
+                value = self.occupancy_grid[y, x]
+                new_occupancy_grid[y*self.scale_factor:(y+1)*self.scale_factor, x*self.scale_factor:(x+1)*self.scale_factor] = value
+        
+        self.occupancy_grid = new_occupancy_grid
+        
+        # scale positions of access points and IO points
+        self.access_points = [(y * self.scale_factor, x * self.scale_factor) for (y, x) in self.access_points]
+        self.io_points = [(y * self.scale_factor, x * self.scale_factor) for (y, x) in self.io_points]
+        
+        # scale agv_radius
+        self.agv_radius *= self.scale_factor
+        
+    
+    def add_outer_walls(self):
+        
+        # add outer walls to the occupancy grid
+        self.height += 2
+        self.width += 2
+        new_occupancy = np.ones((self.height, self.width), dtype=self.occupancy_grid.dtype)
+        new_occupancy[1:-1, 1:-1] = self.occupancy_grid
+        self.occupancy_grid = new_occupancy
+        
+        # adjust access points and IO points
+        self.access_points = [(y + 1, x + 1) for (y, x) in self.access_points]
+        self.io_points = [(y + 1, x + 1) for (y, x) in self.io_points]
+        
+
     def build_graph(self):
         """
         "Sparse 3D Topological Graphs for Micro-Aerial Vehicle Planning",
@@ -422,7 +505,6 @@ class IncrementalGVD:
             "edges": edges,
         }
 
-
     def draw_grid(self, iteration=0):
         fig, ax = plt.subplots(figsize=(25, 20))
 
@@ -456,12 +538,11 @@ class IncrementalGVD:
         # simple obstacles (dark grey)
         obstacle_mask = self.occupancy_grid == 1
         vis_map[obstacle_mask] = SIMPLE_OBSTACLE_COLOR
-
-
         # unit loads (grey)
         unit_load_mask = self.occupancy_grid == 2
         vis_map[unit_load_mask] = UNIT_LOAD_COLOR
 
+    
         # voronoi cells (blue)
         voronoi_mask = (self.voro > 0)
         vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.7]
@@ -529,83 +610,6 @@ class IncrementalGVD:
         plt.title("Graph from Voronoi Diagram")
         plt.show()
 
-def add_outer_walls_to_scenario(scenario):
-    
-    occupancy = scenario["occupancy"]
-    height, width = occupancy.shape
-    new_occupancy = np.ones((height + 2, width + 2), dtype=occupancy.dtype)
-    new_occupancy[1:-1, 1:-1] = occupancy
-    scenario["occupancy"] = new_occupancy
-    scenario["width"] += 2
-    scenario["height"] += 2
-    
-    # adjust access points and IO points
-    scenario["access_points"] = {(y + 1, x + 1) for (y, x) in scenario["access_points"]}
-    scenario["io_points"] = {(y + 1, x + 1) for (y, x) in scenario["io_points"]}
-    
-    # adjust changes to the grid
-    adjusted_changes = []
-    for change in scenario["changes"]:
-        action = change["action"]
-        if action =='add':
-            (y, x), value = change["cell"], change["obstacle_type"]
-            adjusted_changes.append({"action": action, "cell": (y + 1, x + 1), "obstacle_type": value})
-        if action == 'remove':
-            y, x = change["cell"]
-            adjusted_changes.append({"action": action, "cell": (y + 1, x + 1)})
-        elif action == 'move':
-            (y_from, x_from), (y_to, x_to) = change["from_cell"], change["to_cell"]
-            adjusted_changes.append({"action": action, "from_cell": (y_from + 1, x_from + 1), "to_cell": (y_to + 1, x_to + 1)})
-    scenario["changes"] = adjusted_changes
-    
-    return scenario
-
-def increase_resolution(scenario, scale_factor=3):
-    
-    occupancy = scenario["occupancy"]
-    height, width = occupancy.shape
-    
-    # create a new high-resolution occupancy grid
-    new_occupancy = np.zeros((height * scale_factor, width * scale_factor), dtype=occupancy.dtype)
-    
-    # fill in the high-resolution grid based on the original occupancy values
-    for y in range(height):
-        for x in range(width):
-            value = occupancy[y, x]
-            new_occupancy[y*scale_factor:(y+1)*scale_factor, x*scale_factor:(x+1)*scale_factor] = value
-    
-    scenario["occupancy"] = new_occupancy
-    
-    # scale positions of access points and IO points
-    scenario["access_points"] = {(y * scale_factor, x * scale_factor) for (y, x) in scenario["access_points"]}
-    scenario["io_points"] = {(y * scale_factor, x * scale_factor) for (y, x) in scenario["io_points"]}
-    
-    # scale agv_radius
-    scenario["agv_radius"] *= scale_factor
-
-    # scale changes to the grid
-    adjusted_changes = []
-    for change in scenario["changes"]:
-        action = change["action"]
-        if action =='add':
-            (y, x), value = change["cell"], change["obstacle_type"]
-            for x_ in range(scale_factor):
-                for y_ in range(scale_factor):
-                    adjusted_changes.append({"action": action, "cell": (y * scale_factor + y_, x * scale_factor + x_), "obstacle_type": value})
-        if action == 'remove':
-            y, x = change["cell"]
-            for x_ in range(scale_factor):
-                for y_ in range(scale_factor):
-                    adjusted_changes.append({"action": action, "cell": (y * scale_factor + y_, x * scale_factor + x_)})
-        elif action == 'move':
-            (y_from, x_from), (y_to, x_to) = change["from_cell"], change["to_cell"]
-            for x_ in range(scale_factor):
-                for y_ in range(scale_factor):
-                    adjusted_changes.append({"action": action, "from_cell": (y_from * scale_factor + y_, x_from * scale_factor + x_), "to_cell": (y_to * scale_factor + y_, x_to * scale_factor + x_)})
-    scenario["changes"] = adjusted_changes
-    
-    return scenario
-
 
 # TODO: thinning ([21] in Oleynikova paper)
 # TODO: edge splitting (obstacle avoidance) -- necessary?
@@ -615,73 +619,53 @@ if __name__ == "__main__":
     from load_scenario import load_scenario_as_numpy
     
     # load initial scenario and add outer walls
-    scenario = load_scenario_as_numpy(0)    
-    scenario = increase_resolution(scenario)
-    scenario = add_outer_walls_to_scenario(scenario)
+    scenario_0 = load_scenario_as_numpy(0)
+    scenario_1 = load_scenario_as_numpy(1)
+    scenario_2 = load_scenario_as_numpy(2)
+    
+    # ---- iteration 0 ----
     
     # initialize spatial representation and compute distance map
     print("\nInitialize and compute GVD...")
     incr_gvd = IncrementalGVD(
-        occupancy_grid=scenario["occupancy"],
-        access_points=scenario["access_points"],
-        io_points=scenario["io_points"],
-        agv_radius=scenario["agv_radius"]
+        occupancy_grid=scenario_0["occupancy"],
+        access_points=scenario_0["access_points"],
+        io_points=scenario_0["io_points"],
+        agv_radius=scenario_0["agv_radius"],
+        scale_factor=3,
     )
-    
-    # visualize
     incr_gvd.visualize_gvd("Incremental GVD Results", iteration=0)
     
-    # build voronoi graph and visualize
+    # build voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph("Incremental GVD Graph", iteration=0)
     
+    # ---- iteration 1 ----
     
-    # load new scenario and add outer walls
-    print("\nApplying changes to the occupancy grid...")
-    new_scenario = load_scenario_as_numpy(1)
-    new_scenario = increase_resolution(new_scenario)
-    new_scenario = add_outer_walls_to_scenario(new_scenario)
-    
-    # apply changes to the occupancy grid
-    scenario_updates = new_scenario["changes"]
-    incr_gvd.apply_changes(scenario_updates)
+    # apply updates to the occupancy grid
+    print("\nApplying updates to the occupancy grid...")
+    incr_gvd.apply_updates(scenario_1["updates"], scenario_1["access_points"], scenario_1["io_points"])
     
     # recompute distance map and voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    
-    # update access points of IncrementalGVD after changes
-    new_access_points = new_scenario["access_points"]
-    incr_gvd.update_access_points(new_access_points)
-    
-    # visualize
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=1)
     
-    # build voronoi graph and visualize
+    # build voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=1)
     
-    # load new scenario and add outer walls
-    print("\nApplying changes to the occupancy grid...")
-    new_scenario = load_scenario_as_numpy(2)
-    new_scenario = increase_resolution(new_scenario)
-    new_scenario = add_outer_walls_to_scenario(new_scenario)
+    # ---- iteration 2 ----
     
-    # apply changes to the occupancy grid
-    scenario_updates = new_scenario["changes"]
-    incr_gvd.apply_changes(scenario_updates)
+    # apply updates to the occupancy grid
+    print("\nApplying updates to the occupancy grid...")
+    incr_gvd.apply_updates(scenario_2["updates"], scenario_2["access_points"], scenario_2["io_points"])
     
     # recompute distance map and voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
+    incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=2)
     
-    # update access points of IncrementalGVD after changes
-    new_access_points = new_scenario["access_points"]
-    incr_gvd.update_access_points(new_access_points)
-    
-    # visualize
-    incr_gvd.visualize_gvd("Incremental GVD Results After Changes 2", iteration=2)
-    
-    # build voronoi graph and visualize
+    # build voronoi graph
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph("Incremental GVD Graph After Changes 2", iteration=2)
+    incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=2)

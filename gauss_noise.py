@@ -35,7 +35,7 @@ class ScenarioGenerator:
 
         self.obstacle_count = 0
         
-        self.changes = [] # changes made for dynamic scenarios
+        self.updates = [] # updates made for dynamic scenarios
         
     
     def generate_noise_field(self):
@@ -207,12 +207,12 @@ class ScenarioGenerator:
                 else:
                     self.access_points.discard(point)
 
-    def make_changes(self, number_of_changes=100):
-        changed_cells = set()  # track changed cells to update access points after changes
+    def make_updates(self, number_of_updates=100):
+        changed_cells = set()  # track changed cells to update access points after updates
                 
-        for _ in range(number_of_changes):
+        for _ in range(number_of_updates):
             
-            print(f"Making change {_+1}/{number_of_changes}...", end="\r")
+            print(f"Making change {_+1}/{number_of_updates}...", end="\r")
             
             action = self.rng.choice(["add", "move", "remove"])
             
@@ -279,7 +279,7 @@ class ScenarioGenerator:
         
         self.obstacle_count += 1
         
-        self.changes.append({"action": "add", "cell": cell, "obstacle_type": type})
+        self.updates.append({"action": "add", "cell": cell, "obstacle_type": type})
         return True
     
     def _move_obstacle(self, from_cell, to_cell):
@@ -300,7 +300,7 @@ class ScenarioGenerator:
             self.occupancy[to_cell] = 0
             return False
         
-        self.changes.append({"action": "move", "from_cell": from_cell, "to_cell": to_cell})
+        self.updates.append({"action": "move", "from_cell": from_cell, "to_cell": to_cell})
         return True
 
     def _remove_obstacle(self, cell):
@@ -316,7 +316,7 @@ class ScenarioGenerator:
         
         self.obstacle_count -= 1
         
-        self.changes.append({"action": "remove", "cell": cell})
+        self.updates.append({"action": "remove", "cell": cell})
         return True
     
     def remove_region(self, top_left, bottom_right):
@@ -335,7 +335,7 @@ class ScenarioGenerator:
             for c in range(c1, c2):
                 if old_occupancy[r, c] > 0:
                     self.occupancy[r, c] = 0
-                    self.changes.append({"action": "remove", "cell": (r, c)})
+                    self.updates.append({"action": "remove", "cell": (r, c)})
 
         if not self.connected():
             # undo removal if it disconnects the map
@@ -384,7 +384,7 @@ class ScenarioGenerator:
             io_points_radius=self.IO_points_radius,
             access_points=np.array(list(self.access_points)),
             agv_radius=self.agv_radius,
-            changes=np.array(self.changes, dtype=object) if self.changes else np.array([], dtype=object),
+            updates=np.array(self.updates, dtype=object) if self.updates else np.array([], dtype=object),
         )
 
 def main():
@@ -413,7 +413,7 @@ def main():
 
     simple_obstacle_rate = 0.1 # how common non-unit-load (regular) obstacles should be
 
-    agv_radius = 0.45  # radius of the AGV in block units
+    agv_radius = 0.4  # radius of the AGV in block units
 
 
     # static_generator = ScenarioGenerator(
@@ -457,7 +457,7 @@ def main():
     
     # dynamic_generator.visualize(iteration="dynamic after region removal")
     
-    dynamic_generator.make_changes(10)
+    dynamic_generator.make_updates(10)
     dynamic_generator.save_scenario("scenario/2")
 
     # dynamic_generator.visualize(iteration="dynamic")

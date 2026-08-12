@@ -313,7 +313,7 @@ class PRM:
                 if self.attempt_count[i] > 0:
                     weights[i] = self.failure_count[i] / (self.attempt_count[i] + 1)
                 else:
-                    weights[i] = 0.9  # default middle weight for untested nodes
+                    weights[i] = 5.0  # TODO improve
                 # if i >= self.num_nodes - len(self.special_points):
                 #     weights[i] *= 2.0  # Prioritize special points
             

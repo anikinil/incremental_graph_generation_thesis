@@ -103,7 +103,7 @@ def load_scenario_as_shapely(iteration = 0):
             "access_points": access_points,
             "width": scenario["width"],
             "height": scenario["height"],
-            "changes": np.array(scenario["changes"], dtype=object)
+            "updates": np.array(scenario["updates"], dtype=object)
         }
     )
 
@@ -136,7 +136,7 @@ def load_scenario_as_numpy(iteration = 0):
             "access_points": access_points,
             "width": scenario["width"],
             "height": scenario["height"],
-            "changes": np.array(scenario["changes"], dtype=object)
+            "updates": np.array(scenario["updates"], dtype=object)
         }
     )
 
@@ -176,7 +176,4 @@ def load_obstacle_collision_zone(iteration = 0):
     # subtract obstacle space from infalted obstacle space
     difference = inflated_obstacle_space.difference(obstacle_space)
     
-    print(f"Volume of inflated obstacle space: {inflated_obstacle_space.area}")
-    print(f"Volume of difference: {difference.area}")
-
     return difference
