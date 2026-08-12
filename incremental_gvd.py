@@ -5,6 +5,8 @@ Lau, Sprunk, Burgard
 """
 
 from matplotlib import pyplot as plt
+from matplotlib.collections import LineCollection
+from matplotlib.collections import LineCollection
 import numpy as np
 from collections import defaultdict, deque
 
@@ -67,8 +69,9 @@ class IncrementalGVD:
         print()
         for i in range(self.height):
             for j in range(self.width):
-                print(f"Initializing obstacle reference for cell ({i}, {j})", end="\r")
+                print(f"\r{' ' * 100}\rInitializing obstacle reference for cell ({i}, {j})", end="", flush=True)
                 self.obst[i, j] = (-1, -1)
+        print()
         
         # voronoi map: True if cell is on Voronoi diagram
         self.voro = np.zeros((self.height, self.width), dtype=bool)
@@ -123,7 +126,7 @@ class IncrementalGVD:
         for y in range(self.height):
             for x in range(self.width):
                 s = (y, x)
-                print(f"Initializing cell ({y}, {x}) with occupancy {self.occupancy_grid[y, x]}", end="\r")
+                print(f"\r{' ' * 100}\rInitializing cell ({y}, {x}) with occupancy {self.occupancy_grid[y, x]}", end="", flush=True)
                 if self.occupancy_grid[y, x] > 0:  # if cell occupied
                     self.D[y, x] = 0 # distance to itself is zero
                     self.obst[y, x] = s # is its own closest obstacle
@@ -134,11 +137,12 @@ class IncrementalGVD:
         # propagate wavefronts
         print()
         while not self.open.is_empty():
-            print(f"Processing queue with current min distance {self.open.current_min_distance}", end="\r")
+            print(f"\r{' ' * 100}\rProcessing queue with current min distance {self.open.current_min_distance}", end="", flush=True)
             # if self.open.is_empty(): # if no more cells to process: done
                 # break
             s, _ = self.open.pop() # pop cell with smallest distance
             self.lower(s) # propagate to neighbors and update their distances if closer to obstacle
+        print(f"\r{' ' * 100}\rDistance map complete.")
     
     def lower(self, s):
         
@@ -289,11 +293,11 @@ class IncrementalGVD:
         # 0 = free cell, 1 = skeleton cell (on free cell), 2 = occupied cell
         voronoi_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
         voronoi_grid[self.voro] = 1
-        
         obstacle_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
         obstacle_grid[self.occupancy_grid > 0] = 2
-        
         grid = voronoi_grid + obstacle_grid
+        
+        print(f"Building graph from skeleton with {np.sum(voronoi_grid)} skeleton cells...")
 
         def neighbors(cell):
             """Returns 8-connected neighbors of a cell that are also part of the skeleton."""
@@ -322,7 +326,8 @@ class IncrementalGVD:
             degree[(r, c)] = len(neighbors((r, c)))
 
         # the coordinates of skeleton cells with degree!=2 are saved as vertex cells (all of them will later be graph nodes)
-        vertex_cells = {cell for cell, d in degree.items() if d != 2}
+        # also shift the coordinates of the vertex cells by 0.5 to place them in the center of the cell
+        vertex_cells = [(r, c) for (r, c), deg in degree.items() if deg != 2]
         
         # create mappings between vertex_id and vertex cell coordinates and vice versa
         vertex_id_to_cell_coords = {} # maps from vertex_id to cell coordinates of vertex cells
@@ -351,6 +356,8 @@ class IncrementalGVD:
 
         # while there are cells to process in the flood-fill queue
         while floodfill_queue:
+            
+            print(f"\r{' ' * 100}\rBuilding graph. Flood-fill queue size: {len(floodfill_queue)}", end="", flush=True)
             
             # pop the next cell and its source vertex_id from the queue
             curr_cell_coords, source_vertex_id = floodfill_queue.popleft()
@@ -388,13 +395,18 @@ class IncrementalGVD:
                 if connected_vertex_id == source_vertex_id:
                     continue
         
-            # a connection between two different vertices was found.
+            # a connection between two different vertices was found
             if connected_vertex_id >= 0:
                 edges.add(tuple(sorted((source_vertex_id, connected_vertex_id))))
 
+        print(f"\r{' ' * 100}\rGraph building complete. Found {len(vertex_id_to_cell_coords)} vertices and {len(edges)} edges.")
+
+        # shift the coordinates of the vertex cells by 0.5 to place them in the center of the cell
+        vertex_id_to_cell_coords = {vid: (y + 0.5, x + 0.5) for vid, (y, x) in vertex_id_to_cell_coords.items()}
+
         self.graph = {
             "vertices": vertex_id_to_cell_coords,
-            "edges": edges
+            "edges": edges,
         }
 
     def visualize_gvd(self, title=None):
@@ -464,6 +476,8 @@ class IncrementalGVD:
 
     def visualize_graph(self, title=None):
         
+            print(f"Visualizing graph: {title if title else 'unnamed'}...")
+        
             # visualize the graph
             plt.figure(figsize=(25, 20))
             
@@ -499,14 +513,18 @@ class IncrementalGVD:
             io_y = [p[1] for p in incr_gvd.io_points]
             plt.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
             
-            for edge in self.graph["edges"]:
-                vertex1, vertex2 = edge
+            # edges
+            edge_segments = []
+            for vertex1, vertex2 in self.graph["edges"]:
                 y1, x1 = self.graph["vertices"][vertex1]
                 y2, x2 = self.graph["vertices"][vertex2]
-                plt.plot([x1, x2], [y1, y2], color='blue', linewidth=2, zorder=2)
-            for vertex_id, (y, x) in self.graph["vertices"].items():
-                plt.scatter(x, y, color='orange', s=50, zorder=3)
-                # plt.text(x, y, str(vertex_id), color='white', fontsize=8, ha='center', va='center')
+                edge_segments.append([(x1, y1), (x2, y2)])
+            edge_collection = LineCollection(edge_segments, colors="blue", linewidths=2, zorder=2)
+            plt.gca().add_collection(edge_collection)
+
+            # vertices
+            vertices = np.array([(x, y) for y, x in self.graph["vertices"].values()])
+            plt.scatter(vertices[:, 0], vertices[:, 1], color="orange", s=30, zorder=3)
                 
             # add gridlines with distance of 1 unit (staring at 1, since the outer walls are only one voroni cell thick)
             scale_factor = 3
