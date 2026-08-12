@@ -613,6 +613,7 @@ class IncrementalGVD:
 
 # TODO: thinning ([21] in Oleynikova paper)
 # TODO: edge splitting (obstacle avoidance) -- necessary?
+#         - probably YES (edges can cross buffer zone, at least for CORNER_SEGMENTS=0)
 
 
 if __name__ == "__main__":

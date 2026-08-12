@@ -12,7 +12,7 @@ from shapely.ops import unary_union
 ERROR_TOLERANCE = 1e-6
 
 # number of segments used to approximate the round corners of the obstacle buffer (0 = no rounding)
-CORNER_SEGMENTS = 0
+CORNER_SEGMENTS = 1
 
 def load_scenario_as_shapely(iteration = 0):
     scenario = np.load(f"scenario/{iteration}.npz", allow_pickle=True)

@@ -244,7 +244,7 @@ class PRM:
         
         print(f"Construction step complete: {self.num_nodes} nodes")
     
-    def _random_bounce_walk(self, start_config, walk_length = 5.0, max_bounces = 20):
+    def _random_bounce_walk(self, start_config, walk_length, max_bounces):
         """
         Generates configurations via random-bounce walk.
         Picks random direction an moves until hitting obstacle, or max steps reached, then repeats.
@@ -288,7 +288,7 @@ class PRM:
         # store unnion for efficient component check
         self.union_find.union(node_a, node_b)
     
-    def expansion_step(self, bounce_walk_length = 5.0, max_bounces = 10):
+    def expansion_step(self, bounce_walk_length, max_bounces):
         """
         Expansion step: densifies difficult regions until all components and special points are connected.
         """
@@ -332,6 +332,7 @@ class PRM:
             # expand this node with random-bounce walk
             bounce_points = self._random_bounce_walk(self.nodes[node_idx], walk_length=bounce_walk_length, max_bounces=max_bounces)
             
+            # connect bounce points sequentially and to the original node
             prev_idx = node_idx
             # new_connections = []
             for config in bounce_points:
@@ -344,6 +345,7 @@ class PRM:
                 
                 candidate_indices = self._get_candidate_neighbors(config)
                 
+                # try to connect to candidate neighbors
                 for neighbor_idx in candidate_indices:
                     # mark attempt
                     self.attempt_count[new_idx] += 1
@@ -486,7 +488,7 @@ def main():
     eps = 0.1 # step size for path discretization
     
     bounce_walk_length = 0.5
-    max_bounces = 50
+    max_bounces = 100
     
     # build PRM
     bounds = (0, 0, scenario["width"], scenario["height"])
