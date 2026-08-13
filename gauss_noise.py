@@ -37,6 +37,10 @@ class ScenarioGenerator:
         
         self.updates = [] # updates made for dynamic scenarios
         
+        self.connectivity_structure = np.array([[0, 1, 0],
+                                                [1, 1, 1],
+                                                [0, 1, 0]], dtype=np.uint8) # structure for connectivity checks
+        
     
     def generate_noise_field(self):
         
@@ -146,8 +150,7 @@ class ScenarioGenerator:
                     simple_obstacles_placed += 1
                 # print progress
                 if placed % 100 == 0:
-                    print(f"Unit lodas placed {unit_loads_placed}/{unit_loads_num} ({unit_loads_placed/unit_loads_num*100:.1f}%)\n"
-                          f"Simple obstacles placed {simple_obstacles_placed}/{simple_obstacles_num} ({simple_obstacles_placed/simple_obstacles_num*100:.1f}%)", end="\n\n")
+                    print(f"\r{' ' * 50}\rPlaced {placed}/{self.obstacle_count} obstacles - {placed/self.obstacle_count*100:.1f}% (unit-load: {unit_loads_placed}, simple: {simple_obstacles_placed})...", end="", flush=True)
                 obstacles = obstacles[1:] # remove the placed obstacle from the list
             else:
                 # else: undo placement
@@ -163,14 +166,8 @@ class ScenarioGenerator:
     def connected(self):
         free = self.occupancy == 0
 
-        structure = np.array([
-            [0,1,0],
-            [1,1,1],
-            [0,1,0]
-        ])
-
         # James R. Weaver, "Centrosymmetric (cross-symmetric) matrices, their basic properties, eigenvalues, and eigenvectors." The American Mathematical Monthly 92.10 (1985): 711-717.
-        _, components = label(free, structure=structure)
+        _, components = label(free, structure=self.connectivity_structure)
         return components <= 1 
     
     def update_access_points(self, locations=None):
@@ -411,7 +408,7 @@ def main():
     
     seed = int(sys.argv[6]) if len(sys.argv)>6 else 42  # random seed for reproducibility
         
-    number_of_corridors = 30  # number of corridors to generate
+    number_of_corridors = 0  # number of corridors to generate
     corridor_sigma = 1    # determines the width of corridors
         
     IO_points_radius = 3  # how much free space around IO points is created
