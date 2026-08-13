@@ -78,19 +78,19 @@ def load_scenario_as_shapely(iteration = 0):
 
     # move access points out by agv_radius
     access_points = []
-    for x, y, dir in scenario["access_points"]:
-        x = np.float64(x)
+    for y, x, dir in scenario["access_points"]:
         y = np.float64(y)
+        x = np.float64(x)
         if dir == "n":
-            access_points.append((x, np.float64(y - scenario["agv_radius"] - ERROR_TOLERANCE), dir))
+            access_points.append((np.float64(y - scenario["agv_radius"] - ERROR_TOLERANCE), x, dir))
         elif dir == "s":
-            access_points.append((x, np.float64(y + scenario["agv_radius"] + ERROR_TOLERANCE), dir))
+            access_points.append((np.float64(y + scenario["agv_radius"] + ERROR_TOLERANCE), x, dir))
         elif dir == "e":
-            access_points.append((np.float64(x + scenario["agv_radius"] + ERROR_TOLERANCE), y, dir))
+            access_points.append((y, np.float64(x + scenario["agv_radius"] + ERROR_TOLERANCE), dir))
         elif dir == "w":
-            access_points.append((np.float64(x - scenario["agv_radius"] - ERROR_TOLERANCE), y, dir))
+            access_points.append((y, np.float64(x - scenario["agv_radius"] - ERROR_TOLERANCE), dir))
 
-    io_points = [(np.float64(x + 0.5), np.float64(y + 0.5)) for y, x in scenario["io_points"]]
+    io_points = [(np.float64(y + 0.5), np.float64(x + 0.5)) for y, x in scenario["io_points"]]
 
     return (
         {
@@ -113,20 +113,20 @@ def load_scenario_as_numpy(iteration = 0):
     occupancy_rate = scenario["occupancy_rate"]
     
     access_points = []
-    for x, y, dir in scenario["access_points"]:
-        x = np.float64(x)
+    for y, x, dir in scenario["access_points"]:
         y = np.float64(y)
+        x = np.float64(x)
         if dir == "n":
-            access_points.append((x, np.float64(y - scenario["agv_radius"] - ERROR_TOLERANCE), dir))
+            access_points.append((np.float64(y - scenario["agv_radius"] - ERROR_TOLERANCE), x, dir))
         elif dir == "s":
-            access_points.append((x, np.float64(y + scenario["agv_radius"] + ERROR_TOLERANCE), dir))
+            access_points.append((np.float64(y + scenario["agv_radius"] + ERROR_TOLERANCE), x, dir))
         elif dir == "e":
-            access_points.append((np.float64(x + scenario["agv_radius"] + ERROR_TOLERANCE), y, dir))
+            access_points.append((y, np.float64(x + scenario["agv_radius"] + ERROR_TOLERANCE), dir))
         elif dir == "w":
-            access_points.append((np.float64(x - scenario["agv_radius"] - ERROR_TOLERANCE), y, dir))
-            
-    io_points = [(np.float64(x + 0.5), np.float64(y + 0.5)) for y, x in scenario["io_points"]]
-    
+            access_points.append((y, np.float64(x - scenario["agv_radius"] - ERROR_TOLERANCE), dir))
+
+    io_points = [(np.float64(y + 0.5), np.float64(x + 0.5)) for y, x in scenario["io_points"]]
+
     return (
         {
             "occupancy": occupancy,

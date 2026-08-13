@@ -24,8 +24,8 @@ class ScenarioGenerator:
         self.number_of_corridors = number_of_corridors
         self.corridor_sigma = corridor_sigma # determines the width of the corridors, smaller values create narrower corridors
         
-        self.io_points = set(io_points) # input/output points that should remain free of obstacles
-        self.access_points = set()
+        self.io_points = set(io_points) # input/output points that should remain free of obstacles (y, x)
+        self.access_points = set() # (y, x, direction)
         self.IO_points_radius = IO_points_radius
         self.simple_obstacle_rate = simple_obstacle_rate # how many of the obstacles are regular (non-unit-load) obstacles
         
@@ -53,7 +53,6 @@ class ScenarioGenerator:
 
         rr, cc = np.meshgrid(np.arange(self.height), np.arange(self.width), indexing="ij")
 
-
         # create a penalty field around IO points
         io_penalty = np.zeros_like(field)
 
@@ -62,7 +61,6 @@ class ScenarioGenerator:
             io_penalty += np.exp(-distance / (2 * self.IO_points_radius**2))
             
         field -= io_penalty
-        
         
         # create corridors in the field
         corridor_field = np.zeros_like(field)
@@ -101,19 +99,21 @@ class ScenarioGenerator:
 
     def generate_map(self):
 
+        # generate the noise field
         field = self.generate_noise_field()
 
+        # determine the number of obstacles to place
         unit_loads_num = int(self.height * self.width * self.occupancy_rate * (1-self.simple_obstacle_rate))
         simple_obstacles_num = int(self.height * self.width * self.occupancy_rate) - unit_loads_num
+        self.obstacle_count = unit_loads_num + simple_obstacles_num
 
         obstacles = np.concatenate([
             np.zeros(simple_obstacles_num, dtype=bool), # False: simple obstacles
             np.ones(unit_loads_num, dtype=bool)         # True: unit-load obstacles
         ])
         
+        # shuffle the obstacles to randomize their placement
         self.rng.shuffle(obstacles)
-        
-        self.obstacle_count = len(obstacles)
         
         unit_loads_placed = 0
         simple_obstacles_placed = 0
@@ -124,32 +124,36 @@ class ScenarioGenerator:
             idx = np.argmax(field)
             r, c = np.unravel_index(idx, field.shape)
 
-            # mark as processed so its is not picked again
+            # mark as processed so the same cell is not selected again
             field[r, c] = -np.inf
 
             # skip if it is an IO point and should remain free
             if (r, c) in self.io_points:
                 continue
             
-            if obstacles[0]: # if it is a unit-load obstacle
+            if obstacles[0]: # if it is a unit-load obstacle: 2
                 self.occupancy[r, c] = 2
-            else: # if it is a simple obstacle
+            else: # if it is a simple obstacle: 1
                 self.occupancy[r, c] = 1
 
+            # if the placement does not disconnect the free space, keep it
             if self.connected():
                 placed += 1
+                # track how many of each type of obstacle has been placed
                 if obstacles[0]:
                     unit_loads_placed += 1
                 else:
                     simple_obstacles_placed += 1
+                # print progress
                 if placed % 100 == 0:
                     print(f"Unit lodas placed {unit_loads_placed}/{unit_loads_num} ({unit_loads_placed/unit_loads_num*100:.1f}%)\n"
                           f"Simple obstacles placed {simple_obstacles_placed}/{simple_obstacles_num} ({simple_obstacles_placed/simple_obstacles_num*100:.1f}%)", end="\n\n")
                 obstacles = obstacles[1:] # remove the placed obstacle from the list
             else:
-                # undo placement
+                # else: undo placement
                 self.occupancy[r, c] = 0
-                
+
+        # determine access points for placed obstacles
         self.update_access_points()
         print(f"\nFinished placing {placed}/{self.obstacle_count} obstacles.")
         
@@ -200,7 +204,7 @@ class ScenarioGenerator:
                 if not (0 <= nr < self.height and 0 <= nc < self.width):
                     continue
                 
-                point = ((nc + c + 1) / 2, (nr + r + 1) / 2, direction)
+                point = (nr + r + 1) / 2, (nc + c + 1) / 2, direction
 
                 if self.occupancy[r, c] == 2 and self.occupancy[nr, nc] == 0:
                     self.access_points.add(point)
@@ -354,8 +358,8 @@ class ScenarioGenerator:
             plt.pcolormesh(self.occupancy, cmap=cmap, edgecolors="black", linewidth=0.5, shading="flat")
             
             # access points
-            xs = [x for x, _, _ in self.access_points]
-            ys = [y for _, y, _ in self.access_points]
+            xs = [x for _, x, _ in self.access_points]
+            ys = [y for y, _, _ in self.access_points]
             plt.scatter(xs, ys, s=20, color="red", zorder=5)
             plt.gca().invert_yaxis()
 

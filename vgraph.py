@@ -14,15 +14,15 @@ class VGraph:
     https://lis.csail.mit.edu/pubs/tlp/collision-free-planning-cacm.pdf
     """
     
-    def __init__(self, width, height, free_space, obstacle_space, occupancy, agv_radius, io_points, access_points):
+    def __init__(self, width, height, free_space, obstacle_space, occupancy, agv_radius, access_points, io_points):
         self.width = width
         self.height = height
         self.free_space = free_space
         self.obstacle_space = obstacle_space
         self.occupancy = occupancy
         self.agv_radius = agv_radius
-        self.io_points = io_points
         self.access_points = access_points
+        self.io_points = io_points
 
         self.G = nx.Graph()
         
@@ -78,7 +78,7 @@ class VGraph:
         print(f"Checking visibility..")
         # check visibility
         for i, j in combinations(range(num_nodes_total), 2):
-            print(f"{i*100/num_nodes_total:.2f}% - Checking visibility between {i} and {j}", end="\r")
+            print(f"\r{' ' * 100}\r{i*100/num_nodes_total:.2f}% - Checking visibility between {i} and {j}", end="", flush=True)
             a = Point(self.G.nodes[i]["pos"])
             b = Point(self.G.nodes[j]["pos"])
             line = LineString([a, b])
@@ -113,13 +113,17 @@ class VGraph:
             x2, y2 = self.G.nodes[v]["pos"]
             ax.plot([x1, x2], [y1, y2], "b-", linewidth=1, zorder=2)
 
-
         # access points
-        ax.scatter([p[0] for p in self.access_points], [p[1] for p in self.access_points], s=30, color="red", zorder=3)
-
+        access_x = [p[0] for p in self.access_points]
+        access_y = [p[1] for p in self.access_points]
+        ax.scatter(access_x, access_y, s=30, color="red", zorder=3, label="Access points", rasterized=True)        
+        
         # IO points
-        ax.scatter([p[0] for p in self.io_points], [p[1] for p in self.io_points], s=50, color="green", zorder=3)
-
+        io_x = [p[0] for p in self.io_points]
+        io_y = [p[1] for p in self.io_points]
+        ax.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points", rasterized=True)
+        ax.legend(loc='upper right')
+        
         # grid boundaries
         for x in range(self.width + 1):
             ax.axvline(x, color="black", linewidth=1, zorder=4)
@@ -138,8 +142,10 @@ class VGraph:
 def main():
     
     from load_scenario import load_scenario_as_shapely
-    # free_space, obstacle_space, occupancy, occupancy_rate, agv_radius, io_points, access_points, width, height = load_scenario_as_shapely()
     scenario = load_scenario_as_shapely()
+    
+    access_points = [(point[1], point[0]) for point in scenario["access_points"]] # direction not required, swap ccords for shapely
+    io_points = [(point[1], point[0]) for point in scenario["io_points"]]
     
     vgraph = VGraph(
         width=scenario["width"],
@@ -148,8 +154,8 @@ def main():
         obstacle_space=scenario["obstacle_space"],
         occupancy=scenario["occupancy"],
         agv_radius=scenario["agv_radius"],
-        io_points=scenario["io_points"],
-        access_points=scenario["access_points"]
+        access_points=access_points,
+        io_points=io_points
     )
     vgraph.create_visibility_graph()
     

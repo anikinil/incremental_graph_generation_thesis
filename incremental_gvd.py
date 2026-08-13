@@ -421,7 +421,7 @@ class IncrementalGVD:
         connected = 0
         for ap in self.access_points:
             
-            x, y, dir = ap
+            y, x, dir = ap
             # determine the direction vector based on the dir label
             dir_vec = dirs[dir]
             bridge_cells = []  # to store the cells added to the Voronoi diagram for this special point
@@ -449,7 +449,7 @@ class IncrementalGVD:
         # no obstacles encountered, shortest distance
         connected = 0
         for i, iop in enumerate(self.io_points):
-            x, y = iop
+            y, x = iop
             bridge_cells = [] # cells added to the Voronoi diagram for this special point
             found_connection = False
             best_bridge_cells = None
@@ -494,9 +494,8 @@ class IncrementalGVD:
         """
         Checks if a special point is located on the given cell (r, c).
         """
-        r, c = cell
         for sp in self.access_points + self.io_points:
-            if (int(sp[0]), int(sp[1])) == (c, r):
+            if (int(sp[0]), int(sp[1])) == cell:
                 return True
         return False
 
@@ -636,8 +635,7 @@ class IncrementalGVD:
         Connects special points to the graph vertex located on the same Voronoi cell.
         """
         for sp in self.access_points + self.io_points:
-            x = sp[0]
-            y = sp[1]
+            y, x = sp[0], sp[1]
             if self.voro[int(y), int(x)]:
                 # find the vertex_id of the graph vertex located on the same Voronoi cell
                 for vertex_id, (vy, vx) in self.graph["vertices"].items():
@@ -715,13 +713,13 @@ class IncrementalGVD:
         ax.invert_yaxis()
         
         # access points
-        access_x = [p[0] for p in self.access_points]
-        access_y = [p[1] for p in self.access_points]
+        access_x = [p[1] for p in self.access_points]
+        access_y = [p[0] for p in self.access_points]
         ax.scatter(access_x, access_y, s=30, color="red", zorder=3, label="Access points")
 
         # IO points
-        io_x = [p[0] for p in self.io_points]
-        io_y = [p[1] for p in self.io_points]
+        io_x = [p[1] for p in self.io_points]
+        io_y = [p[0] for p in self.io_points]
         ax.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
         ax.legend(loc='upper right')
 

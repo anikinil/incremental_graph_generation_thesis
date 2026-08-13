@@ -1,4 +1,5 @@
 from matplotlib import pyplot as plt
+from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap
 from shapely.geometry import LineString, Point, Polygon
 import networkx as nx
@@ -53,7 +54,7 @@ class PRM:
     # TODO citation
     
     def __init__(self, rng, free_space, obstacle_space, occupancy, access_points, io_points, bounds,
-                 eps = 0.1, max_dist = 5.0, max_neighbors = 30, agv_radius = 0.0):
+                 eps, max_dist, max_neighbors, agv_radius):
 
         self.rng = rng # random number generator
         self.free_space = free_space # free space (shapely Polygon)
@@ -122,7 +123,7 @@ class PRM:
         
         # check each discretized configuration
         for config in configs:
-            point = Point(config[0], config[1])
+            point = Point(config[0], config[1])  # shapely uses (x, y)
             # if a point in obstacle space, reject path
             if not self.free_space.contains(point):
                 return False
@@ -209,7 +210,7 @@ class PRM:
             nodes_added += 1
             
             # rebuild KDTree periodically for accurate neighbor queries
-            if node_idx % 100 == 0 and node_idx > 0:
+            if node_idx % 1000 == 0 and node_idx > 0:
                 self._update_kdtree()
             
             # get candidate neighbors
@@ -237,7 +238,7 @@ class PRM:
             if (iteration + 1) % 100 == 0:
                 num_components = self.union_find.get_num_components()
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-                print(f"  Nodes: {self.num_nodes}/{num_nodes} | Edges: {num_edges} | Components: {num_components}")
+                print(f"  Nodes: {self.num_nodes}/{num_nodes} - {(self.num_nodes / num_nodes) * 100:.2f}% | Edges: {num_edges} | Components: {num_components}")
         
         # update KDTree
         self._update_kdtree()
@@ -285,7 +286,7 @@ class PRM:
         # store new edge
         self.adjacency[node_a].add(node_b)
         self.adjacency[node_b].add(node_a)
-        # store unnion for efficient component check
+        # store union for efficient component check
         self.union_find.union(node_a, node_b)
     
     def expansion_step(self, bounce_walk_length, max_bounces):
@@ -313,7 +314,7 @@ class PRM:
                 if self.attempt_count[i] > 0:
                     weights[i] = self.failure_count[i] / (self.attempt_count[i] + 1)
                 else:
-                    weights[i] = 5.0  # TODO improve
+                    weights[i] = 1.0  # TODO improve
                 # if i >= self.num_nodes - len(self.special_points):
                 #     weights[i] *= 2.0  # Prioritize special points
             
@@ -339,7 +340,7 @@ class PRM:
                 new_idx = self._add_node(config)
                 self._connect_nodes(new_idx, prev_idx)
                 
-                # rebuild KDTree periodically for accurate neighbor queries
+                # rebuild KDTree periodically for accurate neighbor queries (more frequent during expansion)
                 if new_idx % 100 == 0:
                     self._update_kdtree()
                 
@@ -369,6 +370,10 @@ class PRM:
                 prev_idx = new_idx
                 
             expansions += 1
+            if num_components == 9:
+                num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+                print(f"  Expansions: {expansions} | Nodes: {self.num_nodes} | Edges: {num_edges} | Components: {self.union_find.get_num_components()}")
+                self.visualize(title=f"Expansion step {expansions} | Nodes: {self.num_nodes} | Components: {self.union_find.get_num_components()}")
         
         # update KDTree
         self._update_kdtree()
@@ -426,13 +431,16 @@ class PRM:
         # draw occupancy grid on top
         # [free space (transparent), simple obstacle (dark grey), unit load (grey)]
         cmap = ListedColormap([FREE_SPACE_COLOR, SIMPLE_OBSTACLE_COLOR, UNIT_LOAD_COLOR])
-        ax.pcolormesh(self.occupancy, cmap=cmap, edgecolors="black", linewidth=0.5, shading="flat", zorder=1)
+        ax.pcolormesh(self.occupancy, cmap=cmap, edgecolors="black", linewidth=0.5, shading="flat", zorder=1, rasterized=True)
         
         # draw edges
-        for u, v in G.edges:
-            x1, y1 = G.nodes[u]["pos"]
-            x2, y2 = G.nodes[v]["pos"]
-            ax.plot([x1, x2], [y1, y2], "b-", linewidth=1, zorder=2)
+        segments = [[G.nodes[u]["pos"], G.nodes[v]["pos"]] for u, v in G.edges]
+        ax.add_collection(LineCollection(segments, colors="blue", linewidths=1, zorder=2, rasterized=True))
+        
+        # for u, v in G.edges:
+        #     x1, y1 = G.nodes[u]["pos"]
+        #     x2, y2 = G.nodes[v]["pos"]
+        #     ax.plot([x1, x2], [y1, y2], "b-", linewidth=1, zorder=2)
 
         # draw nodes (color by component)
         components = list(nx.connected_components(G))
@@ -441,28 +449,38 @@ class PRM:
         for comp_idx, component in enumerate(components):
             x_coords = [self.nodes[n][0] for n in component]
             y_coords = [self.nodes[n][1] for n in component]
-            ax.scatter(x_coords, y_coords, s=15, color=[colors[comp_idx]], zorder=3, alpha=0.7, edgecolors='black', linewidth=1)
+            ax.scatter(x_coords, y_coords, s=15, color=[colors[comp_idx]], zorder=3, alpha=0.7, edgecolors='black', linewidth=1, rasterized=True)
             
-        # # mark last N added nodes
-        # if self.num_nodes > 0:
-        #     last_nodes = [self.nodes[i] for i in range(max(0, self.num_nodes - 50), self.num_nodes)]
-        #     x_coords = [node[0] for node in last_nodes]
-        #     y_coords = [node[1] for node in last_nodes]
-        #     colors = plt.cm.autumn(np.linspace(0, 1, len(last_nodes)))
-        #     for i, (x, y) in enumerate(zip(x_coords, y_coords)):
-        #         ax.scatter(x, y, s=100, color=[colors[i]], zorder=4, linewidth=1.0)
+        # mark last N added nodes
+        if self.num_nodes > 0:
+            last_nodes = [self.nodes[i] for i in range(max(0, self.num_nodes - 50), self.num_nodes)]
+            x_coords = [node[0] for node in last_nodes]
+            y_coords = [node[1] for node in last_nodes]
+            colors = plt.cm.autumn(np.linspace(0, 1, len(last_nodes)))
+            for i, (x, y) in enumerate(zip(x_coords, y_coords)):
+                ax.scatter(x, y, s=100, color=[colors[i]], zorder=4, linewidth=1.0, rasterized=True)
+
 
         # access points
-        ax.scatter([p[0] for p in self.access_points], [p[1] for p in self.access_points], s=30, color="red", zorder=3)
+        access_x = [p[0] for p in self.access_points]
+        access_y = [p[1] for p in self.access_points]
+        ax.scatter(access_x, access_y, s=30, color="red", zorder=3, label="Access points", rasterized=True)
 
         # IO points
-        ax.scatter([p[0] for p in self.io_points], [p[1] for p in self.io_points], s=50, color="green", zorder=3)
+        io_x = [p[0] for p in self.io_points]
+        io_y = [p[1] for p in self.io_points]
+        ax.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points", rasterized=True)
+        ax.legend(loc='upper right')
 
-        # grid boundaries
-        for x in range(width + 1):
-            ax.axvline(x, color="black", linewidth=1, zorder=4)
-        for y in range(height + 1):
-            ax.axhline(y, color="black", linewidth=1, zorder=4)
+        # for x in range(width + 1):
+        #     ax.axvline(x, color="black", linewidth=1, zorder=4)
+        # for y in range(height + 1):
+        #     ax.axhline(y, color="black", linewidth=1, zorder=4)
+        
+        # grid
+        ax.set_xticks(np.arange(width + 1))
+        ax.set_yticks(np.arange(height + 1))
+        ax.grid(True, color="black", linewidth=1, zorder=4)
 
         ax.set_xlim(0, width)
         ax.set_ylim(0, height)
@@ -477,18 +495,22 @@ def main():
     from load_scenario import load_scenario_as_shapely
     scenario = load_scenario_as_shapely()
     
+    # convert access and io points to (x, y)
+    access_points = [(point[1], point[0]) for point in scenario["access_points"]] # only the coordinates, direction not used
+    io_points = [(point[1], point[0]) for point in scenario["io_points"]]
+    
     rng = np.random.default_rng(42)
     
     # parameters
     
     # num_construction_nodes = int((width * height) / occupancy_rate)
-    num_construction_nodes = int(scenario["width"] * scenario["height"]) * 5
-    max_dist = 0.5 # maximum distance to consider for neighbors
+    num_construction_nodes = int(scenario["width"] * scenario["height"] * 3)
+    max_dist = 1 # maximum distance to consider for neighbors
     max_neighbors = 15 # maximum number of neighbors to consider for connection
     eps = 0.1 # step size for path discretization
     
-    bounce_walk_length = 0.5
-    max_bounces = 100
+    bounce_walk_length = 1
+    max_bounces = 10
     
     # build PRM
     bounds = (0, 0, scenario["width"], scenario["height"])
@@ -497,8 +519,8 @@ def main():
         scenario["free_space"],
         scenario["obstacle_space"],
         scenario["occupancy"],
-        scenario["access_points"],
-        scenario["io_points"],
+        access_points,
+        io_points,
         bounds,
         eps=eps,
         max_dist=max_dist,
@@ -511,9 +533,9 @@ def main():
     prm.visualize(title="PRM Roadmap After Construction Step")
     
     # add special points (access and IO points)
-    for point in scenario["access_points"]:
+    for point in access_points:
         prm._add_node(np.array(point))
-    for point in scenario["io_points"]:
+    for point in io_points:
         prm._add_node(np.array(point))
     prm._update_kdtree()
     
