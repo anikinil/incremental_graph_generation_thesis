@@ -82,13 +82,13 @@ def load_scenario_as_shapely(iteration = 0):
         x = np.float64(x)
         y = np.float64(y)
         if dir == "n":
-            access_points.append((x, np.float64(y - scenario["agv_radius"] - ERROR_TOLERANCE)))
+            access_points.append((x, np.float64(y - scenario["agv_radius"] - ERROR_TOLERANCE), dir))
         elif dir == "s":
-            access_points.append((x, np.float64(y + scenario["agv_radius"] + ERROR_TOLERANCE)))
+            access_points.append((x, np.float64(y + scenario["agv_radius"] + ERROR_TOLERANCE), dir))
         elif dir == "e":
-            access_points.append((np.float64(x + scenario["agv_radius"] + ERROR_TOLERANCE), y))
+            access_points.append((np.float64(x + scenario["agv_radius"] + ERROR_TOLERANCE), y, dir))
         elif dir == "w":
-            access_points.append((np.float64(x - scenario["agv_radius"] - ERROR_TOLERANCE), y))
+            access_points.append((np.float64(x - scenario["agv_radius"] - ERROR_TOLERANCE), y, dir))
 
     io_points = [(np.float64(x + 0.5), np.float64(y + 0.5)) for y, x in scenario["io_points"]]
 
@@ -117,13 +117,13 @@ def load_scenario_as_numpy(iteration = 0):
         x = np.float64(x)
         y = np.float64(y)
         if dir == "n":
-            access_points.append((x, np.float64(y - scenario["agv_radius"] - ERROR_TOLERANCE)))
+            access_points.append((x, np.float64(y - scenario["agv_radius"] - ERROR_TOLERANCE), dir))
         elif dir == "s":
-            access_points.append((x, np.float64(y + scenario["agv_radius"] + ERROR_TOLERANCE)))
+            access_points.append((x, np.float64(y + scenario["agv_radius"] + ERROR_TOLERANCE), dir))
         elif dir == "e":
-            access_points.append((np.float64(x + scenario["agv_radius"] + ERROR_TOLERANCE), y))
+            access_points.append((np.float64(x + scenario["agv_radius"] + ERROR_TOLERANCE), y, dir))
         elif dir == "w":
-            access_points.append((np.float64(x - scenario["agv_radius"] - ERROR_TOLERANCE), y))
+            access_points.append((np.float64(x - scenario["agv_radius"] - ERROR_TOLERANCE), y, dir))
             
     io_points = [(np.float64(x + 0.5), np.float64(y + 0.5)) for y, x in scenario["io_points"]]
     

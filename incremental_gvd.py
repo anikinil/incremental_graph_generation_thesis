@@ -64,9 +64,10 @@ class BucketPriorityQueue:
 
 class IncrementalGVD:
     
-    def __init__(self, occupancy_grid, scale_factor, access_points, io_points, agv_radius):
+    def __init__(self, rng, occupancy_grid, scale_factor, access_points, io_points, agv_radius):
+        self.rng = rng
+
         self.occupancy_grid = occupancy_grid
-        
         self.height, self.width = occupancy_grid.shape
         
         self.scale_factor = scale_factor
@@ -94,6 +95,7 @@ class IncrementalGVD:
         
         # voronoi map: True if cell is on Voronoi diagram
         self.voro = np.zeros((self.height, self.width), dtype=bool)
+        print(self.voro.shape)
         
         # queue for wavefront propagation
         self.open = BucketPriorityQueue(max_distance=self.height ** 2 + self.width ** 2)  # max possible squared distance in grid
@@ -107,7 +109,47 @@ class IncrementalGVD:
         # initialize with static brushfire algorithm
         self.computeDistanceMap()
         
-        self.graph = None
+        self.graph = None # { "vertices": [vid_1: (y, x), vid_2: (y, x), ...], "edges": [(vid_1, vid_2), ...] }
+    
+    def increase_resolution(self):
+        
+        old_height, old_width = self.height, self.width
+        
+        self.height *= self.scale_factor
+        self.width *= self.scale_factor
+        
+        # create a new high-resolution occupancy grid
+        new_occupancy_grid = np.zeros((self.height, self.width), dtype=self.occupancy_grid.dtype)
+        
+        # fill in the high-resolution grid based on the original occupancy values
+        for y in range(old_height):
+            for x in range(old_width):
+                value = self.occupancy_grid[y, x]
+                new_occupancy_grid[y*self.scale_factor:(y+1)*self.scale_factor, x*self.scale_factor:(x+1)*self.scale_factor] = value
+        
+        self.occupancy_grid = new_occupancy_grid
+        
+        # scale positions of access points and IO points
+        self.access_points = [(y * self.scale_factor, x * self.scale_factor, dir) for (y, x, dir) in self.access_points]
+        self.io_points = [(y * self.scale_factor, x * self.scale_factor) for (y, x) in self.io_points]
+        
+        # scale agv_radius
+        self.agv_radius *= self.scale_factor
+        
+    
+    def add_outer_walls(self):
+        
+        # add outer walls to the occupancy grid
+        self.height += 2
+        self.width += 2
+        new_occupancy = np.ones((self.height, self.width), dtype=self.occupancy_grid.dtype)
+        new_occupancy[1:-1, 1:-1] = self.occupancy_grid
+        self.occupancy_grid = new_occupancy
+        
+        # adjust access points and IO points
+        self.access_points = [(y + 1, x + 1, dir) for (y, x, dir) in self.access_points]
+        self.io_points = [(y + 1, x + 1) for (y, x) in self.io_points]
+        
     
     def distance(self, p1, p2):
         dy = p1[0] - p2[0]
@@ -331,51 +373,66 @@ class IncrementalGVD:
                 self.setObstacle(s_to, value)
                 
         # adjust and update access points
-        self.access_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for (y, x) in new_access_points]
+        self.access_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1, dir) for (y, x, dir) in new_access_points]
         # adjust and update IO points (probably usually unchanged)
         self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for (y, x) in new_io_points]
         
         self.affected_cells.clear()  # clear affected cells before updating distance map
 
-    def increase_resolution(self):
+    def connect_special_points_to_voro(self):
+        """
+        Connects specifal points to the Voronoi cells by building a ray of cells 
+        from the special point in the direction of the dir label to the closest GVD cell.
         
-        old_height, old_width = self.height, self.width
+        NOTE theory, wyh that seems to alway work: Access point rays always meet a Voronoi cell before an obstacle.
+        There is always a Voronoi cell between two obstacles, so there is always a Voronoi cell between the access point's obstacle
+        and any other, the ray is headed towards.
+        """
         
-        self.height *= self.scale_factor
-        self.width *= self.scale_factor
-        
-        # create a new high-resolution occupancy grid
-        new_occupancy_grid = np.zeros((self.height, self.width), dtype=self.occupancy_grid.dtype)
-        
-        # fill in the high-resolution grid based on the original occupancy values
-        for y in range(old_height):
-            for x in range(old_width):
-                value = self.occupancy_grid[y, x]
-                new_occupancy_grid[y*self.scale_factor:(y+1)*self.scale_factor, x*self.scale_factor:(x+1)*self.scale_factor] = value
-        
-        self.occupancy_grid = new_occupancy_grid
-        
-        # scale positions of access points and IO points
-        self.access_points = [(y * self.scale_factor, x * self.scale_factor) for (y, x) in self.access_points]
-        self.io_points = [(y * self.scale_factor, x * self.scale_factor) for (y, x) in self.io_points]
-        
-        # scale agv_radius
-        self.agv_radius *= self.scale_factor
-        
-    
-    def add_outer_walls(self):
-        
-        # add outer walls to the occupancy grid
-        self.height += 2
-        self.width += 2
-        new_occupancy = np.ones((self.height, self.width), dtype=self.occupancy_grid.dtype)
-        new_occupancy[1:-1, 1:-1] = self.occupancy_grid
-        self.occupancy_grid = new_occupancy
-        
-        # adjust access points and IO points
-        self.access_points = [(y + 1, x + 1) for (y, x) in self.access_points]
-        self.io_points = [(y + 1, x + 1) for (y, x) in self.io_points]
-        
+        connected = 0
+        for ap in self.access_points:
+            x, y, dir = ap
+            # determine the direction vector based on the dir label
+            if dir == 'n':
+                dir_vec = (-1, 0)
+            elif dir == 's':
+                dir_vec = (1, 0)
+            elif dir == 'e':
+                dir_vec = (0, 1)
+            elif dir == 'w':
+                dir_vec = (0, -1)
+            
+            while True:
+                
+                # get current cell
+                on_voro = self.voro[int(y), int(x)]
+                
+                # if on a Voronoi cell, stop the ray
+                if on_voro:
+                    connected += 1
+                    break
+                
+                # else: add the current cell to the Voronoi diagram
+                self.voro[int(y), int(x)] = True
+                
+                # move in the direction of the dir label
+                y += dir_vec[0]
+                x += dir_vec[1]
+                
+        print(f"Connected {connected}/{len(self.access_points)} special points to Voronoi diagram.")
+
+    def _special_point_on_cell(self, cell):
+        """
+        Checks if a special point is located on the given cell (r, c).
+        """
+        r, c = cell
+        for ap in self.access_points:
+            if (int(ap[0]), int(ap[1])) == (c, r):
+                return True
+        for io in self.io_points:
+            if (int(io[0]), int(io[1])) == (c, r):
+                return True
+        return False
 
     def build_graph(self):
         """
@@ -422,8 +479,9 @@ class IncrementalGVD:
             degree[(r, c)] = len(neighbors((r, c)))
 
         # the coordinates of skeleton cells with degree!=2 are saved as vertex cells (all of them will later be graph nodes)
-        # also shift the coordinates of the vertex cells by 0.5 to place them in the center of the cell
-        vertex_cells = [(r, c) for (r, c), deg in degree.items() if deg != 2]
+        # For block-stacking storage scenario: also include skeleton cells that are on the same cell as a special point,
+        # to later easily connect the special points to these verteces.
+        vertex_cells = [(r, c) for (r, c), deg in degree.items() if deg != 2 or self._special_point_on_cell((r, c))]
         
         # create mappings between vertex_id and vertex cell coordinates and vice versa
         vertex_id_to_cell_coords = {} # maps from vertex_id to cell coordinates of vertex cells
@@ -504,7 +562,31 @@ class IncrementalGVD:
             "vertices": vertex_id_to_cell_coords,
             "edges": edges,
         }
+        
+        self._connect_special_points_to_graph()  # connect access points and IO points to the graph
     
+    def _connect_special_points_to_graph(self):
+        """
+        Connects special points to the graph vertex located on the same Voronoi cell.
+        """
+        for ap in self.access_points:
+            x, y, _ = ap
+            if self.voro[int(y), int(x)]:
+                # find the vertex_id of the graph vertex located on the same Voronoi cell
+                for vertex_id, (vy, vx) in self.graph["vertices"].items():
+                    if int(vy) == int(y) and int(vx) == int(x):
+                        # create vertex for the access point in the graph
+                        ap_vertex_id = len(self.graph["vertices"])
+                        self.graph["vertices"][ap_vertex_id] = (y, x)
+                        # connect the access point vertex to the graph vertex
+                        self.graph["edges"].add(tuple((vertex_id, ap_vertex_id)))
+                        break
+            else:
+                raise ValueError(f"Access point at ({y}, {x}) is not on a Voronoi cell.")
+                
+        # for io in self.io_points: TODO
+        
+        
     def draw_grid(self, iteration=0):
         fig, ax = plt.subplots(figsize=(25, 20))
 
@@ -619,6 +701,8 @@ class IncrementalGVD:
 if __name__ == "__main__":
     from load_scenario import load_scenario_as_numpy
     
+    rng = np.random.default_rng(42)
+    
     # load initial scenario and add outer walls
     scenario_0 = load_scenario_as_numpy(0)
     scenario_1 = load_scenario_as_numpy(1)
@@ -629,6 +713,7 @@ if __name__ == "__main__":
     # initialize spatial representation and compute distance map
     print("\nInitialize and compute GVD...")
     incr_gvd = IncrementalGVD(
+        rng=rng,
         occupancy_grid=scenario_0["occupancy"],
         access_points=scenario_0["access_points"],
         io_points=scenario_0["io_points"],
@@ -636,6 +721,10 @@ if __name__ == "__main__":
         scale_factor=3,
     )
     incr_gvd.visualize_gvd("Incremental GVD Results", iteration=0)
+    
+    # connect special points to the voronoi diagram
+    incr_gvd.connect_special_points_to_voro()
+    incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=0)
     
     # build voronoi graph
     incr_gvd.build_graph()
@@ -652,6 +741,10 @@ if __name__ == "__main__":
     incr_gvd.updateDistanceMap()
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=1)
     
+    # connect special points to the voronoi diagram
+    incr_gvd.connect_special_points_to_voro()
+    incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=1)
+        
     # build voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=1)
@@ -667,6 +760,10 @@ if __name__ == "__main__":
     incr_gvd.updateDistanceMap()
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=2)
     
+    # connect special points to the voronoi diagram
+    incr_gvd.connect_special_points_to_voro()
+    incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=2)
+
     # build voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=2)
