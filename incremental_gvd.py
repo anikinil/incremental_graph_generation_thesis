@@ -406,7 +406,7 @@ class IncrementalGVD:
         return False  # none of the bridge cells are affected
 
 
-    def connect_special_points_to_voro(self):
+    def connect_special_points_to_skeleton(self):
         """
         Connects specifal points to the Voronoi cells by building a ray of cells 
         from the special point in the direction of the dir label to the closest GVD cell.
@@ -416,33 +416,22 @@ class IncrementalGVD:
         and any other, the ray is headed towards.
         """
         
-        print(f"Connecting special points to Voronoi skeleton...")
-        print(f"Bridge cells: {len(self.special_point_bridges)}")
+        dirs = {'n': (-1, 0), 's': (1, 0), 'e': (0, 1), 'w': (0, -1)} # dir: (dy, dx)
         
         connected = 0
         for ap in self.access_points:
             
             x, y, dir = ap
             # determine the direction vector based on the dir label
-            if dir == 'n':
-                dir_vec = (-1, 0)
-            elif dir == 's':
-                dir_vec = (1, 0)
-            elif dir == 'e':
-                dir_vec = (0, 1)
-            elif dir == 'w':
-                dir_vec = (0, -1)
+            dir_vec = dirs[dir]
             bridge_cells = []  # to store the cells added to the Voronoi diagram for this special point
             while True:
-                
                 # get current cell
                 on_voro = self.voro[int(y), int(x)]
-                
                 # if on a Voronoi cell, stop the ray
                 if on_voro:
                     connected += 1
                     break
-                
                 # else: add the current cell to the Voronoi diagram
                 self.voro[int(y), int(x)] = True
                 
@@ -455,20 +444,59 @@ class IncrementalGVD:
                 
             # save the bridge cells for this special point
             self.special_point_bridges[ap] = bridge_cells
-            # print(f"Connected special point {ap} to Voronoi skeleton: {bridge_cells}")
-                
-        print(f"Connected {connected}/{len(self.access_points)} special points to Voronoi skeleton.")
+        
+        # try to connect similarly to access points, but try each direction and pick the best one:
+        # no obstacles encountered, shortest distance
+        connected = 0
+        for i, iop in enumerate(self.io_points):
+            x, y = iop
+            bridge_cells = [] # cells added to the Voronoi diagram for this special point
+            found_connection = False
+            best_bridge_cells = None
+            best_distance = np.inf
+            
+            for dir_vec in dirs.values():
+                curr_x, curr_y = x, y
+                current_bridge_cells = []
+                while True:
+                    on_voro = self.voro[int(curr_y), int(curr_x)]
+                    if on_voro: # if on skeleton, stop the ray
+                        found_connection = True
+                        current_distance = len(current_bridge_cells)
+                        if current_distance < best_distance:
+                            best_distance = current_distance
+                            best_bridge_cells = current_bridge_cells.copy()
+                        break
+                    # if hit an obstacle, stop searching in this direction
+                    if self.occupancy_grid[int(curr_y), int(curr_x)] > 0:
+                        break
+                    
+                    # add the current cell to the bridge cells list
+                    current_bridge_cells.append((int(curr_y), int(curr_x)))
+                    
+                    # move in the direction of the dir label
+                    curr_y += dir_vec[0]
+                    curr_x += dir_vec[1]
+            
+            if found_connection:
+                connected += 1
+                self.special_point_bridges[iop] = best_bridge_cells
+                # add the best bridge cells to the Voronoi diagram
+                for cell in best_bridge_cells:
+                    self.voro[cell] = True
+            else: 
+                print(f"Warning: Could not connect IO point {iop} to Voronoi skeleton in any direction.")
+            
+        print(f"Connected {connected}/{len(self.io_points)} IO points to Voronoi skeleton.")
+            
 
     def _special_point_on_cell(self, cell):
         """
         Checks if a special point is located on the given cell (r, c).
         """
         r, c = cell
-        for ap in self.access_points:
-            if (int(ap[0]), int(ap[1])) == (c, r):
-                return True
-        for io in self.io_points:
-            if (int(io[0]), int(io[1])) == (c, r):
+        for sp in self.access_points + self.io_points:
+            if (int(sp[0]), int(sp[1])) == (c, r):
                 return True
         return False
 
@@ -607,22 +635,21 @@ class IncrementalGVD:
         """
         Connects special points to the graph vertex located on the same Voronoi cell.
         """
-        for ap in self.access_points:
-            x, y, _ = ap
+        for sp in self.access_points + self.io_points:
+            x = sp[0]
+            y = sp[1]
             if self.voro[int(y), int(x)]:
                 # find the vertex_id of the graph vertex located on the same Voronoi cell
                 for vertex_id, (vy, vx) in self.graph["vertices"].items():
                     if int(vy) == int(y) and int(vx) == int(x):
-                        # create vertex for the access point in the graph
-                        ap_vertex_id = len(self.graph["vertices"])
-                        self.graph["vertices"][ap_vertex_id] = (y, x)
-                        # connect the access point vertex to the graph vertex
-                        self.graph["edges"].add(tuple((vertex_id, ap_vertex_id)))
+                        # create vertex for the special point in the graph
+                        sp_vertex_id = len(self.graph["vertices"])
+                        self.graph["vertices"][sp_vertex_id] = (y, x)
+                        # connect the special point vertex to the graph vertex
+                        self.graph["edges"].add(tuple((vertex_id, sp_vertex_id)))
                         break
             else:
-                raise ValueError(f"Access point at ({y}, {x}) is not on a Voronoi cell.")
-                
-        # for io in self.io_points: TODO
+                raise ValueError(f"Special point at ({y}, {x}) is not on a Voronoi cell.")
         
         
     def draw_grid(self, iteration=0):
@@ -761,7 +788,7 @@ if __name__ == "__main__":
     incr_gvd.visualize_gvd("Incremental GVD Results", iteration=0)
     
     # connect special points to the voronoi diagram
-    incr_gvd.connect_special_points_to_voro()
+    incr_gvd.connect_special_points_to_skeleton()
     incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=0)
     
     # build voronoi graph
@@ -780,7 +807,7 @@ if __name__ == "__main__":
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=1)
     
     # connect special points to the voronoi diagram
-    incr_gvd.connect_special_points_to_voro()
+    incr_gvd.connect_special_points_to_skeleton()
     incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=1)
         
     # build voronoi graph
@@ -799,7 +826,7 @@ if __name__ == "__main__":
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=2)
     
     # connect special points to the voronoi diagram
-    incr_gvd.connect_special_points_to_voro()
+    incr_gvd.connect_special_points_to_skeleton()
     incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=2)
 
     # build voronoi graph

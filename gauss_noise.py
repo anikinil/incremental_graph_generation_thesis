@@ -396,7 +396,8 @@ def main():
         (1,0),
         (height-1,int(width*0.9)),
         (height-1,int(width*0.8)),
-        (int(height*0.5),width-1)
+        (int(height*0.5),width-1),
+        (int(height*0.6),int(width*0.7)),
     }
 
     occupancy_rate = float(sys.argv[3]) if len(sys.argv)>3 else 0.3 # area occupied by obstacles
@@ -409,7 +410,7 @@ def main():
     number_of_corridors = 30  # number of corridors to generate
     corridor_sigma = 1    # determines the width of corridors
         
-    IO_points_radius = 1  # how much free space around IO points is created
+    IO_points_radius = 3  # how much free space around IO points is created
 
     simple_obstacle_rate = 0.1 # how common non-unit-load (regular) obstacles should be
 
