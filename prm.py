@@ -51,7 +51,10 @@ class UnionFind:
 
 
 class PRM:
-    # TODO citation
+    """
+    "Probabilistic Roadmaps for Path Planning in High-Dimensional Configuration Spaces",
+    Lydia E. Kavralu, Petr Svestka, Jean-Claude Latombe, and Mark H. Overmars (1996)
+    """
     
     def __init__(self, rng, free_space, obstacle_space, occupancy, access_points, io_points, bounds,
                  eps, max_dist, max_neighbors, agv_radius):
@@ -505,7 +508,7 @@ def main():
     
     # num_construction_nodes = int((width * height) / occupancy_rate)
     num_construction_nodes = int(scenario["width"] * scenario["height"] * 3)
-    max_dist = 1 # maximum distance to consider for neighbors
+    max_dist = 5 # maximum distance to consider for neighbors
     max_neighbors = 15 # maximum number of neighbors to consider for connection
     eps = 0.1 # step size for path discretization
     
