@@ -110,6 +110,10 @@ class IncrementalGVD:
         self.computeDistanceMap()
         
         self.graph = None # { "vertices": [vid_1: (y, x), vid_2: (y, x), ...], "edges": [(vid_1, vid_2), ...] }
+        
+        # save voronoi cells added to connect special points to Voronoi skeleton, to recalculate if affected by dynamic updates
+        # {sp_1: [(y, x), (y, x), ...], sp_2: [...], ...}
+        self.special_point_bridges = {}
     
     def increase_resolution(self):
         
@@ -324,6 +328,17 @@ class IncrementalGVD:
 
     def apply_updates(self, updates, new_access_points, new_io_points):
         
+        # clear bridges from special points that are affected by the updates
+        # (need to clear the whole bridge, not just the affected cells, so they can be reconnected properly)
+        for sp in list(self.special_point_bridges.keys()):
+            if self._special_point_affected_by_update(sp):
+                bridge_cells = self.special_point_bridges[sp]
+                for cell in bridge_cells:
+                    self.voro[cell] = False  # remove bridge cells from Voronoi diagram
+                del self.special_point_bridges[sp]  # remove the bridge record for this special point
+        
+        self.affected_cells.clear()  # clear affected cells
+        
         # scale update coords to the grid resolution
         scaled_updates = []
         for update in updates:
@@ -377,20 +392,36 @@ class IncrementalGVD:
         # adjust and update IO points (probably usually unchanged)
         self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for (y, x) in new_io_points]
         
-        self.affected_cells.clear()  # clear affected cells before updating distance map
+    def _special_point_affected_by_update(self, special_point):
+        """
+        Checks if a special point is affected by the dynamic updates.
+        A special point is affected, if any cell of its Voronoi bridge is in the affected cells set.
+        """
+        if special_point not in self.special_point_bridges:
+            return True  # if no bridge exists, the point has not been connected yet and must be processed anyway
+        bridge_cells = self.special_point_bridges[special_point]
+        for cell in bridge_cells:
+            if cell in self.affected_cells:
+                return True  # at least one cell of the bridge is affected
+        return False  # none of the bridge cells are affected
+
 
     def connect_special_points_to_voro(self):
         """
         Connects specifal points to the Voronoi cells by building a ray of cells 
         from the special point in the direction of the dir label to the closest GVD cell.
         
-        NOTE theory, wyh that seems to alway work: Access point rays always meet a Voronoi cell before an obstacle.
+        NOTE theory, why that seems to alway work: Access point rays always meet a Voronoi cell before an obstacle.
         There is always a Voronoi cell between two obstacles, so there is always a Voronoi cell between the access point's obstacle
         and any other, the ray is headed towards.
         """
         
+        print(f"Connecting special points to Voronoi skeleton...")
+        print(f"Bridge cells: {len(self.special_point_bridges)}")
+        
         connected = 0
         for ap in self.access_points:
+            
             x, y, dir = ap
             # determine the direction vector based on the dir label
             if dir == 'n':
@@ -401,7 +432,7 @@ class IncrementalGVD:
                 dir_vec = (0, 1)
             elif dir == 'w':
                 dir_vec = (0, -1)
-            
+            bridge_cells = []  # to store the cells added to the Voronoi diagram for this special point
             while True:
                 
                 # get current cell
@@ -415,11 +446,18 @@ class IncrementalGVD:
                 # else: add the current cell to the Voronoi diagram
                 self.voro[int(y), int(x)] = True
                 
+                # add the current cell to the bridge cells list
+                bridge_cells.append((int(y), int(x)))
+                
                 # move in the direction of the dir label
                 y += dir_vec[0]
                 x += dir_vec[1]
                 
-        print(f"Connected {connected}/{len(self.access_points)} special points to Voronoi diagram.")
+            # save the bridge cells for this special point
+            self.special_point_bridges[ap] = bridge_cells
+            # print(f"Connected special point {ap} to Voronoi skeleton: {bridge_cells}")
+                
+        print(f"Connected {connected}/{len(self.access_points)} special points to Voronoi skeleton.")
 
     def _special_point_on_cell(self, cell):
         """
