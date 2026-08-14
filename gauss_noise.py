@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 
 class ScenarioGenerator:
-    def __init__(self, seed, height, width, occupancy_rate, sigma_coarse, sigma_fine, number_of_corridors, corridor_sigma, io_points, IO_points_radius, simple_obstacle_rate, agv_radius):
+    def __init__(self, seed, height, width, occupancy_rate, sigma_coarse, sigma_fine, noisy_aisles_num, noisy_aisle_sigma, io_points, IO_points_radius, simple_obstacle_rate, agv_radius, ordered_aisle_spacing = (0, 0), ordered_aisle_offset = (0, 0), ordered_aisle_widths = (1, 1), wall_clearance = (0, 0, 0, 0)):
         
         self.seed = seed
         self.rng = np.random.default_rng(seed)  # random number generator with a fixed seed for reproducibility
@@ -21,15 +21,21 @@ class ScenarioGenerator:
         self.sigma_coarse = sigma_coarse
         self.sigma_fine = sigma_fine
         
-        self.number_of_corridors = number_of_corridors
-        self.corridor_sigma = corridor_sigma # determines the width of the corridors, smaller values create narrower corridors
-        
+        self.noisy_aisles_num = noisy_aisles_num
+        self.noisy_aisle_sigma = noisy_aisle_sigma # determines the width of the aisles, smaller values create narrower aisles
+
         self.io_points = set(io_points) # input/output points that should remain free of obstacles (y, x)
         self.access_points = set() # (y, x, direction)
         self.IO_points_radius = IO_points_radius
         self.simple_obstacle_rate = simple_obstacle_rate # how many of the obstacles are regular (non-unit-load) obstacles
         
         self.agv_radius = agv_radius
+
+        self.ordered_aisle_spacing = ordered_aisle_spacing # (y, x): y rows between aisles, x columns between aisles
+        self.ordered_aisle_offset = ordered_aisle_offset # (y, x): offset of the first aisle from the top-left corner
+        self.ordered_aisle_widths = ordered_aisle_widths # (y, x): width of the ordered aisles in rows and columns
+
+        self.wall_clearance = wall_clearance  # (north, south, east, west): offset of the wall from the edges
 
         self.occupancy = np.zeros((height, width), dtype=np.uint8)
 
@@ -41,71 +47,107 @@ class ScenarioGenerator:
                                                 [1, 1, 1],
                                                 [0, 1, 0]], dtype=np.uint8) # structure for connectivity checks
         
+        self.probability_field = None  # normalized probability field for obstacle placement
     
     def generate_noise_field(self):
         
-        # generate initial noise field
+        # generate initial gaussian noise field
         noise = self.rng.normal(size=(self.height, self.width))
-        
         coarse_noise = gaussian_filter(noise, sigma=self.sigma_coarse)
         fine_noise = gaussian_filter(noise, sigma=self.sigma_fine)
-        
         field = coarse_noise + fine_noise
         
-        # normalize
+        # normalize field
         field = (field - field.min()) / (field.max() - field.min())
-
+        
+        # create a grid containing the row coordinate of every cell
         rr, cc = np.meshgrid(np.arange(self.height), np.arange(self.width), indexing="ij")
 
-        # create a penalty field around IO points
+        # create an obstacle penalty around all I/O points
         io_penalty = np.zeros_like(field)
-
         for r, c in self.io_points:
-            distance = (rr - r)**2 + (cc - c)**2
-            io_penalty += np.exp(-distance / (2 * self.IO_points_radius**2))
+            distance = (rr - r) ** 2 + (cc - c) ** 2
+            io_penalty += np.exp(-distance / (2 * self.IO_points_radius ** 2))
             
+        # reduce obstacle probability around I/O points
         field -= io_penalty
-        
-        # create corridors in the field
-        corridor_field = np.zeros_like(field)
 
-        for _ in range(self.number_of_corridors):
+        # create binary mask where cells that must reliably remain free of obstacles are marked 0
+        guaranteed_free = np.ones_like(field)
 
-            # random corridor orientation
-            horizontal_corridor = self.rng.random() > 0.5
+        # add wall clearance to mask
+        wall_n, wall_s, wall_e, wall_w = self.wall_clearance
+        guaranteed_free[:wall_n, :] = 0.0
+        guaranteed_free[-wall_s:, :] = 0.0
+        guaranteed_free[:, -wall_e:] = 0.0
+        guaranteed_free[:, :wall_w] = 0.0
 
-            if horizontal_corridor:
-                row = self.rng.integers(0, self.height)
-                distance = np.abs(rr - row)
-            else:
-                col = self.rng.integers(0, self.width)
-                distance = np.abs(cc - col)
+        # add ordered aisles to mask
+        y_spacing, x_spacing = self.ordered_aisle_spacing
+        y_offset, x_offset = self.ordered_aisle_offset
+        y_width, x_width = self.ordered_aisle_widths
+        for r in range(y_offset, self.height, y_spacing + y_width):
+            guaranteed_free[r:r+y_width, x_offset:] = 0.0
+        for c in range(x_offset, self.width, x_spacing + x_width):
+            guaranteed_free[y_offset:, c:c+x_width] = 0.0
 
-            # gaussian corridor profile
-            corridor_field += np.exp(-(distance**2) / (2 * self.corridor_sigma**2))
+
+        if self.noisy_aisles_num > 0:
+            # create a field describing the noisy aisles
+            noisy_aisle_field = np.zeros_like(field)
+
+            # generate noisy aisles
+            for _ in range(self.noisy_aisles_num):
+                horizontal_aisle = self.rng.random() > 0.5
+                if horizontal_aisle:
+                    row = self.rng.integers(0, self.height)
+                    distance = np.abs(rr - row)
+                else:
+                    col = self.rng.integers(0, self.width)
+                    distance = np.abs(cc - col)
+                # create a Gaussian-shaped influence around the noisy aisle
+                noisy_aisle_field += np.exp(-(distance ** 2) / (2 * self.noisy_aisle_sigma ** 2))
+                
+            # scale the noisy aisle influence to values between zero and one
+            noisy_aisle_field /= noisy_aisle_field.max()
             
-            # print(f"Corridor between {'row' if horizontal_corridor else 'col'} {row if horizontal_corridor else col} with length {distance.max()} created.")
+            # reduce the obstacle probability near noisy aisles
+            field -= noisy_aisle_field
 
-        # normalize corridor field
-        if corridor_field.max() > 0:
-            corridor_field /= corridor_field.max()
+        # force every guaranteed-free cell to have zero obstacle probability
+        field[guaranteed_free == 0.0] = 0.0
 
-        # make obstacles inside corridors unlikely
-        field -= corridor_field
-
-        field = (field - field.min()) / (field.max() - field.min())
-
-        # guarantee IO points are free
+        # force every I/O point cell to be guaranteed free
         for r, c in self.io_points:
             field[r, c] = 0.0
 
-        return field
-
+        # # Clamp the final field so obstacle probabilities cannot be negative
+        field = np.clip(field, 0.0, 1.0)
+        
+        self.probability_field = field
+        
+    # returns the best free cell for potential obstacle location based on the probability field
+    def get_best_obstacle_location(self):
+        # find the index of the maximum value in the probability field
+        idx = np.unravel_index(np.argmax(self.probability_field), self.probability_field.shape)
+        return idx
+        
+    # returns a randomly selected free cell
+    def get_random_cell(self, free):
+        # free=True: select a free cell, free=False: select an occupied cell
+        free_cells = np.argwhere(self.occupancy != free)
+        if len(free_cells) == 0:
+            print("No free cells available to add an obstacle.")
+            return None
+        cell = tuple(free_cells[self.rng.integers(len(free_cells))])
+        return cell
+        
     def generate_map(self):
 
         # generate the noise field
-        field = self.generate_noise_field()
-
+        self.generate_noise_field()
+        selection_field = self.probability_field.copy()
+        
         # determine the number of obstacles to place
         unit_loads_num = int(self.height * self.width * self.occupancy_rate * (1-self.simple_obstacle_rate))
         simple_obstacles_num = int(self.height * self.width * self.occupancy_rate) - unit_loads_num
@@ -116,7 +158,7 @@ class ScenarioGenerator:
             np.ones(unit_loads_num, dtype=bool)         # True: unit-load obstacles
         ])
         
-        # shuffle the obstacles to randomize their placement
+        # shuffle the obstacles to randomize their type when placing
         self.rng.shuffle(obstacles)
         
         unit_loads_placed = 0
@@ -125,11 +167,11 @@ class ScenarioGenerator:
         while obstacles.size > 0:
 
             # highest remaining obstacle probability
-            idx = np.argmax(field)
-            r, c = np.unravel_index(idx, field.shape)
+            idx = np.argmax(selection_field)
+            r, c = np.unravel_index(idx, selection_field.shape)
 
             # mark as processed so the same cell is not selected again
-            field[r, c] = -np.inf
+            selection_field[r, c] = -np.inf
 
             # skip if it is an IO point and should remain free
             if (r, c) in self.io_points:
@@ -208,9 +250,9 @@ class ScenarioGenerator:
                 else:
                     self.access_points.discard(point)
 
-    def make_updates(self, number_of_updates=100):
-        changed_cells = set()  # track changed cells to update access points after updates
-                
+    def make_updates(self, respect_probab_field=True, number_of_updates=100):
+        changed_cells = set()  # track changed cells to update access points after map updates
+        
         for _ in range(number_of_updates):
             
             print(f"Making change {_+1}/{number_of_updates}...", end="\r")
@@ -220,32 +262,23 @@ class ScenarioGenerator:
             success = False
             while not success:
                 
+                # only respect the probability field when adding or moving obstacles
+                # removal cannot violate forbidden areas
+                if action == "add" or action == "move":
+                    if respect_probab_field:
+                        to_cell = self.get_best_obstacle_location()
+                    else: # select random free cell
+                        to_cell = self.get_random_cell(free=True)
+                
                 if action == "add":
-                    # randomly select a free cell to add an obstacle
-                    free_cells = np.argwhere(self.occupancy == 0)
-                    if len(free_cells) == 0:
-                        print("No free cells available to add an obstacle.")
-                        continue
-                    cell = tuple(free_cells[self.rng.integers(len(free_cells))])
                     obst_type = 2 if self.rng.random() > self.simple_obstacle_rate else 1 # try to preserve the ratio of unit-load to simple obstacles
-                    success = self._add_obstacle(cell, type=obst_type)  # 1 for simple obstacle
+                    success = self._add_obstacle(to_cell, type=obst_type)
                     if success:
-                        changed_cells.add(cell)
-                    
+                        changed_cells.add(to_cell)
+
                 if action == "move":
-                    # randomly select an obstacle to move
-                    obstacle_cells = np.argwhere(self.occupancy > 0)
-                    if len(obstacle_cells) == 0:
-                        print("No obstacles available to move.")
-                        continue
-                    from_cell = tuple(obstacle_cells[self.rng.integers(len(obstacle_cells))])
-                    
-                    # randomly select a free cell to move the obstacle to
-                    free_cells = np.argwhere(self.occupancy == 0)
-                    if len(free_cells) == 0:
-                        print("No free cells available to move the obstacle.")
-                        continue
-                    to_cell = tuple(free_cells[self.rng.integers(len(free_cells))])
+                    # randomly select an occupied cell to move the obstacle from
+                    from_cell = self.get_random_cell(free=False)
                     
                     success = self._move_obstacle(from_cell, to_cell)
                     if success:
@@ -254,11 +287,7 @@ class ScenarioGenerator:
                     
                 if action == "remove":
                     # randomly select an obstacle to remove
-                    obstacle_cells = np.argwhere(self.occupancy > 0)
-                    if len(obstacle_cells) == 0:
-                        print("No obstacles available to remove.")
-                        continue
-                    cell = tuple(obstacle_cells[self.rng.integers(len(obstacle_cells))])
+                    cell = self.get_random_cell(free=False)
                     success = self._remove_obstacle(cell)
                     if success:
                         changed_cells.add(cell)
@@ -349,20 +378,56 @@ class ScenarioGenerator:
     def visualize(self, iteration=""):
 
             plt.figure(figsize=(25, 20))
-
-            # cells
-            cmap = ListedColormap(["white", "black", "grey"])
-            plt.pcolormesh(self.occupancy, cmap=cmap, edgecolors="black", linewidth=0.5, shading="flat")
             
-            # access points
-            xs = [x for _, x, _ in self.access_points]
-            ys = [y for y, _, _ in self.access_points]
-            plt.scatter(xs, ys, s=20, color="red", zorder=5)
-            plt.gca().invert_yaxis()
+            # probability / noise field
+            plt.imshow(self.probability_field, cmap="viridis", alpha=0.7, extent=(0, self.width, self.height, 0), zorder=0)
+            plt.colorbar(label="Probability")
+
+            # obstacles
+            SIMPLE_OBST_COLOR = (0.3, 0.3, 0.3, 1)
+            UNIT_LOAD_OBST_COLOR = (0.5, 0.5, 0.5, 1)
+
+            CELL_MARGIN = 0.1
+            CELL_SIZE = 1 - 2 * CELL_MARGIN
+
+            for r in range(self.height):
+                for c in range(self.width):
+                    obstacle_type = self.occupancy[r, c]
+                    
+                    if obstacle_type == 1:
+                        color = SIMPLE_OBST_COLOR
+                    elif obstacle_type == 2:
+                        color = UNIT_LOAD_OBST_COLOR
+                    else:
+                        continue
+
+                    rect = plt.Rectangle((c + CELL_MARGIN, r + CELL_MARGIN), CELL_SIZE, CELL_SIZE, facecolor=color, edgecolor=color)
+                    plt.gca().add_patch(rect)
 
             # IO points
             for r, c in self.io_points:
-                plt.plot(c + 0.5, r + 0.5, marker="o", markersize=10, markerfacecolor="green", markeredgecolor="black")
+                circle = plt.Circle((c + 0.5, r + 0.5), radius=CELL_SIZE * 0.1, facecolor="green", edgecolor="black", linewidth=0, zorder=3)
+                plt.gca().add_patch(circle)
+            
+            # access points as arrows
+            for r, c, dir in self.access_points:
+                if dir == "n":
+                    dx, dy = 0, -0.5
+                    r += 0.3
+                elif dir == "s":
+                    dx, dy = 0, 0.5
+                    r -= 0.3
+                elif dir == "e":
+                    dx, dy = 0.5, 0
+                    c -= 0.3
+                elif dir == "w":
+                    dx, dy = -0.5, 0
+                    c += 0.3
+                else:
+                    continue
+
+                arrow = plt.Arrow(c, r, dx, dy, width=0.3, facecolor="red", zorder=3)
+                plt.gca().add_patch(arrow)
 
             plt.xticks([])
             plt.yticks([])
@@ -394,22 +459,24 @@ def main():
     width = int(sys.argv[2]) if len(sys.argv)>2 else 20
 
     io_points = { # (y, x)
-        (1,0),
+        # (1,0),
         (height-1,int(width*0.9)),
-        (height-1,int(width*0.8)),
+        # (height-1,int(width*0.8)),
         (int(height*0.5),width-1),
         (int(height*0.6),int(width*0.7)),
     }
 
     occupancy_rate = float(sys.argv[3]) if len(sys.argv)>3 else 0.3 # area occupied by obstacles
     
+    print(f"Obstacles required: {int(height*width*occupancy_rate)} ({occupancy_rate*100:.1f}%)")
+    
     coarse_sigma = float(sys.argv[4]) if len(sys.argv)>4 else 2  # standard deviation for coarse noise
     fine_sigma = float(sys.argv[5]) if len(sys.argv)>5 else 1  # standard deviation for fine noise
     
     seed = int(sys.argv[6]) if len(sys.argv)>6 else 42  # random seed for reproducibility
         
-    number_of_corridors = 0  # number of corridors to generate
-    corridor_sigma = 1    # determines the width of corridors
+    noisy_aisles_num = 0  # number of aisles to generate
+    noisy_aisle_sigma = 3    # determines the width of aisles
         
     IO_points_radius = 3  # how much free space around IO points is created
 
@@ -423,7 +490,7 @@ def main():
     #     height, width,
     #     occupancy_rate,
     #     coarse_sigma, fine_sigma,
-    #     number_of_corridors, corridor_sigma,
+    #     noisy_aisles_num, noisy_aisle_sigma,
     #     io_points, IO_points_radius,
     #     simple_obstacle_rate,
     #     agv_radius,
@@ -442,10 +509,14 @@ def main():
         height, width,
         occupancy_rate,
         coarse_sigma, fine_sigma,
-        number_of_corridors, corridor_sigma,
+        noisy_aisles_num, noisy_aisle_sigma,
         io_points, IO_points_radius,
         simple_obstacle_rate,
         agv_radius,
+        ordered_aisle_spacing=(5, 3),
+        ordered_aisle_offset=(20, 30),
+        ordered_aisle_widths=(3, 2),
+        wall_clearance=(4, 4, 1, 1) # n, s, e, w
     )
     
     start = time.perf_counter()
@@ -457,12 +528,12 @@ def main():
     dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
     dynamic_generator.save_scenario("scenario/1")
     
-    # dynamic_generator.visualize(iteration="dynamic after region removal")
+    dynamic_generator.visualize(iteration="dynamic after region removal")
     
-    dynamic_generator.make_updates(10)
+    dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
     dynamic_generator.save_scenario("scenario/2")
 
-    # dynamic_generator.visualize(iteration="dynamic")
+    dynamic_generator.visualize(iteration="dynamic")
     
     print("Elapsed for dynamic scenario:", time.perf_counter()-start)
 if __name__ == "__main__":
