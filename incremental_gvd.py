@@ -4,6 +4,8 @@ Lau, Sprunk, Burgard
 (Robotics and Autonomous Systems, 2013)
 """
 
+import sys
+
 from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection
 import numpy as np
@@ -408,7 +410,7 @@ class IncrementalGVD:
 
     def connect_special_points_to_skeleton(self):
         """
-        Connects specifal points to the Voronoi cells by building a ray of cells 
+        Connects specifal points to the Voronoi cells by casting a ray of cells 
         from the special point in the direction of the dir label to the closest GVD cell.
         
         NOTE theory, why that seems to alway work: Access point rays always meet a Voronoi cell before an obstacle.
@@ -634,6 +636,8 @@ class IncrementalGVD:
         """
         Connects special points to the graph vertex located on the same Voronoi cell.
         """
+        print(f"Connecting special points to graph vertices...")
+        connected = 0
         for sp in self.access_points + self.io_points:
             y, x = sp[0], sp[1]
             if self.voro[int(y), int(x)]:
@@ -645,9 +649,11 @@ class IncrementalGVD:
                         self.graph["vertices"][sp_vertex_id] = (y, x)
                         # connect the special point vertex to the graph vertex
                         self.graph["edges"].add(tuple((vertex_id, sp_vertex_id)))
+                        connected += 1
                         break
             else:
                 raise ValueError(f"Special point at ({y}, {x}) is not on a Voronoi cell.")
+        print(f"Connected {connected}/{len(self.access_points) + len(self.io_points)} special points to graph vertices.")
         
         
     def draw_grid(self, iteration=0):
@@ -664,8 +670,7 @@ class IncrementalGVD:
 
         # buffer zone (light grey)
         buffer_zone = load_obstacle_collision_zone(iteration)
-        scale_factor = 3
-        buffer_zone = shapely.affinity.scale(buffer_zone, xfact=scale_factor, yfact=scale_factor, origin=(0, 0))
+        buffer_zone = shapely.affinity.scale(buffer_zone, xfact=self.scale_factor, yfact=self.scale_factor, origin=(0, 0))
         buffer_zone = shapely.affinity.translate(buffer_zone, xoff=1, yoff=1)
         vertices = []
         codes = []
@@ -701,9 +706,8 @@ class IncrementalGVD:
 
         ax.imshow(vis_map, origin='lower', extent=(0, self.width, 0, self.height))
 
-        scale_factor = 3
-        ax.set_xticks(np.arange(1, self.width, scale_factor))
-        ax.set_yticks(np.arange(1, self.height, scale_factor))
+        ax.set_xticks(np.arange(1, self.width, self.scale_factor))
+        ax.set_yticks(np.arange(1, self.height, self.scale_factor))
         ax.grid(True, color='black', linestyle='-', linewidth=0.5)
 
         ax.set_xlim(0, self.width)
@@ -762,6 +766,9 @@ class IncrementalGVD:
 
 
 if __name__ == "__main__":
+    
+    scale_factor = int(sys.argv[1]) if len(sys.argv)>1 else 3
+    
     from load_scenario import load_scenario_as_numpy
     
     rng = np.random.default_rng(42)
@@ -781,7 +788,7 @@ if __name__ == "__main__":
         access_points=scenario_0["access_points"],
         io_points=scenario_0["io_points"],
         agv_radius=scenario_0["agv_radius"],
-        scale_factor=3,
+        scale_factor=scale_factor,
     )
     incr_gvd.visualize_gvd("Incremental GVD Results", iteration=0)
     

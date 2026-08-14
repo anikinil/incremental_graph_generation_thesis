@@ -387,7 +387,7 @@ class ScenarioGenerator:
             plt.figure(figsize=(25, 20))
             
             # probability / noise field
-            plt.imshow(self.probability_field, cmap="viridis", alpha=0.7, extent=(0, self.width, self.height, 0), zorder=0)
+            plt.imshow(self.probability_field, cmap="viridis", alpha=0.5, extent=(0, self.width, self.height, 0), zorder=0)
             plt.colorbar(label="Probability")
 
             # obstacles
@@ -521,21 +521,21 @@ def main():
         simple_obstacle_rate,
         agv_radius,
         ordered_aisle_spacing=(5, 3),
-        ordered_aisle_offset=(20, 30),
+        ordered_aisle_offset=(int(height * 0.2), int(width * 0.3)),
         ordered_aisle_widths=(3, 2),
         wall_clearance=(4, 4, 1, 1) # n, s, e, w
     )
     
     start = time.perf_counter()
     dynamic_generator.generate_map()
-    dynamic_generator.visualize(iteration="dynamic initial")
+    # dynamic_generator.visualize(iteration="dynamic initial")
     
     dynamic_generator.save_scenario("scenario/0")
     
     dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
     dynamic_generator.save_scenario("scenario/1")
     
-    dynamic_generator.visualize(iteration="dynamic after region removal")
+    # dynamic_generator.visualize(iteration="dynamic after region removal")
     
     dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
     dynamic_generator.save_scenario("scenario/2")
