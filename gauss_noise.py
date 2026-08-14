@@ -163,7 +163,9 @@ class ScenarioGenerator:
         
         unit_loads_placed = 0
         simple_obstacles_placed = 0
-        placed = 0
+        placed_obstacles = 0
+        processed_cells = 0
+        max_free_cells = np.sum(selection_field > 0) # maximum number of free cells not forbidden by probability field
         while obstacles.size > 0:
 
             # highest remaining obstacle probability
@@ -184,23 +186,28 @@ class ScenarioGenerator:
 
             # if the placement does not disconnect the free space, keep it
             if self.connected():
-                placed += 1
+                placed_obstacles += 1
                 # track how many of each type of obstacle has been placed
                 if obstacles[0]:
                     unit_loads_placed += 1
                 else:
                     simple_obstacles_placed += 1
                 # print progress
-                if placed % 100 == 0:
-                    print(f"\r{' ' * 50}\rPlaced {placed}/{self.obstacle_count} obstacles - {placed/self.obstacle_count*100:.1f}% (unit-load: {unit_loads_placed}, simple: {simple_obstacles_placed})...", end="", flush=True)
+                if placed_obstacles % 100 == 0:
+                    print(f"\r{' ' * 50}\rPlaced {placed_obstacles}/{self.obstacle_count} obstacles - {placed_obstacles/self.obstacle_count*100:.1f}% (unit-load: {unit_loads_placed}, simple: {simple_obstacles_placed})...", end="", flush=True)
                 obstacles = obstacles[1:] # remove the placed obstacle from the list
             else:
                 # else: undo placement
                 self.occupancy[r, c] = 0
+                
+            processed_cells += 1
+            if processed_cells >= max_free_cells:
+                print(f"\nWarning: Not enough free cells to place all obstacles. Stopping generation prematurely. Placed {placed_obstacles}/{self.obstacle_count} obstacles.")
+                break
 
         # determine access points for placed obstacles
         self.update_access_points()
-        print(f"\nFinished placing {placed}/{self.obstacle_count} obstacles.")
+        print(f"\nFinished placing {placed_obstacles}/{self.obstacle_count} obstacles.")
         
 
     # check if the free sapce is connected, by checking that the occupancy contains not more than one free component
@@ -393,7 +400,6 @@ class ScenarioGenerator:
             for r in range(self.height):
                 for c in range(self.width):
                     obstacle_type = self.occupancy[r, c]
-                    
                     if obstacle_type == 1:
                         color = SIMPLE_OBST_COLOR
                     elif obstacle_type == 2:
@@ -401,12 +407,12 @@ class ScenarioGenerator:
                     else:
                         continue
 
-                    rect = plt.Rectangle((c + CELL_MARGIN, r + CELL_MARGIN), CELL_SIZE, CELL_SIZE, facecolor=color, edgecolor=color)
+                    rect = plt.Rectangle((c + CELL_MARGIN, r + CELL_MARGIN), CELL_SIZE, CELL_SIZE, facecolor=color, edgecolor="black", linewidth=2, zorder=2)
                     plt.gca().add_patch(rect)
 
             # IO points
             for r, c in self.io_points:
-                circle = plt.Circle((c + 0.5, r + 0.5), radius=CELL_SIZE * 0.1, facecolor="green", edgecolor="black", linewidth=0, zorder=3)
+                circle = plt.Circle((c + 0.5, r + 0.5), radius=CELL_SIZE * 0.2, facecolor="green", edgecolor="black", linewidth=2, zorder=3)
                 plt.gca().add_patch(circle)
             
             # access points as arrows
@@ -425,12 +431,13 @@ class ScenarioGenerator:
                     c += 0.3
                 else:
                     continue
-
                 arrow = plt.Arrow(c, r, dx, dy, width=0.3, facecolor="red", zorder=3)
                 plt.gca().add_patch(arrow)
 
-            plt.xticks([])
-            plt.yticks([])
+            plt.xticks(range(self.width + 1))
+            plt.yticks(range(self.height + 1))
+            plt.grid(which="major", color="white", linewidth=1, alpha=0.5)
+            
             plt.gca().set_aspect("equal")
 
             plt.savefig(f"scenario_{iteration}.png", dpi=600, bbox_inches="tight")
