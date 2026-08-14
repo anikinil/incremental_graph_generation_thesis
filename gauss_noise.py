@@ -523,7 +523,7 @@ def main():
         ordered_aisle_spacing=(5, 3),
         ordered_aisle_offset=(int(height * 0.2), int(width * 0.3)),
         ordered_aisle_widths=(3, 2),
-        wall_clearance=(4, 4, 1, 1) # n, s, e, w
+        wall_clearance=(4, 4, 2, 2) # n, s, e, w
     )
     
     start = time.perf_counter()

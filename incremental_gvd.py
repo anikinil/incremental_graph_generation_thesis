@@ -15,7 +15,6 @@ from matplotlib.path import Path
 from matplotlib.patches import PathPatch
         
 from load_scenario import load_obstacle_collision_zone
-        
 
 import shapely
 
@@ -407,6 +406,112 @@ class IncrementalGVD:
                 return True  # at least one cell of the bridge is affected
         return False  # none of the bridge cells are affected
 
+    def thin(self):
+        """
+        "A Fast Parallel Algorithm for Thinning Digital Patterns",
+        T. Y. Zhang and C. Y. Suen (1984)
+        """
+        
+        # convert boolean to uint8 for easier int operations
+        img = (self.voro).astype(np.uint8)
+        
+        while True:
+            
+            # tracks if any pixels were deleted in this iteration
+            C = False
+
+            # ---- subiteration 1 -----
+            
+            # 8 neighbors of each pixel
+            P2 = img[:-2, 1:-1]
+            P3 = img[:-2, 2:]
+            P4 = img[1:-1, 2:]
+            P5 = img[2:, 2:]
+            P6 = img[2:, 1:-1]
+            P7 = img[2:, :-2]
+            P8 = img[1:-1, :-2]
+            P9 = img[:-2, :-2]
+            P1 = img[1:-1, 1:-1]
+
+            # number of non-zero neighbors of each P1
+            B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
+
+            # number of 01 patterns in the ordered sequence P2, P3, ..., P9, P2 around each P1
+            A = (
+                ((P2 == 0) & (P3 == 1)).astype(np.uint8)
+                + ((P3 == 0) & (P4 == 1)).astype(np.uint8)
+                + ((P4 == 0) & (P5 == 1)).astype(np.uint8)
+                + ((P5 == 0) & (P6 == 1)).astype(np.uint8)
+                + ((P6 == 0) & (P7 == 1)).astype(np.uint8)
+                + ((P7 == 0) & (P8 == 1)).astype(np.uint8)
+                + ((P8 == 0) & (P9 == 1)).astype(np.uint8)
+                + ((P9 == 0) & (P2 == 1)).astype(np.uint8)
+            )
+
+            # conditions for deleting a pixel in subiteration 1
+            delete = (
+                (P1 == 1) # only look at skeleton pixels (not explicitly in the paper)
+                & (2 <= B) & (B <= 6)   # condition (a)
+                & (A == 1)              # condition (b)
+                & ((P2 * P4 * P6) == 0) # condition (c)
+                & ((P4 * P6 * P8) == 0) # condition (d)
+            )
+
+            # delete based on conditions from subiteration 1
+            if np.any(delete):
+                img[1:-1, 1:-1][delete] = 0
+                C = True
+
+            # ---- subiteration 2 ----
+            
+            # 8 neighbors of each pixel
+            P2 = img[:-2, 1:-1]
+            P3 = img[:-2, 2:]
+            P4 = img[1:-1, 2:]
+            P5 = img[2:, 2:]
+            P6 = img[2:, 1:-1]
+            P7 = img[2:, :-2]
+            P8 = img[1:-1, :-2]
+            P9 = img[:-2, :-2]
+            P1 = img[1:-1, 1:-1]
+
+            # number of non-zero neighbors of each P1
+            B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
+
+            # number of 01-patterns in the ordered sequence P2, P3, ..., P9, P2 around each P1
+            A = (
+                ((P2 == 0) & (P3 == 1)).astype(np.uint8)
+                + ((P3 == 0) & (P4 == 1)).astype(np.uint8)
+                + ((P4 == 0) & (P5 == 1)).astype(np.uint8)
+                + ((P5 == 0) & (P6 == 1)).astype(np.uint8)
+                + ((P6 == 0) & (P7 == 1)).astype(np.uint8)
+                + ((P7 == 0) & (P8 == 1)).astype(np.uint8)
+                + ((P8 == 0) & (P9 == 1)).astype(np.uint8)
+                + ((P9 == 0) & (P2 == 1)).astype(np.uint8)
+            )
+
+            # conditions for deleting a pixel in subiteration 2 with changed conditions (c') and (d')
+            delete = (
+                (P1 == 1) # implicit condition& 
+                & (2 <= B) & (B <= 6)   # condition (a)
+                & (A == 1)              # condition (b)
+                & ((P2 * P4 * P8) == 0) # condition (c')
+                & ((P2 * P6 * P8) == 0) # condition (d')
+            )
+
+            # delete based on conditions from subiteration 2
+            if np.any(delete): # "C += 1, if M(i, j) = 1"
+                img[1:-1, 1:-1][delete] = 0
+                C = True
+
+            # ---- termination condition ----
+
+            # terminate if no further deletions are possible
+            if not C: # "C = 0?"
+                break # "Yes -> STOP"
+            
+        self.voro = (img != 0) # update the Voronoi diagram
+        
 
     def connect_special_points_to_skeleton(self):
         """
@@ -500,6 +605,27 @@ class IncrementalGVD:
             if (int(sp[0]), int(sp[1])) == cell:
                 return True
         return False
+    
+    def _is_graph_connected(self):
+        """
+        Checks if the graph is connected.
+        """
+        if not self.graph or not self.graph["vertices"]:
+            return True  # empty graph is considered connected
+        visited = set()
+        queue = deque([0])
+        while queue:
+            vertex_id = queue.popleft()
+            if vertex_id in visited:
+                continue
+            visited.add(vertex_id)
+            for edge in self.graph["edges"]:
+                if vertex_id in edge:
+                    neighbor_id = edge[1] if edge[0] == vertex_id else edge[0]
+                    if neighbor_id not in visited:
+                        queue.append(neighbor_id)
+
+        return len(visited) == len(self.graph["vertices"])  # graph is connected if all vertices were visited
 
     def build_graph(self):
         """
@@ -509,7 +635,9 @@ class IncrementalGVD:
         https://github.com/ethz-asl/mav_voxblox_planning/blob/master/voxblox_skeleton/src/skeleton_generator.cpp
         
         """
-        
+        self.thin()
+        self.connect_special_points_to_skeleton()
+    
         # 0 = free cell, 1 = skeleton cell (on free cell), 2 = occupied cell
         voronoi_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
         voronoi_grid[self.voro] = 1
@@ -632,6 +760,17 @@ class IncrementalGVD:
         
         self._connect_special_points_to_graph()  # connect access points and IO points to the graph
     
+        # check that graph is connected
+        if self._is_graph_connected():
+            print("Graph is connected.")
+            print("\nMAP GENERATION SUCCESSFUL")
+        else:
+            print("Generated graph is not connected!")
+            print("\nMAP GENERATION FAILED")
+            self.visualize_graph(title="Disconnected Graph", iteration=0)
+            raise ValueError("Generated graph is not connected!")
+        
+    
     def _connect_special_points_to_graph(self):
         """
         Connects special points to the graph vertex located on the same Voronoi cell.
@@ -719,12 +858,12 @@ class IncrementalGVD:
         # access points
         access_x = [p[1] for p in self.access_points]
         access_y = [p[0] for p in self.access_points]
-        ax.scatter(access_x, access_y, s=30, color="red", zorder=3, label="Access points")
+        ax.scatter(access_x, access_y, s=30, color="red", zorder=10, label="Access points")
 
         # IO points
         io_x = [p[1] for p in self.io_points]
         io_y = [p[0] for p in self.io_points]
-        ax.scatter(io_x, io_y, s=50, color="green", zorder=3, label="IO points")
+        ax.scatter(io_x, io_y, s=50, color="green", zorder=10, label="IO points")
         ax.legend(loc='upper right')
 
         return fig, ax
@@ -749,7 +888,7 @@ class IncrementalGVD:
             y1, x1 = self.graph["vertices"][vertex1]
             y2, x2 = self.graph["vertices"][vertex2]
             edge_segments.append([(x1, y1), (x2, y2)])
-        edge_collection = LineCollection(edge_segments, colors="blue", linewidths=2, zorder=2)
+        edge_collection = LineCollection(edge_segments, colors="blue", linewidths=3, zorder=2)
         ax.add_collection(edge_collection)
 
         # vertices
@@ -760,7 +899,6 @@ class IncrementalGVD:
         plt.show()
 
 
-# TODO: thinning ([21] in Oleynikova paper)
 # TODO: edge splitting (obstacle avoidance) -- necessary?
 #         - probably YES (edges can cross buffer zone, at least for CORNER_SEGMENTS=0)
 
@@ -792,10 +930,6 @@ if __name__ == "__main__":
     )
     incr_gvd.visualize_gvd("Incremental GVD Results", iteration=0)
     
-    # connect special points to the voronoi diagram
-    incr_gvd.connect_special_points_to_skeleton()
-    incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=0)
-    
     # build voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph("Incremental GVD Graph", iteration=0)
@@ -811,10 +945,6 @@ if __name__ == "__main__":
     incr_gvd.updateDistanceMap()
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=1)
     
-    # connect special points to the voronoi diagram
-    incr_gvd.connect_special_points_to_skeleton()
-    incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=1)
-        
     # build voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=1)
@@ -830,10 +960,6 @@ if __name__ == "__main__":
     incr_gvd.updateDistanceMap()
     incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=2)
     
-    # connect special points to the voronoi diagram
-    incr_gvd.connect_special_points_to_skeleton()
-    incr_gvd.visualize_gvd("Incremental GVD Results After Connecting Special Points", iteration=2)
-
     # build voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=2)
