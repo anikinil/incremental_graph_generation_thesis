@@ -105,16 +105,13 @@ class IncrementalGVD:
         self.toRaise = np.zeros((self.height, self.width), dtype=bool)
         
         
-        self.affected_cells = set()  # track affected cells after dynamic updates for visualization
-        
-        # initialize with static brushfire algorithm
-        self.computeDistanceMap()
+        self.affected_voro_cells = set()  # track affected cells after dynamic updates for visualization
         
         self.graph = None # { "vertices": [vid_1: (y, x), vid_2: (y, x), ...], "edges": [(vid_1, vid_2), ...] }
         
         # save voronoi cells added to connect special points to Voronoi skeleton, to recalculate if affected by dynamic updates
         # {sp_1: [(y, x), (y, x), ...], sp_2: [...], ...}
-        self.special_point_bridges = {}
+        self.special_point_bridges = np.zeros((self.height, self.width), dtype=bool)
     
     def increase_resolution(self):
         
@@ -228,7 +225,6 @@ class IncrementalGVD:
                     self.obst[n[0], n[1]] = s_obst
                     # enqueue neighbor to continue wavefront propagation
                     self.open.insert(n, d)
-                    self.affected_cells.add(n)  # track affected cells for visualization
                 else:
                     threshold = max(self.agv_radius, 1)
                     self.checkVoro(s, n, threshold=threshold)  # check Voronoi condition between current cell and neighbors
@@ -244,7 +240,7 @@ class IncrementalGVD:
         
         # enqueue new cell for wavefront propagation
         self.open.insert(s, 0)
-        self.affected_cells.add(s)
+        # self.affected_cells.add(s)
     
     def removeObstacle(self, s):
         
@@ -261,11 +257,13 @@ class IncrementalGVD:
         
         # add to open queue as source of propagation for raise wavefront
         self.open.insert(s, 0)
-        self.affected_cells.add(s)  # track affected cells for visualization
+        # self.affected_cells.add(s)  # track affected cells
         
         return value  # return the type of obstacle that was removed (for move operations)
     
     def updateDistanceMap(self):
+        
+        self.affected_voro_cells.clear()
                 
         # while there are cells to process
         while not self.open.is_empty():
@@ -293,7 +291,6 @@ class IncrementalGVD:
                 
                 # enqueue with current distance
                 self.open.insert(n, self.D[n[0], n[1]])
-                self.affected_cells.add(n)
                 
                 # check if obstacle reference is still valid
                 if self.occupancy_grid[obstacle_ref[0], obstacle_ref[1]] == 0: # if neighbor's closest obstacle is no longer occupied
@@ -301,18 +298,17 @@ class IncrementalGVD:
                     self.D[n[0], n[1]] = np.inf
                     self.obst[n[0], n[1]] = (-1, -1)
                     self.toRaise[n[0], n[1]] = True
-        
+                    
         # after processing neighbors, mark current cell as no longer needing raise
         self.toRaise[s[0], s[1]] = False
     
-    def checkVoro(self, s, n, threshold = 1.0):
+    def checkVoro(self, s, n, threshold):
         
         obst_s = self.obst[s[0], s[1]]
         obst_n = self.obst[n[0], n[1]]
         
         if (self.D[s[0], s[1]] > threshold or self.D[n[0], n[1]] > threshold) \
             and obst_n != (-1, -1) \
-            and obst_s != (-1, -1) \
             and obst_s != obst_n \
             and obst_s not in self.Adj(obst_n):
         
@@ -323,24 +319,13 @@ class IncrementalGVD:
             # add cell with smaller violation
             if dist_s_to_obst_n <= dist_n_to_obst_s:
                 self.voro[s] = True
+                self.affected_voro_cells.add(s)
             
             if dist_n_to_obst_s <= dist_s_to_obst_n:
                 self.voro[n] = True
+                self.affected_voro_cells.add(n)
 
-    def apply_updates(self, updates, new_access_points, new_io_points):
-        
-        # clear bridges from special points that are affected by the updates
-        # (need to clear the whole bridge, not just the affected cells, so they can be reconnected properly)
-        for sp in list(self.special_point_bridges.keys()):
-            if self._special_point_affected_by_update(sp):
-                bridge_cells = self.special_point_bridges[sp]
-                for cell in bridge_cells:
-                    self.voro[cell] = False  # remove bridge cells from Voronoi diagram
-                del self.special_point_bridges[sp]  # remove the bridge record for this special point
-        
-        self.affected_cells.clear()  # clear affected cells
-        
-        # scale update coords to the grid resolution
+    def apply_obstacle_updates(self, updates, new_access_points, new_io_points):
         scaled_updates = []
         for update in updates:
             action = update["action"]
@@ -392,19 +377,8 @@ class IncrementalGVD:
         self.access_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1, dir) for (y, x, dir) in new_access_points]
         # adjust and update IO points (probably usually unchanged)
         self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for (y, x) in new_io_points]
-        
-    def _special_point_affected_by_update(self, special_point):
-        """
-        Checks if a special point is affected by the dynamic updates.
-        A special point is affected, if any cell of its Voronoi bridge is in the affected cells set.
-        """
-        if special_point not in self.special_point_bridges:
-            return True  # if no bridge exists, the point has not been connected yet and must be processed anyway
-        bridge_cells = self.special_point_bridges[special_point]
-        for cell in bridge_cells:
-            if cell in self.affected_cells:
-                return True  # at least one cell of the bridge is affected
-        return False  # none of the bridge cells are affected
+
+        self.special_point_bridges.fill(False)  # clear special bridges, as they need to be recalculated now
 
     def thin(self):
         """
@@ -514,9 +488,9 @@ class IncrementalGVD:
         
         self.visualize_gvd(title="Thinned Voronoi Diagram (Skeleton)", iteration=0)
 
-    def connect_special_points_to_skeleton(self):
+    def build_special_point_bridges(self):
         """
-        Connects specifal points to the Voronoi cells by casting a ray of cells 
+        Connects special points to the Voronoi cells by casting a ray of cells 
         from the special point in the direction of the dir label to the closest GVD cell.
         
         NOTE theory, why that seems to alway work: Access point rays always meet a Voronoi cell before an obstacle.
@@ -532,33 +506,30 @@ class IncrementalGVD:
             y, x, dir = ap
             # determine the direction vector based on the dir label
             dir_vec = dirs[dir]
-            bridge_cells = []  # to store the cells added to the Voronoi diagram for this special point
             while True:
+                
                 # get current cell
                 on_voro = self.voro[int(y), int(x)]
+
                 # if on a Voronoi cell, stop the ray
                 if on_voro:
                     connected += 1
                     break
-                # else: add the current cell to the Voronoi diagram
-                self.voro[int(y), int(x)] = True
                 
-                # add the current cell to the bridge cells list
-                bridge_cells.append((int(y), int(x)))
+                # else: add the cell to the bridge
+                self.special_point_bridges[int(y), int(x)] = True
                 
                 # move in the direction of the dir label
                 y += dir_vec[0]
                 x += dir_vec[1]
                 
-            # save the bridge cells for this special point
-            self.special_point_bridges[ap] = bridge_cells
+        print(f"Connected {connected}/{len(self.access_points)} access points to Voronoi skeleton.")
         
         # try to connect similarly to access points, but try each direction and pick the best one:
         # no obstacles encountered, shortest distance
         connected = 0
         for i, iop in enumerate(self.io_points):
             y, x = iop
-            bridge_cells = [] # cells added to the Voronoi diagram for this special point
             found_connection = False
             best_bridge_cells = None
             best_distance = np.inf
@@ -578,25 +549,27 @@ class IncrementalGVD:
                     # if hit an obstacle, stop searching in this direction
                     if self.occupancy_grid[int(curr_y), int(curr_x)] > 0:
                         break
-                    
+            
                     # add the current cell to the bridge cells list
                     current_bridge_cells.append((int(curr_y), int(curr_x)))
                     
                     # move in the direction of the dir label
                     curr_y += dir_vec[0]
                     curr_x += dir_vec[1]
-            
+                    
             if found_connection:
                 connected += 1
-                self.special_point_bridges[iop] = best_bridge_cells
                 # add the best bridge cells to the Voronoi diagram
                 for cell in best_bridge_cells:
-                    self.voro[cell] = True
+                    self.special_point_bridges[cell] = True
             else: 
                 print(f"Warning: Could not connect IO point {iop} to Voronoi skeleton in any direction.")
             
         print(f"Connected {connected}/{len(self.io_points)} IO points to Voronoi skeleton.")
-            
+        self.visualize_gvd(title="Voronoi Diagram with Special Points Connected", iteration=0)
+
+    def clear_bridges(self):
+        self.special_point_bridges.fill(False)
 
     def _special_point_on_cell(self, cell):
         """
@@ -607,26 +580,79 @@ class IncrementalGVD:
                 return True
         return False
     
-    def _is_graph_connected(self):
-        """
-        Checks if the graph is connected.
-        """
+    # ============= DEBUGGING ===================
+    
+    def _get_connected_components(self):
         if not self.graph or not self.graph["vertices"]:
-            return True  # empty graph is considered connected
-        visited = set()
-        queue = deque([0])
-        while queue:
-            vertex_id = queue.popleft()
-            if vertex_id in visited:
-                continue
-            visited.add(vertex_id)
-            for edge in self.graph["edges"]:
-                if vertex_id in edge:
-                    neighbor_id = edge[1] if edge[0] == vertex_id else edge[0]
-                    if neighbor_id not in visited:
-                        queue.append(neighbor_id)
+            return []
+        vertices = set(self.graph["vertices"].keys())
+        adjacency = defaultdict(set)
+        for v1, v2 in self.graph["edges"]:
+            adjacency[v1].add(v2)
+            adjacency[v2].add(v1)
+        components = []
+        while vertices:
+            start = vertices.pop()
+            component = {start}
+            queue = deque([start])
+            while queue:
+                vertex = queue.popleft()
+                for neighbor in adjacency[vertex]:
+                    if neighbor in vertices:
+                        vertices.remove(neighbor)
+                        component.add(neighbor)
+                        queue.append(neighbor)
+            components.append(component)
+        return components
 
-        return len(visited) == len(self.graph["vertices"])  # graph is connected if all vertices were visited
+    def _is_graph_connected(self):
+        components = self._get_connected_components()
+
+        print(f"Graph has {len(components)} connected component(s).")
+
+        if len(components) > 1:
+            for i, component in enumerate(components):
+                print(f"  Component {i}: " f"{len(component)} vertices")
+
+        if len(components) == 1:
+            print("Graph is connected.")
+            return True
+        else:
+            print("Graph is NOT connected.")
+            self._visualize_graph_components()
+            return False
+    
+    def _visualize_graph_components(self):
+        components = self._get_connected_components()
+
+        fig, ax = self.draw_grid(iteration=0)
+
+        # edges
+        edge_segments = []
+        for v1, v2 in self.graph["edges"]:
+            y1, x1 = self.graph["vertices"][v1]
+            y2, x2 = self.graph["vertices"][v2]
+            edge_segments.append([(x1, y1), (x2, y2)])
+
+        edge_collection = LineCollection(edge_segments, colors="blue", linewidths=3, zorder=2)
+        ax.add_collection(edge_collection)
+
+        # assign each vertex its component
+        vertex_component = {}
+        for component_id, component in enumerate(components):
+            for vertex_id in component:
+                vertex_component[vertex_id] = component_id
+
+        # plot
+        for component_id, component in enumerate(components):
+            vertices = np.array([(self.graph["vertices"][v][1], self.graph["vertices"][v][0]) for v in component])
+            ax.scatter(vertices[:, 0], vertices[:, 1], s=50, zorder=3, label=f"Component {component_id}")
+
+        ax.legend()
+        plt.title(f"Graph Components ({len(components)})")
+        plt.show()
+
+    # ================================================
 
     def build_graph(self):
         """
@@ -638,14 +664,15 @@ class IncrementalGVD:
         """
         # self.thin() # not working: deleting essential endpoints. TODO remove, or find better solution
         # perhaps modify "Building Skeleton Models via 3D Medial Surface/Axis Thinning Algorithms", T.-C. Lee, R. Kashyap, C.-N. Chu (1994)
-        self.connect_special_points_to_skeleton()
-    
+        self.build_special_point_bridges()
+        bridge_grid = self.special_point_bridges.astype(np.uint8)  # 0 = free cell, 1 = special point bridge
+        
         # 0 = free cell, 1 = skeleton cell (on free cell), 2 = occupied cell
         voronoi_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
         voronoi_grid[self.voro] = 1
         obstacle_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
         obstacle_grid[self.occupancy_grid > 0] = 2
-        grid = voronoi_grid + obstacle_grid
+        grid = voronoi_grid + obstacle_grid + bridge_grid  # 0 = free, 1 = skeleton/bridge, 2 = occupied
         
         print(f"Building graph from skeleton with {np.sum(voronoi_grid)} skeleton cells...")
 
@@ -770,7 +797,7 @@ class IncrementalGVD:
             print("Generated graph is not connected!")
             print("\nMAP GENERATION FAILED")
             self.visualize_graph(title="Disconnected Graph", iteration=0)
-            raise ValueError("Generated graph is not connected!")
+            # raise ValueError("Generated graph is not connected!")
         
     
     def _connect_special_points_to_graph(self):
@@ -778,10 +805,13 @@ class IncrementalGVD:
         Connects special points to the graph vertex located on the same Voronoi cell.
         """
         print(f"Connecting special points to graph vertices...")
+        
+        grid = self.voro.astype(np.uint8) + self.special_point_bridges.astype(np.uint8)  # 0 = free cell, 1 = skeleton/bridge, 2 = occupied
+        
         connected = 0
         for sp in self.access_points + self.io_points:
             y, x = sp[0], sp[1]
-            if self.voro[int(y), int(x)]:
+            if grid[int(y), int(x)] == 1:  # if the special point is on a Voronoi/bridge cell
                 # find the vertex_id of the graph vertex located on the same Voronoi cell
                 for vertex_id, (vy, vx) in self.graph["vertices"].items():
                     if int(vy) == int(y) and int(vx) == int(x):
@@ -802,13 +832,6 @@ class IncrementalGVD:
         fig, ax = plt.subplots(figsize=(25, 20))
 
         vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
-
-        if iteration > 0:
-            # cells affected by updates (red)
-            affected_mask = np.zeros((self.height, self.width), dtype=bool)
-            for cell in self.affected_cells:
-                affected_mask[cell[0], cell[1]] = True
-            vis_map[affected_mask] = [1, 0, 0, 0.2]
 
         # buffer zone (light grey)
         buffer_zone = load_obstacle_collision_zone(iteration)
@@ -835,9 +858,18 @@ class IncrementalGVD:
         unit_load_mask = self.occupancy_grid == 2
         vis_map[unit_load_mask] = UNIT_LOAD_COLOR
 
-        # voronoi cells (blue)
-        voronoi_mask = (self.voro > 0)
-        vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.7]
+        # voronoi cells (normal: blue, affected by updates: red)
+        voronoi_mask = self.voro
+        vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.7]  # blue for normal Voronoi cells
+        affected_voronoi_mask = np.zeros_like(self.voro, dtype=bool)
+        if iteration > 0:
+            for cell in self.affected_voro_cells:
+                affected_voronoi_mask[cell] = True
+            vis_map[affected_voronoi_mask] = [0.8, 0.2, 0.2, 0.7]  # red for affected Voronoi cells
+        
+        # bridges
+        bridge_mask = self.special_point_bridges
+        vis_map[bridge_mask] = [0.2, 0.8, 0.2, 0.7]  # green for bridges
         
         # convert squared distances to actual distances
         distance_overlay = np.sqrt(np.copy(self.D))
@@ -921,7 +953,7 @@ if __name__ == "__main__":
     
     # ---- iteration 0 ----
     
-    # initialize spatial representation and compute distance map
+    # initialize spatial representation
     print("\nInitialize and compute GVD...")
     incr_gvd = IncrementalGVD(
         rng=rng,
@@ -931,9 +963,12 @@ if __name__ == "__main__":
         agv_radius=scenario_0["agv_radius"],
         scale_factor=scale_factor,
     )
+    
+    # compute initial distance map and Voronoi diagram
+    incr_gvd.computeDistanceMap()
     incr_gvd.visualize_gvd(iteration=0, title="Incremental GVD Results")
     
-    # build voronoi graph
+    # build Voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph(iteration=0, title="Incremental GVD Graph")
     
@@ -941,14 +976,15 @@ if __name__ == "__main__":
     
     # apply updates to the occupancy grid
     print("\nApplying updates to the occupancy grid...")
-    incr_gvd.apply_updates(scenario_1["updates"], scenario_1["access_points"], scenario_1["io_points"])
+    incr_gvd.apply_obstacle_updates(scenario_1["updates"], scenario_1["access_points"], scenario_1["io_points"])
     
-    # recompute distance map and voronoi diagram after changes
+    # recompute distance map and Voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
     incr_gvd.visualize_gvd(iteration=1, title="Incremental GVD Results After Changes")
+    incr_gvd.visualize_gvd(iteration=1, title="Incremental GVD Results After Clearing Affected Bridges")
     
-    # build voronoi graph
+    # build Voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph(iteration=1, title="Incremental GVD Graph After Changes")
     
@@ -956,13 +992,14 @@ if __name__ == "__main__":
     
     # apply updates to the occupancy grid
     print("\nApplying updates to the occupancy grid...")
-    incr_gvd.apply_updates(scenario_2["updates"], scenario_2["access_points"], scenario_2["io_points"])
+    incr_gvd.apply_obstacle_updates(scenario_2["updates"], scenario_2["access_points"], scenario_2["io_points"])
     
-    # recompute distance map and voronoi diagram after changes
+    # recompute distance map and Voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
     incr_gvd.visualize_gvd(iteration=2, title="Incremental GVD Results After Changes")
-    
-    # build voronoi graph
+    incr_gvd.visualize_gvd(iteration=2, title="Incremental GVD Results After Clearing Affected Bridges")
+
+    # build Voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph(iteration=2, title="Incremental GVD Graph After Changes")

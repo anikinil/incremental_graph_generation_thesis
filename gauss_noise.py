@@ -381,6 +381,29 @@ class ScenarioGenerator:
 
         self.update_access_points(locations=[(r, c) for r in range(r1, r2) for c in range(c1, c2)])
         
+    def add_region(self, top_left, bottom_right, obstacle_type=2):
+        r1, c1 = top_left
+        r2, c2 = bottom_right
+        
+        # ensure the region is within bounds
+        if not (0 <= r1 < r2 <= self.height and 0 <= c1 < c2 <= self.width):
+            raise ValueError("Region is out of bounds.")
+        
+        old_occupancy = self.occupancy.copy()
+        
+        # add obstacles in the region
+        for r in range(r1, r2):
+            for c in range(c1, c2):
+                if (r, c) not in self.io_points:
+                    self.occupancy[r, c] = obstacle_type
+                    self.updates.append({"action": "add", "cell": (r, c), "obstacle_type": obstacle_type})
+
+        if not self.connected():
+            # undo addition if it disconnects the map
+            self.occupancy = old_occupancy
+            raise ValueError("Adding this region disconnects the map.")
+
+        self.update_access_points(locations=[(r, c) for r in range(r1, r2) for c in range(c1, c2)])
         
     def visualize(self, iteration=""):
 
@@ -459,7 +482,9 @@ class ScenarioGenerator:
             agv_radius=self.agv_radius,
             updates=np.array(self.updates, dtype=object) if self.updates else np.array([], dtype=object),
         )
-
+        
+        self.updates.clear()
+        
 def main():
     
     height = int(sys.argv[1]) if len(sys.argv)>1 else 15
@@ -537,7 +562,8 @@ def main():
     
     # dynamic_generator.visualize(iteration="dynamic after region removal")
     
-    dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
+    # dynamic_generator.add_region((int(height * 0.2), int(width * 0.2)), (int(height * 0.3), int(width * 0.3)), obstacle_type=2)
+    dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=1)
     dynamic_generator.save_scenario("scenario/2")
 
     dynamic_generator.visualize(iteration="dynamic")
