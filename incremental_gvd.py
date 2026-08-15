@@ -449,7 +449,7 @@ class IncrementalGVD:
             )
 
             # conditions for deleting a pixel in subiteration 1
-            delete = (
+            delete = (                
                 (P1 == 1) # only look at skeleton pixels (not explicitly in the paper)
                 & (2 <= B) & (B <= 6)   # condition (a)
                 & (A == 1)              # condition (b)
@@ -492,7 +492,7 @@ class IncrementalGVD:
 
             # conditions for deleting a pixel in subiteration 2 with changed conditions (c') and (d')
             delete = (
-                (P1 == 1) # implicit condition& 
+                (P1 == 1) # implicit condition
                 & (2 <= B) & (B <= 6)   # condition (a)
                 & (A == 1)              # condition (b)
                 & ((P2 * P4 * P8) == 0) # condition (c')
@@ -512,6 +512,7 @@ class IncrementalGVD:
             
         self.voro = (img != 0) # update the Voronoi diagram
         
+        self.visualize_gvd(title="Thinned Voronoi Diagram (Skeleton)", iteration=0)
 
     def connect_special_points_to_skeleton(self):
         """
@@ -635,7 +636,8 @@ class IncrementalGVD:
         https://github.com/ethz-asl/mav_voxblox_planning/blob/master/voxblox_skeleton/src/skeleton_generator.cpp
         
         """
-        self.thin()
+        # self.thin() # not working: deleting essential endpoints. TODO remove, or find better solution
+        # perhaps modify "Building Skeleton Models via 3D Medial Surface/Axis Thinning Algorithms", T.-C. Lee, R. Kashyap, C.-N. Chu (1994)
         self.connect_special_points_to_skeleton()
     
         # 0 = free cell, 1 = skeleton cell (on free cell), 2 = occupied cell
@@ -795,7 +797,8 @@ class IncrementalGVD:
         print(f"Connected {connected}/{len(self.access_points) + len(self.io_points)} special points to graph vertices.")
         
         
-    def draw_grid(self, iteration=0):
+    # TODO fix grey artefacts on last iteration
+    def draw_grid(self, iteration):
         fig, ax = plt.subplots(figsize=(25, 20))
 
         vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
@@ -827,11 +830,11 @@ class IncrementalGVD:
         # simple obstacles (dark grey)
         obstacle_mask = self.occupancy_grid == 1
         vis_map[obstacle_mask] = SIMPLE_OBSTACLE_COLOR
+    
         # unit loads (grey)
         unit_load_mask = self.occupancy_grid == 2
         vis_map[unit_load_mask] = UNIT_LOAD_COLOR
 
-    
         # voronoi cells (blue)
         voronoi_mask = (self.voro > 0)
         vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.7]
@@ -868,7 +871,7 @@ class IncrementalGVD:
 
         return fig, ax
 
-    def visualize_gvd(self, title=None, iteration=0):
+    def visualize_gvd(self, iteration, title=None):
         
         print(f"Visualizing GVD: {title if title else 'unnamed'}...")
 
@@ -877,7 +880,7 @@ class IncrementalGVD:
         plt.title(title if title else "Incremental GVD")
         plt.show()
 
-    def visualize_graph(self, title=None, iteration=0):
+    def visualize_graph(self, iteration, title=None):
         print(f"Visualizing graph: {title if title else 'unnamed'}...")
 
         fig, ax = self.draw_grid(iteration=iteration)
@@ -928,11 +931,11 @@ if __name__ == "__main__":
         agv_radius=scenario_0["agv_radius"],
         scale_factor=scale_factor,
     )
-    incr_gvd.visualize_gvd("Incremental GVD Results", iteration=0)
+    incr_gvd.visualize_gvd(iteration=0, title="Incremental GVD Results")
     
     # build voronoi graph
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph("Incremental GVD Graph", iteration=0)
+    incr_gvd.visualize_graph(iteration=0, title="Incremental GVD Graph")
     
     # ---- iteration 1 ----
     
@@ -943,11 +946,11 @@ if __name__ == "__main__":
     # recompute distance map and voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=1)
+    incr_gvd.visualize_gvd(iteration=1, title="Incremental GVD Results After Changes")
     
     # build voronoi graph
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=1)
+    incr_gvd.visualize_graph(iteration=1, title="Incremental GVD Graph After Changes")
     
     # ---- iteration 2 ----
     
@@ -958,8 +961,8 @@ if __name__ == "__main__":
     # recompute distance map and voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_gvd("Incremental GVD Results After Changes", iteration=2)
+    incr_gvd.visualize_gvd(iteration=2, title="Incremental GVD Results After Changes")
     
     # build voronoi graph
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph("Incremental GVD Graph After Changes", iteration=2)
+    incr_gvd.visualize_graph(iteration=2, title="Incremental GVD Graph After Changes")

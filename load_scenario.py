@@ -140,7 +140,7 @@ def load_scenario_as_numpy(iteration = 0):
         }
     )
 
-def load_obstacle_collision_zone(iteration = 0):
+def load_obstacle_collision_zone(iteration):
     """Loads infalted regions of obstacle space only."""
     
     scenario = np.load(f"scenario/{iteration}.npz", allow_pickle=True)
