@@ -824,6 +824,8 @@ class IncrementalGVD:
         from matplotlib.patches import Patch
         
         BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
+        BUFFER_RES = 2
+        
         SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
         UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
                 
@@ -836,18 +838,14 @@ class IncrementalGVD:
         vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
 
         # buffer zone
-        from shapely.geometry import Polygon, MultiPolygon
-        # create a polygon for the buffer zone around each obstacle cell
-        NUM_SEGMENTS = 2
-        buffer_polygons = []
-        for y in range(self.height):
-            for x in range(self.width):
-                if self.occupancy_grid[y, x] > 0:  # if the cell is occupied
-                    # create a square polygon for the cell and buffer it
-                    cell_polygon = Polygon([(x, y), (x + 1, y), (x + 1, y + 1), (x, y + 1)])
-                    buffer_polygon = cell_polygon.buffer(self.agv_radius, resolution=NUM_SEGMENTS, join_style=shapely.BufferJoinStyle.round)
-                    buffer_polygons.append(buffer_polygon)
-        buffer_zone = MultiPolygon(buffer_polygons)
+        from shapely.geometry import box
+        from shapely.ops import unary_union
+        occupied = self.occupancy_grid > 0
+        ys, xs = np.where(occupied)
+        obstacle_polygons = [box(x, y, x + 1, y + 1) for y, x in zip(ys, xs)]
+        obstacles = unary_union(obstacle_polygons)
+        buffer_zone = obstacles.buffer(self.agv_radius, resolution=BUFFER_RES, join_style=shapely.BufferJoinStyle.round)
+        buffer_zone = buffer_zone.intersection(box(0, 0, self.width, self.height))
         polygons = (list(buffer_zone.geoms) if hasattr(buffer_zone, "geoms") else [buffer_zone])
         for poly in polygons:
             vertices = []
@@ -859,8 +857,8 @@ class IncrementalGVD:
                 hole = np.asarray(hole.coords)
                 vertices.extend(hole)
                 codes.extend([Path.MOVETO] + [Path.LINETO] * (len(hole) - 2) + [Path.CLOSEPOLY])
-            ax.add_patch(PathPatch(Path(vertices, codes), facecolor=BUFFER_COLOR[:3], alpha=BUFFER_COLOR[3], edgecolor="none", zorder=0))
-    
+            ax.add_patch(PathPatch( Path(vertices, codes), facecolor=BUFFER_COLOR[:3], alpha=BUFFER_COLOR[3], edgecolor="none", zorder=0))
+        
         # occupancy
         vis_map[self.occupancy_grid == 1] = SIMPLE_OBSTACLE_COLOR
         vis_map[self.occupancy_grid == 2] = UNIT_LOAD_COLOR
@@ -891,14 +889,14 @@ class IncrementalGVD:
         # bridges are the final cell overlay.
         vis_map[self.special_point_bridges] = BRIDGE_COLOR
         ax.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", zorder=1)
-
+        
         # grid and axes
         ax.set_xticks(np.arange(1, self.width, self.scale_factor))
         ax.set_yticks(np.arange(1, self.height, self.scale_factor))
-        ax.grid(True, color="black", linestyle="-", linewidth=0.5, zorder=5)
+        ax.grid(True, color='black', linestyle='-', linewidth=0.5, zorder=5)
         ax.set_xlim(0, self.width)
         ax.set_ylim(self.height, 0)
-        ax.set_aspect("equal")
+        ax.set_aspect('equal')
         ax.margins(0)
 
         # special points
@@ -918,7 +916,7 @@ class IncrementalGVD:
         labels.append("Bridges")
         labels.append("Voronoi skeleton")
         ax.legend(handles, labels, loc="upper right")
-
+        
         ax.set_title(title)
 
         return fig, ax
