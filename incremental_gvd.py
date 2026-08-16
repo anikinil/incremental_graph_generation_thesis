@@ -4,6 +4,7 @@ Lau, Sprunk, Burgard
 (Robotics and Autonomous Systems, 2013)
 """
 
+import math
 import sys
 
 from matplotlib import pyplot as plt
@@ -105,6 +106,8 @@ class IncrementalGVD:
         # save voronoi cells added to connect special points to Voronoi skeleton, to recalculate if affected by dynamic updates
         # {sp_1: [(y, x), (y, x), ...], sp_2: [...], ...}
         self.special_point_bridges = np.zeros((self.height, self.width), dtype=bool)
+    
+        self.iteration = 0 # increased after every layout update
     
     def increase_resolution(self):
         
@@ -218,8 +221,11 @@ class IncrementalGVD:
                     self.obst[n[0], n[1]] = s_obst
                     # enqueue neighbor to continue wavefront propagation
                     self.open.insert(n, d)
+                    
+                    self.affected_distance_cells.add(n) # track affected cells for visualization
                 else:
-                    threshold = max(self.agv_radius, 1)
+                    # threshold = max(self.agv_radius, 1)
+                    threshold = self.agv_radius
                     self.checkVoro(s, n, threshold=threshold)  # check Voronoi condition between current cell and neighbors
     
     def setObstacle(self, s, value):
@@ -233,7 +239,6 @@ class IncrementalGVD:
         
         # enqueue new cell for wavefront propagation
         self.open.insert(s, 0)
-        # self.affected_cells.add(s)
     
     def removeObstacle(self, s):
         
@@ -250,8 +255,7 @@ class IncrementalGVD:
         
         # add to open queue as source of propagation for raise wavefront
         self.open.insert(s, 0)
-        # self.affected_cells.add(s)  # track affected cells
-        
+
         return value  # return the type of obstacle that was removed (for move operations)
     
     def updateDistanceMap(self):
@@ -275,12 +279,14 @@ class IncrementalGVD:
                 if self.occupancy_grid[obstacle_ref[0], obstacle_ref[1]] > 0:
                     # exclude this cell from voronoi diagram and propagate lower wavefront to update neighbors
                     self.voro[s[0], s[1]] = False
+                    if s in self.affected_voro_cells:
+                        self.affected_voro_cells.remove(s) # Voronoi cell can be deleted
                     self.lower(s) 
         
-        # determine which cells were affected
-        changed_mask = (previous_D != self.D)
-        # store as tuples
-        self.affected_distance_cells = {(int(y), int(x)) for y, x in np.argwhere(changed_mask)}
+        # # determine which cells were affected
+        # changed_mask = (previous_D != self.D)
+        # # store as tuples
+        # self.affected_distance_cells = {(int(y), int(x)) for y, x in np.argwhere(changed_mask)}
 
     def raise_(self, s):
         
@@ -293,6 +299,8 @@ class IncrementalGVD:
                 # enqueue with current distance
                 self.open.insert(n, self.D[n[0], n[1]])
                 
+                self.affected_distance_cells.add(n) # track affected cells for visualization
+                
                 # check if obstacle reference is still valid
                 if self.occupancy_grid[obstacle_ref[0], obstacle_ref[1]] == 0: # if neighbor's closest obstacle is no longer occupied
                     # clear neighbor and mark for raise
@@ -304,6 +312,8 @@ class IncrementalGVD:
         self.toRaise[s[0], s[1]] = False
     
     def checkVoro(self, s, n, threshold):
+        
+        threshold = threshold ** 2 # all distances are compared squared
         
         obst_s = self.obst[s[0], s[1]]
         obst_n = self.obst[n[0], n[1]]
@@ -381,6 +391,8 @@ class IncrementalGVD:
         self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for (y, x) in new_io_points]
 
         self.special_point_bridges.fill(False)  # clear special bridges, as they need to be recalculated now
+        
+        self.iteration += 1
 
     def thin(self):
         """
@@ -488,7 +500,7 @@ class IncrementalGVD:
             
         self.voro = (img != 0) # update the Voronoi diagram
         
-        self.visualize_gvd(title="Thinned Voronoi Diagram (Skeleton)", iteration=0)
+        self.visualize_gvd(title="Thinned Voronoi Diagram (Skeleton)")
 
     def build_special_point_bridges(self):
         """
@@ -568,7 +580,7 @@ class IncrementalGVD:
                 print(f"Warning: Could not connect IO point {iop} to Voronoi skeleton in any direction.")
             
         print(f"Connected {connected}/{len(self.io_points)} IO points to Voronoi skeleton.")
-        self.visualize_gvd(title="Voronoi Diagram with Special Points Connected", iteration=0)
+        self.visualize_gvd(title="Voronoi Diagram with Special Points Connected")
 
     def clear_bridges(self):
         self.special_point_bridges.fill(False)
@@ -617,7 +629,7 @@ class IncrementalGVD:
     def _visualize_graph_components(self):
         components = self._get_connected_components()
 
-        fig, ax = self.draw_grid(iteration=0)
+        fig, ax = self.draw_grid()
 
         # edges
         edge_segments = []
@@ -789,7 +801,7 @@ class IncrementalGVD:
             print("Generated graph is NOT connected!")
             print("\n[MAP GENERATION FAILED]")
             self._visualize_graph_components()
-            self.visualize_graph(title="Disconnected Graph", iteration=0)
+            self.visualize_graph(title="Disconnected Graph")
             # raise ValueError("Generated graph is not connected!")
         
     
@@ -820,7 +832,7 @@ class IncrementalGVD:
         print(f"Connected {connected}/{len(self.access_points) + len(self.io_points)} special points to graph vertices.")
         
         
-    def draw_grid(self, iteration, title=None):
+    def draw_grid(self, title=None):
         from matplotlib.patches import Patch
         
         BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
@@ -864,26 +876,26 @@ class IncrementalGVD:
         vis_map[self.occupancy_grid == 2] = UNIT_LOAD_COLOR
 
         # affected distance cells
-        changed_distance_mask = np.zeros((self.height, self.width), dtype=bool)
-        if self.affected_distance_cells:
-            cells = np.asarray(list(self.affected_distance_cells), dtype=np.intp)
-            if cells.size > 0:
-                cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
-                changed_distance_mask[cells[:, 0], cells[:, 1]] = True
-        vis_map[changed_distance_mask] = AFFECTED_DISTANCES_COLOR
+        if self.iteration > 0:
+            changed_distance_mask = np.zeros((self.height, self.width), dtype=bool)
+            if self.affected_distance_cells:
+                cells = np.asarray(list(self.affected_distance_cells), dtype=np.intp)
+                if cells.size > 0:
+                    cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
+                    changed_distance_mask[cells[:, 0], cells[:, 1]] = True
+            vis_map[changed_distance_mask] = AFFECTED_DISTANCES_COLOR
 
         # Voronoi skeleton
         vis_map[self.voro] = VORO_SKELETON_COLOR
 
-        if iteration > 0:
-            # affected Voronoi cells
+        # affected Voronoi cells
+        if self.iteration > 0:
             affected_voro_mask = np.zeros((self.height, self.width), dtype=bool)
             if self.affected_voro_cells:
                 cells = np.asarray(list(self.affected_voro_cells), dtype=np.intp)
                 if cells.size > 0:
                     cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
                     affected_voro_mask[cells[:, 0], cells[:, 1]] = True
-            # affected_voro_mask &= ~changed_distance_mask
             vis_map[affected_voro_mask] = AFFECTED_VORO_CELLS_COLOR
 
         # bridges are the final cell overlay.
@@ -901,9 +913,9 @@ class IncrementalGVD:
 
         # special points
         access = np.asarray([(p[1], p[0]) for p in self.access_points], dtype=float)
-        ax.scatter(access[:, 0], access[:, 1], s=30, color="red", zorder=10, label="Access points")
+        ax.scatter(access[:, 0], access[:, 1], s=30, color="red", zorder=20, label="Access points")
         io = np.asarray([(p[1], p[0]) for p in self.io_points], dtype=float)
-        ax.scatter(io[:, 0], io[:, 1], s=50, color="green", zorder=10, label="IO points")
+        ax.scatter(io[:, 0], io[:, 1], s=50, color="green", zorder=20, label="IO points")
 
         # legend
         handles, labels = ax.get_legend_handles_labels()
@@ -921,13 +933,17 @@ class IncrementalGVD:
 
         return fig, ax
 
-    def visualize_gvd(self, iteration=0, title=None):
-        fig, ax = self.draw_grid(iteration=iteration, title=title or "Incremental GVD")
+    def visualize_gvd(self, title=None):
+        fig, ax = self.draw_grid(title=title or "Incremental GVD")
         fig.tight_layout()
         plt.show()
 
-    def visualize_graph(self, iteration=0, title=None):
-        fig, ax = self.draw_grid(iteration=iteration, title=title or "Graph from Voronoi Diagram")
+    def visualize_graph(self, title=None):
+        
+        EDGE_COLOR = [1.0, 0.6, 0.2, 1] # orange
+        VERTEX_COLOR = [0.9, 0.4, 0.1, 1] # dark orange
+        
+        fig, ax = self.draw_grid(title=title or "Graph from Voronoi Diagram")
 
         edge_segments = []
         for vertex1, vertex2 in self.graph["edges"]:
@@ -935,10 +951,10 @@ class IncrementalGVD:
             y2, x2 = self.graph["vertices"][vertex2]
             edge_segments.append([(x1, y1), (x2, y2)])
 
-        ax.add_collection(LineCollection(edge_segments, colors="blue", linewidths=3, zorder=20))
+        ax.add_collection(LineCollection(edge_segments, colors=EDGE_COLOR, linewidths=3, zorder=10, label="Graph edges"))
 
         vertices = np.asarray([(x, y) for y, x in self.graph["vertices"].values()], dtype=float)
-        ax.scatter(vertices[:, 0], vertices[:, 1], color="orange", s=30, zorder=21, label="Graph vertices")
+        ax.scatter(vertices[:, 0], vertices[:, 1], color=VERTEX_COLOR, linewidth=1, s=50, zorder=11, label="Graph vertices")
 
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels, loc="upper right")
@@ -953,7 +969,6 @@ class IncrementalGVD:
 
 if __name__ == "__main__":
     
-    scale_factor = int(sys.argv[1]) if len(sys.argv)>1 else 3
     
     from load_scenario import load_scenario_as_numpy
     
@@ -964,6 +979,12 @@ if __name__ == "__main__":
     scenario_1 = load_scenario_as_numpy(1)
     scenario_2 = load_scenario_as_numpy(2)
     scenario_3 = load_scenario_as_numpy(3)
+    
+    if len(sys.argv) > 1:
+        scale_factor = int(sys.argv[1])
+    else:
+        # one Voronoi cell must fit between two obstacles, inflated by the AGV radius in a one unit-load wide passage
+        scale_factor = math.ceil(1 / (1 - 2 * (scenario_0["agv_radius"])))
     
     # ---- iteration 0 ----
     
@@ -980,11 +1001,11 @@ if __name__ == "__main__":
     
     # compute initial distance map and Voronoi diagram
     incr_gvd.computeDistanceMap()
-    incr_gvd.visualize_gvd(iteration=0, title="Incremental GVD Results")
+    incr_gvd.visualize_gvd(title="Incremental GVD Results")
     
     # build Voronoi graph
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph(iteration=0, title="Incremental GVD Graph")
+    incr_gvd.visualize_graph(title="Incremental GVD Graph")
     
     # ---- iteration 1 ----
     
@@ -995,11 +1016,11 @@ if __name__ == "__main__":
     # recompute distance map and Voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_gvd(iteration=1, title="Incremental GVD Results After Changes")
+    incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
     
     # build Voronoi graph
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph(iteration=1, title="Incremental GVD Graph After Changes")
+    incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
     
     # ---- iteration 2 ----
     
@@ -1010,11 +1031,11 @@ if __name__ == "__main__":
     # recompute distance map and Voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_gvd(iteration=2, title="Incremental GVD Results After Changes")
+    incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
 
     # build Voronoi graph
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph(iteration=2, title="Incremental GVD Graph After Changes")
+    incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
 
     # ---- iteration 3 ----
     
@@ -1025,8 +1046,8 @@ if __name__ == "__main__":
     # recompute distance map and Voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_gvd(iteration=3, title="Incremental GVD Results After Changes")
+    incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
 
     # build Voronoi graph
     incr_gvd.build_graph()
-    incr_gvd.visualize_graph(iteration=3, title="Incremental GVD Graph After Changes")
+    incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
