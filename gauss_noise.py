@@ -551,21 +551,25 @@ def main():
         wall_clearance=(4, 4, 2, 2) # n, s, e, w
     )
     
+    # initial
     start = time.perf_counter()
     dynamic_generator.generate_map()
-    # dynamic_generator.visualize(iteration="dynamic initial")
-    
     dynamic_generator.save_scenario("scenario/0")
+    dynamic_generator.visualize(iteration="dynamic initial")
     
+    # iteration 1
     dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
     dynamic_generator.save_scenario("scenario/1")
+    dynamic_generator.visualize(iteration="dynamic after region removal")
     
-    # dynamic_generator.visualize(iteration="dynamic after region removal")
-    
-    # dynamic_generator.add_region((int(height * 0.2), int(width * 0.2)), (int(height * 0.3), int(width * 0.3)), obstacle_type=2)
-    dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=1)
+    # iteration 2
+    dynamic_generator.add_region((int(height * 0.2), int(width * 0.2)), (int(height * 0.3), int(width * 0.3)), obstacle_type=2)
     dynamic_generator.save_scenario("scenario/2")
-
+    dynamic_generator.visualize(iteration="dynamic")
+    
+    # iteration 3
+    dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
+    dynamic_generator.save_scenario("scenario/3")
     dynamic_generator.visualize(iteration="dynamic")
     
     print("Elapsed for dynamic scenario:", time.perf_counter()-start)

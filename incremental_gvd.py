@@ -14,15 +14,7 @@ from collections import defaultdict, deque
 from matplotlib.path import Path
 from matplotlib.patches import PathPatch
         
-from load_scenario import load_obstacle_collision_zone
-
 import shapely
-
-
-BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
-FREE_SPACE_COLOR = [0, 0, 0, 0]  # transparent
-SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
-UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
 
 
 class BucketPriorityQueue:
@@ -104,8 +96,9 @@ class IncrementalGVD:
         # flag for raise/lower wavefronts
         self.toRaise = np.zeros((self.height, self.width), dtype=bool)
         
-        
-        self.affected_voro_cells = set()  # track affected cells after dynamic updates for visualization
+        # track affected cells after dynamic updates for visualization
+        self.affected_distance_cells = set() 
+        self.affected_voro_cells = set()
         
         self.graph = None # { "vertices": [vid_1: (y, x), vid_2: (y, x), ...], "edges": [(vid_1, vid_2), ...] }
         
@@ -262,10 +255,13 @@ class IncrementalGVD:
         return value  # return the type of obstacle that was removed (for move operations)
     
     def updateDistanceMap(self):
-        
+        # copy previous distance map
+        previous_D = self.D.copy()
+
+        # clear affected cells
         self.affected_voro_cells.clear()
-                
-        # while there are cells to process
+        self.affected_distance_cells.clear()
+
         while not self.open.is_empty():
             # pop cell with smallest distance
             s, _ = self.open.pop()
@@ -280,6 +276,11 @@ class IncrementalGVD:
                     # exclude this cell from voronoi diagram and propagate lower wavefront to update neighbors
                     self.voro[s[0], s[1]] = False
                     self.lower(s) 
+        
+        # determine which cells were affected
+        changed_mask = (previous_D != self.D)
+        # store as tuples
+        self.affected_distance_cells = {(int(y), int(x)) for y, x in np.argwhere(changed_mask)}
 
     def raise_(self, s):
         
@@ -326,6 +327,7 @@ class IncrementalGVD:
                 self.affected_voro_cells.add(n)
 
     def apply_obstacle_updates(self, updates, new_access_points, new_io_points):
+
         scaled_updates = []
         for update in updates:
             action = update["action"]
@@ -607,19 +609,9 @@ class IncrementalGVD:
 
     def _is_graph_connected(self):
         components = self._get_connected_components()
-
-        print(f"Graph has {len(components)} connected component(s).")
-
-        if len(components) > 1:
-            for i, component in enumerate(components):
-                print(f"  Component {i}: " f"{len(component)} vertices")
-
         if len(components) == 1:
-            print("Graph is connected.")
             return True
         else:
-            print("Graph is NOT connected.")
-            self._visualize_graph_components()
             return False
     
     def _visualize_graph_components(self):
@@ -792,10 +784,11 @@ class IncrementalGVD:
         # check that graph is connected
         if self._is_graph_connected():
             print("Graph is connected.")
-            print("\nMAP GENERATION SUCCESSFUL")
+            print("\n[MAP GENERATION SUCCESSFUL]")
         else:
-            print("Generated graph is not connected!")
-            print("\nMAP GENERATION FAILED")
+            print("Generated graph is NOT connected!")
+            print("\n[MAP GENERATION FAILED]")
+            self._visualize_graph_components()
             self.visualize_graph(title="Disconnected Graph", iteration=0)
             # raise ValueError("Generated graph is not connected!")
         
@@ -827,110 +820,132 @@ class IncrementalGVD:
         print(f"Connected {connected}/{len(self.access_points) + len(self.io_points)} special points to graph vertices.")
         
         
-    # TODO fix grey artefacts on last iteration
-    def draw_grid(self, iteration):
+    def draw_grid(self, iteration, title=None):
+        from matplotlib.patches import Patch
+        
+        BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
+        SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
+        UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
+                
+        VORO_SKELETON_COLOR = [0.3, 0.3, 0.5, 0.7] # blue
+        AFFECTED_VORO_CELLS_COLOR = [0.8, 0.2, 0.2, 0.7] # red overlay
+        AFFECTED_DISTANCES_COLOR = [0.9, 0.1, 0.1, 0.3] # red
+        BRIDGE_COLOR = [0.2, 0.5, 0.2, 0.7] # green
+                
         fig, ax = plt.subplots(figsize=(25, 20))
-
         vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
 
-        # buffer zone (light grey)
-        buffer_zone = load_obstacle_collision_zone(iteration)
-        buffer_zone = shapely.affinity.scale(buffer_zone, xfact=self.scale_factor, yfact=self.scale_factor, origin=(0, 0))
-        buffer_zone = shapely.affinity.translate(buffer_zone, xoff=1, yoff=1)
-        vertices = []
-        codes = []
-        for poly in buffer_zone.geoms:
+        # buffer zone
+        from shapely.geometry import Polygon, MultiPolygon
+        # create a polygon for the buffer zone around each obstacle cell
+        NUM_SEGMENTS = 2
+        buffer_polygons = []
+        for y in range(self.height):
+            for x in range(self.width):
+                if self.occupancy_grid[y, x] > 0:  # if the cell is occupied
+                    # create a square polygon for the cell and buffer it
+                    cell_polygon = Polygon([(x, y), (x + 1, y), (x + 1, y + 1), (x, y + 1)])
+                    buffer_polygon = cell_polygon.buffer(self.agv_radius, resolution=NUM_SEGMENTS, join_style=shapely.BufferJoinStyle.round)
+                    buffer_polygons.append(buffer_polygon)
+        buffer_zone = MultiPolygon(buffer_polygons)
+        polygons = (list(buffer_zone.geoms) if hasattr(buffer_zone, "geoms") else [buffer_zone])
+        for poly in polygons:
+            vertices = []
+            codes = []
             exterior = np.asarray(poly.exterior.coords)
             vertices.extend(exterior)
             codes.extend([Path.MOVETO] + [Path.LINETO] * (len(exterior) - 2) + [Path.CLOSEPOLY])
-            for interior in poly.interiors:
-                hole = np.asarray(interior.coords)
+            for hole in poly.interiors:
+                hole = np.asarray(hole.coords)
                 vertices.extend(hole)
                 codes.extend([Path.MOVETO] + [Path.LINETO] * (len(hole) - 2) + [Path.CLOSEPOLY])
-        path = Path(vertices, codes)
-        ax.add_patch(PathPatch(path, facecolor=BUFFER_COLOR[:3], alpha=BUFFER_COLOR[3], edgecolor="none", zorder=0))
-
-        # simple obstacles (dark grey)
-        obstacle_mask = self.occupancy_grid == 1
-        vis_map[obstacle_mask] = SIMPLE_OBSTACLE_COLOR
+            ax.add_patch(PathPatch(Path(vertices, codes), facecolor=BUFFER_COLOR[:3], alpha=BUFFER_COLOR[3], edgecolor="none", zorder=0))
     
-        # unit loads (grey)
-        unit_load_mask = self.occupancy_grid == 2
-        vis_map[unit_load_mask] = UNIT_LOAD_COLOR
+        # occupancy
+        vis_map[self.occupancy_grid == 1] = SIMPLE_OBSTACLE_COLOR
+        vis_map[self.occupancy_grid == 2] = UNIT_LOAD_COLOR
 
-        # voronoi cells (normal: blue, affected by updates: red)
-        voronoi_mask = self.voro
-        vis_map[voronoi_mask] = [0.3, 0.3, 0.5, 0.7]  # blue for normal Voronoi cells
-        affected_voronoi_mask = np.zeros_like(self.voro, dtype=bool)
+        # affected distance cells
+        changed_distance_mask = np.zeros((self.height, self.width), dtype=bool)
+        if self.affected_distance_cells:
+            cells = np.asarray(list(self.affected_distance_cells), dtype=np.intp)
+            if cells.size > 0:
+                cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
+                changed_distance_mask[cells[:, 0], cells[:, 1]] = True
+        vis_map[changed_distance_mask] = AFFECTED_DISTANCES_COLOR
+
+        # Voronoi skeleton
+        vis_map[self.voro] = VORO_SKELETON_COLOR
+
         if iteration > 0:
-            for cell in self.affected_voro_cells:
-                affected_voronoi_mask[cell] = True
-            vis_map[affected_voronoi_mask] = [0.8, 0.2, 0.2, 0.7]  # red for affected Voronoi cells
-        
-        # bridges
-        bridge_mask = self.special_point_bridges
-        vis_map[bridge_mask] = [0.2, 0.8, 0.2, 0.7]  # green for bridges
-        
-        # convert squared distances to actual distances
-        distance_overlay = np.sqrt(np.copy(self.D))
-        
-        # overlay the distance map on top of the occupancy grid visualization
-        # distance_im = ax.imshow(distance_overlay, origin='lower', extent=(0, self.width, 0, self.height), cmap='viridis', alpha=0.5)
-        # fig.colorbar(distance_im, ax=ax, fraction=0.046, pad=0.04, label='Distance')
+            # affected Voronoi cells
+            affected_voro_mask = np.zeros((self.height, self.width), dtype=bool)
+            if self.affected_voro_cells:
+                cells = np.asarray(list(self.affected_voro_cells), dtype=np.intp)
+                if cells.size > 0:
+                    cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
+                    affected_voro_mask[cells[:, 0], cells[:, 1]] = True
+            # affected_voro_mask &= ~changed_distance_mask
+            vis_map[affected_voro_mask] = AFFECTED_VORO_CELLS_COLOR
 
-        ax.imshow(vis_map, origin='lower', extent=(0, self.width, 0, self.height))
+        # bridges are the final cell overlay.
+        vis_map[self.special_point_bridges] = BRIDGE_COLOR
+        ax.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", zorder=1)
 
+        # grid and axes
         ax.set_xticks(np.arange(1, self.width, self.scale_factor))
         ax.set_yticks(np.arange(1, self.height, self.scale_factor))
-        ax.grid(True, color='black', linestyle='-', linewidth=0.5)
-
+        ax.grid(True, color="black", linestyle="-", linewidth=0.5, zorder=5)
         ax.set_xlim(0, self.width)
-        ax.set_ylim(0, self.height)
-        ax.set_aspect('equal')
+        ax.set_ylim(self.height, 0)
+        ax.set_aspect("equal")
         ax.margins(0)
-        ax.invert_yaxis()
-        
-        # access points
-        access_x = [p[1] for p in self.access_points]
-        access_y = [p[0] for p in self.access_points]
-        ax.scatter(access_x, access_y, s=30, color="red", zorder=10, label="Access points")
 
-        # IO points
-        io_x = [p[1] for p in self.io_points]
-        io_y = [p[0] for p in self.io_points]
-        ax.scatter(io_x, io_y, s=50, color="green", zorder=10, label="IO points")
-        ax.legend(loc='upper right')
+        # special points
+        access = np.asarray([(p[1], p[0]) for p in self.access_points], dtype=float)
+        ax.scatter(access[:, 0], access[:, 1], s=30, color="red", zorder=10, label="Access points")
+        io = np.asarray([(p[1], p[0]) for p in self.io_points], dtype=float)
+        ax.scatter(io[:, 0], io[:, 1], s=50, color="green", zorder=10, label="IO points")
+
+        # legend
+        handles, labels = ax.get_legend_handles_labels()
+        handles.append(Patch(facecolor=AFFECTED_DISTANCES_COLOR, edgecolor="none"))
+        handles.append(Patch(facecolor=AFFECTED_VORO_CELLS_COLOR, edgecolor="none"))
+        handles.append(Patch(facecolor=BRIDGE_COLOR, edgecolor="none"))
+        handles.append(Patch(facecolor=VORO_SKELETON_COLOR, edgecolor="none"))
+        labels.append("Changed distance cells")
+        labels.append("Affected Voronoi cells")
+        labels.append("Bridges")
+        labels.append("Voronoi skeleton")
+        ax.legend(handles, labels, loc="upper right")
+
+        ax.set_title(title)
 
         return fig, ax
 
-    def visualize_gvd(self, iteration, title=None):
-        
-        print(f"Visualizing GVD: {title if title else 'unnamed'}...")
-
-        fig, ax = self.draw_grid(iteration=iteration)
-
-        plt.title(title if title else "Incremental GVD")
+    def visualize_gvd(self, iteration=0, title=None):
+        fig, ax = self.draw_grid(iteration=iteration, title=title or "Incremental GVD")
+        fig.tight_layout()
         plt.show()
 
-    def visualize_graph(self, iteration, title=None):
-        print(f"Visualizing graph: {title if title else 'unnamed'}...")
+    def visualize_graph(self, iteration=0, title=None):
+        fig, ax = self.draw_grid(iteration=iteration, title=title or "Graph from Voronoi Diagram")
 
-        fig, ax = self.draw_grid(iteration=iteration)
-
-        # edges
         edge_segments = []
         for vertex1, vertex2 in self.graph["edges"]:
             y1, x1 = self.graph["vertices"][vertex1]
             y2, x2 = self.graph["vertices"][vertex2]
             edge_segments.append([(x1, y1), (x2, y2)])
-        edge_collection = LineCollection(edge_segments, colors="blue", linewidths=3, zorder=2)
-        ax.add_collection(edge_collection)
 
-        # vertices
-        vertices = np.array([(x, y) for y, x in self.graph["vertices"].values()])
-        ax.scatter(vertices[:, 0], vertices[:, 1], color="orange", s=30, zorder=3)
+        ax.add_collection(LineCollection(edge_segments, colors="blue", linewidths=3, zorder=20))
 
-        plt.title("Graph from Voronoi Diagram")
+        vertices = np.asarray([(x, y) for y, x in self.graph["vertices"].values()], dtype=float)
+        ax.scatter(vertices[:, 0], vertices[:, 1], color="orange", s=30, zorder=21, label="Graph vertices")
+
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels, loc="upper right")
+
+        fig.tight_layout()
         plt.show()
 
 
@@ -950,6 +965,7 @@ if __name__ == "__main__":
     scenario_0 = load_scenario_as_numpy(0)
     scenario_1 = load_scenario_as_numpy(1)
     scenario_2 = load_scenario_as_numpy(2)
+    scenario_3 = load_scenario_as_numpy(3)
     
     # ---- iteration 0 ----
     
@@ -982,7 +998,6 @@ if __name__ == "__main__":
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
     incr_gvd.visualize_gvd(iteration=1, title="Incremental GVD Results After Changes")
-    incr_gvd.visualize_gvd(iteration=1, title="Incremental GVD Results After Clearing Affected Bridges")
     
     # build Voronoi graph
     incr_gvd.build_graph()
@@ -998,8 +1013,22 @@ if __name__ == "__main__":
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
     incr_gvd.visualize_gvd(iteration=2, title="Incremental GVD Results After Changes")
-    incr_gvd.visualize_gvd(iteration=2, title="Incremental GVD Results After Clearing Affected Bridges")
 
     # build Voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph(iteration=2, title="Incremental GVD Graph After Changes")
+
+    # ---- iteration 3 ----
+    
+    # apply updates to the occupancy grid
+    print("\nApplying updates to the occupancy grid...")
+    incr_gvd.apply_obstacle_updates(scenario_3["updates"], scenario_3["access_points"], scenario_3["io_points"])
+    
+    # recompute distance map and Voronoi diagram after changes
+    print("\nUpdating distance map and recomputing Voronoi diagram...")
+    incr_gvd.updateDistanceMap()
+    incr_gvd.visualize_gvd(iteration=3, title="Incremental GVD Results After Changes")
+
+    # build Voronoi graph
+    incr_gvd.build_graph()
+    incr_gvd.visualize_graph(iteration=3, title="Incremental GVD Graph After Changes")

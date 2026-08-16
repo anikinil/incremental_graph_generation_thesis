@@ -140,40 +140,40 @@ def load_scenario_as_numpy(iteration = 0):
         }
     )
 
-def load_obstacle_collision_zone(iteration):
-    """Loads infalted regions of obstacle space only."""
+# def load_obstacle_collision_zone(iteration):
+#     """Loads infalted regions of obstacle space only."""
     
-    scenario = np.load(f"scenario/{iteration}.npz", allow_pickle=True)
-    occupancy = scenario["occupancy"]
-    rows, cols = occupancy.shape
+#     scenario = np.load(f"scenario/{iteration}.npz", allow_pickle=True)
+#     occupancy = scenario["occupancy"]
+#     rows, cols = occupancy.shape
 
-    squares = []
-    for r in range(rows):
-        for c in range(cols):
-            if occupancy[r, c] == 0:
-                squares.append(box(c, r, c + 1, r + 1))
+#     squares = []
+#     for r in range(rows):
+#         for c in range(cols):
+#             if occupancy[r, c] == 0:
+#                 squares.append(box(c, r, c + 1, r + 1))
 
-    world = box(0, 0, scenario["width"], scenario["height"])
+#     world = box(0, 0, scenario["width"], scenario["height"])
 
-    # build obstacles from occupancy
-    grid_free_space = unary_union(squares)
-    obstacle_space = world.difference(grid_free_space)
+#     # build obstacles from occupancy
+#     grid_free_space = unary_union(squares)
+#     obstacle_space = world.difference(grid_free_space)
     
-    # add outer walls to obstacle space
-    wall_thickness = scenario["agv_radius"]
-    wall_left = box(-wall_thickness, 0, 0, scenario["height"])
-    wall_right = box(scenario["width"], 0, scenario["width"] + wall_thickness, scenario["height"])
-    wall_bottom = box(0, -wall_thickness, scenario["width"], 0)
-    wall_top = box(0, scenario["height"], scenario["width"], scenario["height"] + wall_thickness)
-    obstacle_space = unary_union([obstacle_space, wall_left, wall_right, wall_bottom, wall_top])
+#     # add outer walls to obstacle space
+#     wall_thickness = scenario["agv_radius"]
+#     wall_left = box(-wall_thickness, 0, 0, scenario["height"])
+#     wall_right = box(scenario["width"], 0, scenario["width"] + wall_thickness, scenario["height"])
+#     wall_bottom = box(0, -wall_thickness, scenario["width"], 0)
+#     wall_top = box(0, scenario["height"], scenario["width"], scenario["height"] + wall_thickness)
+#     obstacle_space = unary_union([obstacle_space, wall_left, wall_right, wall_bottom, wall_top])
 
-    # inflate obstacles
-    if CORNER_SEGMENTS == 0:
-        inflated_obstacle_space = obstacle_space.buffer(scenario["agv_radius"], join_style=shapely.BufferJoinStyle.mitre)
-    else:
-        inflated_obstacle_space = obstacle_space.buffer(scenario["agv_radius"], resolution=CORNER_SEGMENTS, join_style=shapely.BufferJoinStyle.round)
+#     # inflate obstacles
+#     if CORNER_SEGMENTS == 0:
+#         inflated_obstacle_space = obstacle_space.buffer(scenario["agv_radius"], join_style=shapely.BufferJoinStyle.mitre)
+#     else:
+#         inflated_obstacle_space = obstacle_space.buffer(scenario["agv_radius"], resolution=CORNER_SEGMENTS, join_style=shapely.BufferJoinStyle.round)
 
-    # subtract obstacle space from infalted obstacle space
-    difference = inflated_obstacle_space.difference(obstacle_space)
+#     # subtract obstacle space from infalted obstacle space
+#     difference = inflated_obstacle_space.difference(obstacle_space)
     
-    return difference
+#     return difference
