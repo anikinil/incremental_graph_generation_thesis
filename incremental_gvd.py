@@ -18,6 +18,23 @@ from matplotlib.patches import PathPatch
 import shapely
 
 
+
+BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
+BUFFER_RES = 2
+
+SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
+UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
+
+VORO_SKELETON_COLOR = [0.3, 0.3, 0.5, 0.7] # blue
+AFFECTED_VORO_CELLS_COLOR = [0.8, 0.2, 0.2, 0.7] # red overlay
+AFFECTED_DISTANCES_COLOR = [0.9, 0.1, 0.1, 0.3] # red
+BRIDGE_COLOR = [0.2, 0.5, 0.2, 0.7] # green
+
+
+EDGE_COLOR = [1.0, 0.6, 0.2, 1] # orange
+VERTEX_COLOR = [0.9, 0.4, 0.1, 1] # dark orange
+
+
 class BucketPriorityQueue:
     
     def __init__(self, max_distance):
@@ -180,29 +197,27 @@ class IncrementalGVD:
     
     def computeDistanceMap(self):
         
-        # initialize occupied cells
+        # initialize and enqueue occupied cells
         print()
         for y in range(self.height):
             for x in range(self.width):
                 s = (y, x)
                 print(f"\r{' ' * 100}\rInitializing cell ({y}, {x}) with occupancy {self.occupancy_grid[y, x]}", end="", flush=True)
-                if self.occupancy_grid[y, x] > 0:  # if cell occupied
+                if self.occupancy_grid[y, x] > 0:  # if an object is in the cell
                     self.D[y, x] = 0 # distance to itself is zero
                     self.obst[y, x] = s # is its own closest obstacle
                     self.open.insert(s, 0) # enqueue for wavefront propagation: distance=0, cell=s
-                # else leave distance as inf and reference as (-1, -1)
-                # TODO why do they set it to inf here?
                         
         # propagate wavefronts
         print()
         while not self.open.is_empty():
             print(f"\r{' ' * 100}\rProcessing queue with current min distance {self.open.current_min_distance}", end="", flush=True)
-            # if self.open.is_empty(): # if no more cells to process: done
-                # break
             s, _ = self.open.pop() # pop cell with smallest distance
             self.lower(s) # propagate to neighbors and update their distances if closer to obstacle
         print(f"\r{' ' * 100}\rDistance map complete.")
-    
+        
+        # self.prune_voronoi(connectivity=8) # prune
+            
     def lower(self, s):
         
         # get the obstacle reference of the current cell
@@ -212,7 +227,7 @@ class IncrementalGVD:
         for n in self.Adj(s):
             # calculate distance from neighbor to obstacle
             if not self.toRaise[n[0], n[1]]:  # if neighbor not marked to raise
-                d = self.distance(s_obst, n) # calculate distance between current cell and neighbor
+                d = self.distance(s_obst, n) # calculate distance between current cell's closest obstacle and neighbor cell
                 # update neighbor's distance if new distance is smaller than its current distance
                 if d < self.D[n[0], n[1]]:
                     # update neighbor's distance
@@ -239,6 +254,10 @@ class IncrementalGVD:
         
         # enqueue new cell for wavefront propagation
         self.open.insert(s, 0)
+        
+        # track affected cells
+        self.affected_distance_cells.add(s)
+        self.affected_voro_cells.add(s) 
     
     def removeObstacle(self, s):
         
@@ -255,16 +274,14 @@ class IncrementalGVD:
         
         # add to open queue as source of propagation for raise wavefront
         self.open.insert(s, 0)
+        
+        # track affected cells
+        self.affected_distance_cells.add(s)
+        self.affected_voro_cells.add(s) 
 
         return value  # return the type of obstacle that was removed (for move operations)
     
     def updateDistanceMap(self):
-        # copy previous distance map
-        previous_D = self.D.copy()
-
-        # clear affected cells
-        self.affected_voro_cells.clear()
-        self.affected_distance_cells.clear()
 
         while not self.open.is_empty():
             # pop cell with smallest distance
@@ -318,6 +335,8 @@ class IncrementalGVD:
         obst_s = self.obst[s[0], s[1]]
         obst_n = self.obst[n[0], n[1]]
         
+        threshold = 1
+
         if (self.D[s[0], s[1]] > threshold or self.D[n[0], n[1]] > threshold) \
             and obst_n != (-1, -1) \
             and obst_s != obst_n \
@@ -337,6 +356,10 @@ class IncrementalGVD:
                 self.affected_voro_cells.add(n)
 
     def apply_obstacle_updates(self, updates, new_access_points, new_io_points):
+
+        # clear affected cells
+        self.affected_voro_cells.clear()
+        self.affected_distance_cells.clear()
 
         scaled_updates = []
         for update in updates:
@@ -394,113 +417,6 @@ class IncrementalGVD:
         
         self.iteration += 1
 
-    def thin(self):
-        """
-        "A Fast Parallel Algorithm for Thinning Digital Patterns",
-        T. Y. Zhang and C. Y. Suen (1984)
-        """
-        
-        # convert boolean to uint8 for easier int operations
-        img = (self.voro).astype(np.uint8)
-        
-        while True:
-            
-            # tracks if any pixels were deleted in this iteration
-            C = False
-
-            # ---- subiteration 1 -----
-            
-            # 8 neighbors of each pixel
-            P2 = img[:-2, 1:-1]
-            P3 = img[:-2, 2:]
-            P4 = img[1:-1, 2:]
-            P5 = img[2:, 2:]
-            P6 = img[2:, 1:-1]
-            P7 = img[2:, :-2]
-            P8 = img[1:-1, :-2]
-            P9 = img[:-2, :-2]
-            P1 = img[1:-1, 1:-1]
-
-            # number of non-zero neighbors of each P1
-            B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
-
-            # number of 01 patterns in the ordered sequence P2, P3, ..., P9, P2 around each P1
-            A = (
-                ((P2 == 0) & (P3 == 1)).astype(np.uint8)
-                + ((P3 == 0) & (P4 == 1)).astype(np.uint8)
-                + ((P4 == 0) & (P5 == 1)).astype(np.uint8)
-                + ((P5 == 0) & (P6 == 1)).astype(np.uint8)
-                + ((P6 == 0) & (P7 == 1)).astype(np.uint8)
-                + ((P7 == 0) & (P8 == 1)).astype(np.uint8)
-                + ((P8 == 0) & (P9 == 1)).astype(np.uint8)
-                + ((P9 == 0) & (P2 == 1)).astype(np.uint8)
-            )
-
-            # conditions for deleting a pixel in subiteration 1
-            delete = (                
-                (P1 == 1) # only look at skeleton pixels (not explicitly in the paper)
-                & (2 <= B) & (B <= 6)   # condition (a)
-                & (A == 1)              # condition (b)
-                & ((P2 * P4 * P6) == 0) # condition (c)
-                & ((P4 * P6 * P8) == 0) # condition (d)
-            )
-
-            # delete based on conditions from subiteration 1
-            if np.any(delete):
-                img[1:-1, 1:-1][delete] = 0
-                C = True
-
-            # ---- subiteration 2 ----
-            
-            # 8 neighbors of each pixel
-            P2 = img[:-2, 1:-1]
-            P3 = img[:-2, 2:]
-            P4 = img[1:-1, 2:]
-            P5 = img[2:, 2:]
-            P6 = img[2:, 1:-1]
-            P7 = img[2:, :-2]
-            P8 = img[1:-1, :-2]
-            P9 = img[:-2, :-2]
-            P1 = img[1:-1, 1:-1]
-
-            # number of non-zero neighbors of each P1
-            B = P2 + P3 + P4 + P5 + P6 + P7 + P8 + P9
-
-            # number of 01-patterns in the ordered sequence P2, P3, ..., P9, P2 around each P1
-            A = (
-                ((P2 == 0) & (P3 == 1)).astype(np.uint8)
-                + ((P3 == 0) & (P4 == 1)).astype(np.uint8)
-                + ((P4 == 0) & (P5 == 1)).astype(np.uint8)
-                + ((P5 == 0) & (P6 == 1)).astype(np.uint8)
-                + ((P6 == 0) & (P7 == 1)).astype(np.uint8)
-                + ((P7 == 0) & (P8 == 1)).astype(np.uint8)
-                + ((P8 == 0) & (P9 == 1)).astype(np.uint8)
-                + ((P9 == 0) & (P2 == 1)).astype(np.uint8)
-            )
-
-            # conditions for deleting a pixel in subiteration 2 with changed conditions (c') and (d')
-            delete = (
-                (P1 == 1) # implicit condition
-                & (2 <= B) & (B <= 6)   # condition (a)
-                & (A == 1)              # condition (b)
-                & ((P2 * P4 * P8) == 0) # condition (c')
-                & ((P2 * P6 * P8) == 0) # condition (d')
-            )
-
-            # delete based on conditions from subiteration 2
-            if np.any(delete): # "C += 1, if M(i, j) = 1"
-                img[1:-1, 1:-1][delete] = 0
-                C = True
-
-            # ---- termination condition ----
-
-            # terminate if no further deletions are possible
-            if not C: # "C = 0?"
-                break # "Yes -> STOP"
-            
-        self.voro = (img != 0) # update the Voronoi diagram
-        
-        self.visualize_gvd(title="Thinned Voronoi Diagram (Skeleton)")
 
     def build_special_point_bridges(self):
         """
@@ -830,23 +746,297 @@ class IncrementalGVD:
             else:
                 raise ValueError(f"Special point at ({y}, {x}) is not on a Voronoi cell.")
         print(f"Connected {connected}/{len(self.access_points) + len(self.io_points)} special points to graph vertices.")
+    
+    def draw_affected_outline(self, ax):
+        """Draw an outline exactly along the boundaries of affected cells."""
+
+        affected = np.zeros((self.height, self.width), dtype=bool)
+        LINE_WIDTH = 2
+        COLOR = (0.1, 0.1, 0.1, 1)
+
+        for row, col in self.affected_distance_cells:
+            if 0 <= row < self.height and 0 <= col < self.width:
+                affected[row, col] = True
+
+        for row, col in zip(*np.where(affected)):
+            # left boundary
+            if col == 0 or not affected[row, col - 1]:
+                ax.plot([col, col], [row, row + 1], color=COLOR, linewidth=LINE_WIDTH, zorder=50)
+
+            # right boundary
+            if col == self.width - 1 or not affected[row, col + 1]:
+                ax.plot([col + 1, col + 1], [row, row + 1], color=COLOR, linewidth=LINE_WIDTH, zorder=50)
+
+            # bottom boundary
+            if row == 0 or not affected[row - 1, col]:
+                ax.plot([col, col + 1], [row, row], color=COLOR, linewidth=LINE_WIDTH, zorder=50)
+
+            # top boundary
+            if row == self.height - 1 or not affected[row + 1, col]:
+                ax.plot([col, col + 1], [row + 1, row + 1], color=COLOR, linewidth=LINE_WIDTH, zorder=50)
+    
+    def draw_obstacles(self):
+
+        fig, ax = plt.subplots()
+        vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
+
+        # # buffer zone
+        # from shapely.geometry import box
+        # from shapely.ops import unary_union
+        # occupied = self.occupancy_grid > 0
+        # ys, xs = np.where(occupied)
+        # obstacle_polygons = [box(x, y, x + 1, y + 1) for y, x in zip(ys, xs)]
+        # obstacles = unary_union(obstacle_polygons)
+        # buffer_zone = obstacles.buffer(self.agv_radius, resolution=BUFFER_RES, join_style=shapely.BufferJoinStyle.round)
+        # buffer_zone = buffer_zone.intersection(box(0, 0, self.width, self.height))
+        # polygons = (list(buffer_zone.geoms) if hasattr(buffer_zone, "geoms") else [buffer_zone])
+        # for poly in polygons:
+        #     vertices = []
+        #     codes = []
+        #     exterior = np.asarray(poly.exterior.coords)
+        #     vertices.extend(exterior)
+        #     codes.extend([Path.MOVETO] + [Path.LINETO] * (len(exterior) - 2) + [Path.CLOSEPOLY])
+        #     for hole in poly.interiors:
+        #         hole = np.asarray(hole.coords)
+        #         vertices.extend(hole)
+        #         codes.extend([Path.MOVETO] + [Path.LINETO] * (len(hole) - 2) + [Path.CLOSEPOLY])
+        #     ax.add_patch(PathPatch( Path(vertices, codes), facecolor=BUFFER_COLOR[:3], alpha=BUFFER_COLOR[3], edgecolor="none", zorder=0))
         
+        # occupancy
+        vis_map[self.occupancy_grid == 1] = SIMPLE_OBSTACLE_COLOR
+        vis_map[self.occupancy_grid == 2] = UNIT_LOAD_COLOR
+    
+        ax.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", zorder=2)
+    
+        return fig, ax
         
+    
+    def visualize_distance_map(self, title=None):
+        """Draws obstacles and D"""
+        
+        fig, ax = self.draw_obstacles()
+        vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
+
+        # distance map
+        D_normalized = self.D / np.max(self.D) if np.max(self.D) > 0 else self.D
+        D_colormap = plt.cm.plasma(D_normalized)
+        vis_map[self.D < np.inf] = D_colormap[self.D < np.inf]
+
+        ax.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", alpha=0.8, zorder=1)
+        
+        # affected cells outline
+        if self.iteration > 0:
+            self.draw_affected_outline(ax)
+        
+        # distance map legend
+        from matplotlib.colors import Normalize
+        from matplotlib.cm import ScalarMappable
+        
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        
+        norm = Normalize(vmin=0, vmax=np.max(self.D) if np.max(self.D) > 0 else 1)
+        sm = ScalarMappable(cmap=plt.cm.plasma, norm=norm)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="3%", pad=0.1)
+        cbar = fig.colorbar(sm, cax=cax)
+        cbar.set_label('Distance to Nearest Obstacle', rotation=270, labelpad=15)
+        
+        ax.set_xticks(np.arange(1, self.width, self.scale_factor))
+        ax.set_yticks(np.arange(1, self.height, self.scale_factor))
+        
+        # remove tick marks and labels
+        ax.tick_params(axis='both', which='both', length=0) 
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        
+        ax.set_axisbelow(False)
+        ax.grid(True, color='black', linestyle='-', linewidth=0.5, zorder=40)
+        ax.set_xlim(0, self.width)
+        ax.set_ylim(self.height, 0)
+        ax.set_aspect('equal')
+        ax.margins(0)
+        
+        # if title:
+        #     ax.set_title(title, fontsize=20, pad=5)
+                
+        fig.savefig(f"distance_map_{self.iteration}_{title}.pdf", format="pdf", bbox_inches="tight")
+        
+        plt.show()
+    
+    def visualize_voro(self, title=None):
+        """Draw obstacles and voro"""
+
+        fig, ax = self.draw_obstacles()
+        vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
+
+        # voro map
+        vis_map[self.voro] = VORO_SKELETON_COLOR
+        
+        # affected cells outline
+        if self.iteration > 0:
+            # self.draw_affected_outline(ax)
+            # affected distance cells
+            if self.iteration > 0:
+                changed_distance_mask = np.zeros((self.height, self.width), dtype=bool)
+                if self.affected_distance_cells:
+                    cells = np.asarray(list(self.affected_distance_cells), dtype=np.intp)
+                    if cells.size > 0:
+                        cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
+                        changed_distance_mask[cells[:, 0], cells[:, 1]] = True
+                vis_map[changed_distance_mask] = AFFECTED_DISTANCES_COLOR
+            # affected Voronoi cells
+            if self.iteration > 0:
+                affected_voro_mask = np.zeros((self.height, self.width), dtype=bool)
+                if self.affected_voro_cells:
+                    cells = np.asarray(list(self.affected_voro_cells), dtype=np.intp)
+                    if cells.size > 0:
+                        cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
+                        affected_voro_mask[cells[:, 0], cells[:, 1]] = True
+                vis_map[affected_voro_mask] = AFFECTED_VORO_CELLS_COLOR
+        
+        ax.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", zorder=1)
+        ax.set_xticks(np.arange(1, self.width, self.scale_factor))
+        ax.set_yticks(np.arange(1, self.height, self.scale_factor))
+        
+        # remove tick marks and labels
+        ax.tick_params(axis='both', which='both', length=0) 
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        
+        ax.set_axisbelow(False)
+        ax.grid(True, color='black', linestyle='-', linewidth=0.5, zorder=40)
+        ax.set_xlim(0, self.width)
+        ax.set_ylim(self.height, 0)
+        ax.set_aspect('equal')
+        ax.margins(0)
+        
+        # if title:
+        #     ax.set_title(title, fontsize=20, pad=5)
+                
+        fig.savefig(f"voro_map_{self.iteration}_{title}.pdf", format="pdf", bbox_inches="tight")
+        
+        plt.show()
+    
+    def visualize_distance_map_and_voro(self, title=None):
+        """Draw obstacles, D, and voro as two subplots in one figure."""
+        
+        fig = plt.figure(figsize=(7, 10))
+
+        gs = fig.add_gridspec(2, 2, width_ratios=[1, 0.05], height_ratios=[1, 1], wspace=0.1, hspace=0.1)
+
+        ax1 = fig.add_subplot(gs[0, 0])  # distance map
+        cax = fig.add_subplot(gs[0, 1])  # colorbar
+        ax2 = fig.add_subplot(gs[1, 0])  # voro map
+
+        # obstacles
+
+        vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
+
+        vis_map[self.occupancy_grid == 1] = SIMPLE_OBSTACLE_COLOR
+        vis_map[self.occupancy_grid == 2] = UNIT_LOAD_COLOR
+    
+        ax1.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", zorder=2)
+        ax2.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", zorder=2)
+        
+        # distance map
+
+        vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
+
+        # distance map
+        D_normalized = self.D / np.max(self.D) if np.max(self.D) > 0 else self.D
+        D_colormap = plt.cm.plasma(D_normalized)
+        vis_map[self.D < np.inf] = D_colormap[self.D < np.inf]
+
+        ax1.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", alpha=0.8, zorder=1)
+        
+        # affected cells outline
+        if self.iteration > 0:
+            self.draw_affected_outline(ax1)
+        
+        # distance map legend
+        from matplotlib.colors import Normalize
+        from matplotlib.cm import ScalarMappable
+        norm = Normalize(vmin=0, vmax=np.max(self.D) if np.max(self.D) > 0 else 1)
+
+        sm = ScalarMappable(cmap=plt.cm.plasma, norm=norm)
+
+        cbar = fig.colorbar(sm, cax=cax)
+        cbar.set_label("Distance to Nearest Obstacle")
+        
+        ax1.set_xticks(np.arange(1, self.width, self.scale_factor))
+        ax1.set_yticks(np.arange(1, self.height, self.scale_factor))
+        
+        # remove tick marks and labels
+        ax1.tick_params(axis='both', which='both', length=0) 
+        ax1.set_xticklabels([])
+        ax1.set_yticklabels([])
+        
+        ax1.set_axisbelow(False)
+        ax1.grid(True, color='black', linestyle='-', linewidth=0.5, zorder=40)
+        ax1.set_xlim(0, self.width)
+        ax1.set_ylim(self.height, 0)
+        ax1.set_aspect('equal')
+        ax1.margins(0)
+        
+        # voro
+        
+        vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
+
+        # voro map
+        vis_map[self.voro] = VORO_SKELETON_COLOR
+        
+        # affected cells outline
+        if self.iteration > 0:
+            # self.draw_affected_outline(ax)
+            # affected distance cells
+            if self.iteration > 0:
+                changed_distance_mask = np.zeros((self.height, self.width), dtype=bool)
+                if self.affected_distance_cells:
+                    cells = np.asarray(list(self.affected_distance_cells), dtype=np.intp)
+                    if cells.size > 0:
+                        cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
+                        changed_distance_mask[cells[:, 0], cells[:, 1]] = True
+                vis_map[changed_distance_mask] = AFFECTED_DISTANCES_COLOR
+            # affected Voronoi cells
+            if self.iteration > 0:
+                affected_voro_mask = np.zeros((self.height, self.width), dtype=bool)
+                if self.affected_voro_cells:
+                    cells = np.asarray(list(self.affected_voro_cells), dtype=np.intp)
+                    if cells.size > 0:
+                        cells = cells[(cells[:, 0] >= 0) & (cells[:, 0] < self.height) & (cells[:, 1] >= 0) & (cells[:, 1] < self.width)]
+                        affected_voro_mask[cells[:, 0], cells[:, 1]] = True
+                vis_map[affected_voro_mask] = AFFECTED_VORO_CELLS_COLOR
+        
+        ax2.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", zorder=1)
+        ax2.set_xticks(np.arange(1, self.width, self.scale_factor))
+        ax2.set_yticks(np.arange(1, self.height, self.scale_factor))
+        
+        # remove tick marks and labels
+        ax2.tick_params(axis='both', which='both', length=0) 
+        ax2.set_xticklabels([])
+        ax2.set_yticklabels([])
+        
+        ax2.set_axisbelow(False)
+        ax2.grid(True, color='black', linestyle='-', linewidth=0.5, zorder=40)
+        ax2.set_xlim(0, self.width)
+        ax2.set_ylim(self.height, 0)
+        ax2.set_aspect('equal')
+        ax2.margins(0)
+        
+        fig.canvas.draw()
+
+        ax1.annotate("", xy=(0.5, 0.48), xytext=(0.5, 0.52), xycoords=fig.transFigure, arrowprops=dict(arrowstyle="->", linewidth=2))
+        
+        plt.savefig(f"distance_and_voro_map_{self.iteration}_{title}.pdf", format="pdf", bbox_inches="tight")
+        
+        plt.tight_layout()
+        plt.show()
+    
     def draw_grid(self, title=None):
         from matplotlib.patches import Patch
         
-        BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
-        BUFFER_RES = 2
-        
-        SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
-        UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
+        fig, ax = self.draw_obstacles()
                 
-        VORO_SKELETON_COLOR = [0.3, 0.3, 0.5, 0.7] # blue
-        AFFECTED_VORO_CELLS_COLOR = [0.8, 0.2, 0.2, 0.7] # red overlay
-        AFFECTED_DISTANCES_COLOR = [0.9, 0.1, 0.1, 0.3] # red
-        BRIDGE_COLOR = [0.2, 0.5, 0.2, 0.7] # green
-                
-        fig, ax = plt.subplots(figsize=(25, 20))
         vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
 
         # buffer zone
@@ -905,17 +1095,20 @@ class IncrementalGVD:
         # grid and axes
         ax.set_xticks(np.arange(1, self.width, self.scale_factor))
         ax.set_yticks(np.arange(1, self.height, self.scale_factor))
-        ax.grid(True, color='black', linestyle='-', linewidth=0.5, zorder=5)
+        ax.set_axisbelow(False)
+        ax.grid(True, color='black', linestyle='-', linewidth=0.5, zorder=40)
         ax.set_xlim(0, self.width)
         ax.set_ylim(self.height, 0)
         ax.set_aspect('equal')
         ax.margins(0)
 
         # special points
-        access = np.asarray([(p[1], p[0]) for p in self.access_points], dtype=float)
-        ax.scatter(access[:, 0], access[:, 1], s=30, color="red", zorder=20, label="Access points")
-        io = np.asarray([(p[1], p[0]) for p in self.io_points], dtype=float)
-        ax.scatter(io[:, 0], io[:, 1], s=50, color="green", zorder=20, label="IO points")
+        if self.access_points:
+            access = np.asarray([(p[1], p[0]) for p in self.access_points], dtype=float)
+            ax.scatter(access[:, 0], access[:, 1], s=30, color="red", zorder=20, label="Access points")
+        if self.io_points:
+            io = np.asarray([(p[1], p[0]) for p in self.io_points], dtype=float)
+            ax.scatter(io[:, 0], io[:, 1], s=50, color="green", zorder=20, label="IO points")
 
         # legend
         handles, labels = ax.get_legend_handles_labels()
@@ -939,9 +1132,6 @@ class IncrementalGVD:
         plt.show()
 
     def visualize_graph(self, title=None):
-        
-        EDGE_COLOR = [1.0, 0.6, 0.2, 1] # orange
-        VERTEX_COLOR = [0.9, 0.4, 0.1, 1] # dark orange
         
         fig, ax = self.draw_grid(title=title or "Graph from Voronoi Diagram")
 
@@ -1001,7 +1191,10 @@ if __name__ == "__main__":
     
     # compute initial distance map and Voronoi diagram
     incr_gvd.computeDistanceMap()
-    incr_gvd.visualize_gvd(title="Incremental GVD Results")
+    # incr_gvd.visualize_distance_map(title="Initial Distance Map")
+    # incr_gvd.visualize_voro(title="Voronoi Diagram After Changes")
+    incr_gvd.visualize_distance_map_and_voro(title="dist_and_voro")
+    # incr_gvd.visualize_gvd(title="Incremental GVD Results")
     
     # build Voronoi graph
     incr_gvd.build_graph()
@@ -1016,7 +1209,8 @@ if __name__ == "__main__":
     # recompute distance map and Voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
+    incr_gvd.visualize_distance_map_and_voro(title="dist_and_voro")
+    
     
     # build Voronoi graph
     incr_gvd.build_graph()
@@ -1031,23 +1225,24 @@ if __name__ == "__main__":
     # recompute distance map and Voronoi diagram after changes
     print("\nUpdating distance map and recomputing Voronoi diagram...")
     incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
+    incr_gvd.visualize_distance_map_and_voro(title="dist_and_voro")
 
     # build Voronoi graph
     incr_gvd.build_graph()
     incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
 
-    # ---- iteration 3 ----
+    # # ---- iteration 3 ----
     
-    # apply updates to the occupancy grid
-    print("\nApplying updates to the occupancy grid...")
-    incr_gvd.apply_obstacle_updates(scenario_3["updates"], scenario_3["access_points"], scenario_3["io_points"])
+    # # apply updates to the occupancy grid
+    # print("\nApplying updates to the occupancy grid...")
+    # incr_gvd.apply_obstacle_updates(scenario_3["updates"], scenario_3["access_points"], scenario_3["io_points"])
     
-    # recompute distance map and Voronoi diagram after changes
-    print("\nUpdating distance map and recomputing Voronoi diagram...")
-    incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
+    # # recompute distance map and Voronoi diagram after changes
+    # print("\nUpdating distance map and recomputing Voronoi diagram...")
+    # incr_gvd.updateDistanceMap()
+    # incr_gvd.visualize_distance_map(title="Distance Map After Changes")
+    # incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
 
-    # build Voronoi graph
-    incr_gvd.build_graph()
-    incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
+    # # build Voronoi graph
+    # incr_gvd.build_graph()
+    # incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")

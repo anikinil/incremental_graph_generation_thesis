@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 
 class ScenarioGenerator:
-    def __init__(self, seed, height, width, occupancy_rate, sigma_coarse, sigma_fine, noisy_aisles_num, noisy_aisle_sigma, io_points, IO_points_radius, simple_obstacle_rate, agv_radius, ordered_aisle_spacing = (0, 0), ordered_aisle_offset = (0, 0), ordered_aisle_widths = (1, 1), wall_clearance = (0, 0, 0, 0)):
+    def __init__(self, seed, height, width, occupancy_rate, sigma_coarse, sigma_fine, noisy_aisles_num, noisy_aisle_sigma, io_points, IO_points_radius, simple_obstacle_rate, agv_radius, ordered_aisle_widths = (0, 0), ordered_aisle_spacing = (0, 0), ordered_aisle_offset = (0, 0), wall_clearance = (0, 0, 0, 0)):
         
         self.seed = seed
         self.rng = np.random.default_rng(seed)  # random number generator with a fixed seed for reproducibility
@@ -31,9 +31,9 @@ class ScenarioGenerator:
         
         self.agv_radius = agv_radius
 
+        self.ordered_aisle_widths = ordered_aisle_widths # (y, x): width of the ordered aisles in rows and columns (if both zero, no ordered aisles)
         self.ordered_aisle_spacing = ordered_aisle_spacing # (y, x): y rows between aisles, x columns between aisles
         self.ordered_aisle_offset = ordered_aisle_offset # (y, x): offset of the first aisle from the top-left corner
-        self.ordered_aisle_widths = ordered_aisle_widths # (y, x): width of the ordered aisles in rows and columns
 
         self.wall_clearance = wall_clearance  # (north, south, east, west): offset of the wall from the edges
 
@@ -71,26 +71,33 @@ class ScenarioGenerator:
             
         # reduce obstacle probability around I/O points
         field -= io_penalty
-
+        
+        # normalize again
+        field = (field - field.min()) / (field.max() - field.min())
+        
         # create binary mask where cells that must reliably remain free of obstacles are marked 0
         guaranteed_free = np.ones_like(field)
 
         # add wall clearance to mask
         wall_n, wall_s, wall_e, wall_w = self.wall_clearance
-        guaranteed_free[:wall_n, :] = 0.0
-        guaranteed_free[-wall_s:, :] = 0.0
-        guaranteed_free[:, -wall_e:] = 0.0
-        guaranteed_free[:, :wall_w] = 0.0
+        if wall_n > 0:
+            guaranteed_free[:wall_n, :] = 0.0
+        if wall_s > 0:
+            guaranteed_free[-wall_s:, :] = 0.0
+        if wall_e > 0:
+            guaranteed_free[:, -wall_e:] = 0.0
+        if wall_w > 0:
+            guaranteed_free[:, :wall_w] = 0.0
 
         # add ordered aisles to mask
-        y_spacing, x_spacing = self.ordered_aisle_spacing
-        y_offset, x_offset = self.ordered_aisle_offset
         y_width, x_width = self.ordered_aisle_widths
-        for r in range(y_offset, self.height, y_spacing + y_width):
-            guaranteed_free[r:r+y_width, x_offset:] = 0.0
-        for c in range(x_offset, self.width, x_spacing + x_width):
-            guaranteed_free[y_offset:, c:c+x_width] = 0.0
-
+        if y_width > 0 and x_width > 0:
+            y_spacing, x_spacing = self.ordered_aisle_spacing
+            y_offset, x_offset = self.ordered_aisle_offset
+            for r in range(y_offset, self.height, y_spacing + y_width):
+                guaranteed_free[r:r+y_width, x_offset:] = 0.0
+            for c in range(x_offset, self.width, x_spacing + x_width):
+                guaranteed_free[y_offset:, c:c+x_width] = 0.0
 
         if self.noisy_aisles_num > 0:
             # create a field describing the noisy aisles
@@ -121,9 +128,6 @@ class ScenarioGenerator:
         for r, c in self.io_points:
             field[r, c] = 0.0
 
-        # # Clamp the final field so obstacle probabilities cannot be negative
-        field = np.clip(field, 0.0, 1.0)
-        
         self.probability_field = field
         
     # returns the best free cell for potential obstacle location based on the probability field
@@ -491,28 +495,31 @@ def main():
     width = int(sys.argv[2]) if len(sys.argv)>2 else 20
 
     io_points = { # (y, x)
-        # (1,0),
-        (height-1,int(width*0.9)),
+        (1,0),
+        # (height-1,int(width*0.9)),
         # (height-1,int(width*0.8)),
-        (int(height*0.5),width-1),
-        (int(height*0.6),int(width*0.7)),
+        # (int(height*0.5),width-1),
+        (int(height*0.8),int(width*0.7)),
+        (int(height*0.8),int(width*0.75)),
+        (int(height*0.8),int(width*0.8)),
     }
 
-    occupancy_rate = float(sys.argv[3]) if len(sys.argv)>3 else 0.3 # area occupied by obstacles
+    occupancy_rate = float(sys.argv[3]) if len(sys.argv)>3 else 0.2 # area occupied by obstacles
     
     print(f"Obstacles required: {int(height*width*occupancy_rate)} ({occupancy_rate*100:.1f}%)")
     
-    coarse_sigma = float(sys.argv[4]) if len(sys.argv)>4 else 2  # standard deviation for coarse noise
-    fine_sigma = float(sys.argv[5]) if len(sys.argv)>5 else 1  # standard deviation for fine noise
+    coarse_sigma = float(sys.argv[4]) if len(sys.argv)>4 else 4  # standard deviation for coarse noise
+    fine_sigma = float(sys.argv[5]) if len(sys.argv)>5 else 0.5 # standard deviation for fine noise
     
-    seed = int(sys.argv[6]) if len(sys.argv)>6 else 42  # random seed for reproducibility
+    seed = int(sys.argv[6]) if len(sys.argv)>6 else 45  # random seed for reproducibility
         
     noisy_aisles_num = 0  # number of aisles to generate
     noisy_aisle_sigma = 3    # determines the width of aisles
         
     IO_points_radius = 3  # how much free space around IO points is created
 
-    simple_obstacle_rate = 0.1 # how common non-unit-load (regular) obstacles should be
+    simple_obstacle_rate = 0.05 # how common non-unit-load (regular) obstacles should be
+    # simple_obstacle_rate = 1 # how common non-unit-load (regular) obstacles should be
 
     agv_radius = 0.42  # radius of the AGV in block units
 
@@ -545,10 +552,11 @@ def main():
         io_points, IO_points_radius,
         simple_obstacle_rate,
         agv_radius,
-        ordered_aisle_spacing=(5, 3),
-        ordered_aisle_offset=(int(height * 0.2), int(width * 0.3)),
-        ordered_aisle_widths=(3, 2),
-        wall_clearance=(4, 4, 2, 2) # n, s, e, w
+        ordered_aisle_widths=(2, 1),
+        ordered_aisle_spacing=(8, 2),
+        # ordered_aisle_offset=(int(height * 0.05), int(width * 0.05)),
+        ordered_aisle_offset=(0, 0),
+        wall_clearance=(1, 1, 2, 2) # n, s, e, w
     )
     
     # initial
@@ -558,19 +566,20 @@ def main():
     dynamic_generator.visualize(iteration="dynamic initial")
     
     # iteration 1
-    dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
+    # dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
+    dynamic_generator.remove_region((2, 26), (10, 38))
     dynamic_generator.save_scenario("scenario/1")
     dynamic_generator.visualize(iteration="dynamic after region removal")
     
     # iteration 2
-    dynamic_generator.add_region((int(height * 0.2), int(width * 0.2)), (int(height * 0.3), int(width * 0.3)), obstacle_type=2)
+    dynamic_generator.add_region((20, 15), (25, 23), obstacle_type=1)
     dynamic_generator.save_scenario("scenario/2")
     dynamic_generator.visualize(iteration="dynamic")
     
-    # iteration 3
-    dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
-    dynamic_generator.save_scenario("scenario/3")
-    dynamic_generator.visualize(iteration="dynamic")
+    # # iteration 3
+    # dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
+    # dynamic_generator.save_scenario("scenario/3")
+    # dynamic_generator.visualize(iteration="dynamic")
     
     print("Elapsed for dynamic scenario:", time.perf_counter()-start)
 if __name__ == "__main__":
