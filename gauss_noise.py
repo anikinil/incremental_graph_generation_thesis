@@ -49,6 +49,8 @@ class ScenarioGenerator:
         
         self.probability_field = None  # normalized probability field for obstacle placement
     
+        self.iteration = 0
+    
     def generate_noise_field(self):
         
         # generate initial gaussian noise field
@@ -120,6 +122,9 @@ class ScenarioGenerator:
             
             # reduce the obstacle probability near noisy aisles
             field -= noisy_aisle_field
+            
+            # normalize again
+            field = (field - field.min()) / (field.max() - field.min())
 
         # force every guaranteed-free cell to have zero obstacle probability
         field[guaranteed_free == 0.0] = 0.0
@@ -304,6 +309,8 @@ class ScenarioGenerator:
                         changed_cells.add(cell)
         self.update_access_points(changed_cells)
         
+        self.iteration += 1
+        
     def _add_obstacle(self, cell, type):
         self.occupancy[cell] = type  # 1 for simple obstacle, 2 for unit-load obstacle
         
@@ -385,6 +392,8 @@ class ScenarioGenerator:
 
         self.update_access_points(locations=[(r, c) for r in range(r1, r2) for c in range(c1, c2)])
         
+        self.iteration += 1
+        
     def add_region(self, top_left, bottom_right, obstacle_type=2):
         r1, c1 = top_left
         r2, c2 = bottom_right
@@ -409,67 +418,127 @@ class ScenarioGenerator:
 
         self.update_access_points(locations=[(r, c) for r in range(r1, r2) for c in range(c1, c2)])
         
-    def visualize(self, iteration=""):
+        self.iteration += 1
+    
+    def _setup_visualization(self, ax, show_grid=True):
+        ax.set_xlim(0, self.width)
+        ax.set_ylim(self.height, 0)
+        ax.set_xticks(np.arange(self.width + 1))
+        ax.set_yticks(np.arange(self.height + 1))
 
-            plt.figure(figsize=(25, 20))
-            
-            # probability / noise field
-            plt.imshow(self.probability_field, cmap="viridis", alpha=0.5, extent=(0, self.width, self.height, 0), zorder=0)
-            plt.colorbar(label="Probability")
+        if show_grid:
+            ax.grid(which="major", color="white", linewidth=1, alpha=0.5)
 
-            # obstacles
-            SIMPLE_OBST_COLOR = (0.3, 0.3, 0.3, 1)
-            UNIT_LOAD_OBST_COLOR = (0.5, 0.5, 0.5, 1)
+        ax.set_aspect("equal", adjustable="box")
+        ax.margins(0)
 
-            CELL_MARGIN = 0.1
-            CELL_SIZE = 1 - 2 * CELL_MARGIN
+        
+    def _draw_special_points(self, ax):
+        """Draw access points."""
 
-            for r in range(self.height):
-                for c in range(self.width):
-                    obstacle_type = self.occupancy[r, c]
-                    if obstacle_type == 1:
-                        color = SIMPLE_OBST_COLOR
-                    elif obstacle_type == 2:
-                        color = UNIT_LOAD_OBST_COLOR
-                    else:
-                        continue
+        IO_POINT_COLOR = (1, 0.4, 0.15)
+        IO_POINT_EDGE_COLOR = (0, 0, 0)
+        
+        x = []
+        y = []
+        u = []
+        v = []
+        for r, c, direction in self.access_points:
+            if direction == "n":
+                x.append(c)
+                y.append(r + 0.3)
+                u.append(0)
+                v.append(-0.5)
+            elif direction == "s":
+                x.append(c)
+                y.append(r - 0.3)
+                u.append(0)
+                v.append(0.5)
+            elif direction == "e":
+                x.append(c - 0.3)
+                y.append(r)
+                u.append(0.5)
+                v.append(0)
+            elif direction == "w":
+                x.append(c + 0.3)
+                y.append(r)
+                u.append(-0.5)
+                v.append(0)
+        ax.quiver(x, y, u, v, angles="xy", scale_units="xy", scale=1, color="red", width=0.008, zorder=3)
 
-                    rect = plt.Rectangle((c + CELL_MARGIN, r + CELL_MARGIN), CELL_SIZE, CELL_SIZE, facecolor=color, edgecolor="black", linewidth=2, zorder=2)
-                    plt.gca().add_patch(rect)
+        if self.io_points:
+            rows, cols = zip(*self.io_points)
+            ax.scatter(np.asarray(cols) + 0.5, np.asarray(rows) + 0.5, s=100, color=IO_POINT_COLOR, edgecolors=IO_POINT_EDGE_COLOR, linewidths=1.5, zorder=3)
+        
 
-            # IO points
-            for r, c in self.io_points:
-                circle = plt.Circle((c + 0.5, r + 0.5), radius=CELL_SIZE * 0.2, facecolor="green", edgecolor="black", linewidth=2, zorder=3)
-                plt.gca().add_patch(circle)
-            
-            # access points as arrows
-            for r, c, dir in self.access_points:
-                if dir == "n":
-                    dx, dy = 0, -0.5
-                    r += 0.3
-                elif dir == "s":
-                    dx, dy = 0, 0.5
-                    r -= 0.3
-                elif dir == "e":
-                    dx, dy = 0.5, 0
-                    c -= 0.3
-                elif dir == "w":
-                    dx, dy = -0.5, 0
-                    c += 0.3
-                else:
-                    continue
-                arrow = plt.Arrow(c, r, dx, dy, width=0.3, facecolor="red", zorder=3)
-                plt.gca().add_patch(arrow)
+    def visualize(self, title=""):
+        """
+        Display and save the probability map and the probability map
+        with obstacles side by side.
+        """
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Rectangle
+        from matplotlib.collections import PatchCollection
+        
+        fig = plt.figure(figsize=(17, 4))
+        gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 0.05], height_ratios=[1], wspace=0.1, hspace=0.1)
+        
+        axes = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])]
 
-            plt.xticks(range(self.width + 1))
-            plt.yticks(range(self.height + 1))
-            plt.grid(which="major", color="white", linewidth=1, alpha=0.5)
-            
-            plt.gca().set_aspect("equal")
+        # probability field
+        ax = axes[0]
+        image = ax.imshow(self.probability_field, cmap="viridis", origin="upper", interpolation="nearest", extent=(0, self.width, self.height, 0))
+        self._setup_visualization(ax)
 
-            plt.savefig(f"scenario_{iteration}.png", dpi=600, bbox_inches="tight")
-            plt.show()
-            plt.close()
+        # probability field + obstacles
+        ax = axes[1]
+        ax.imshow(self.probability_field, cmap="viridis", origin="upper", interpolation="nearest", extent=(0, self.width, self.height, 0), zorder=0)
+
+        obstacle_cells = np.argwhere(self.occupancy > 0)
+
+        CELL_MARGIN = 0.15
+        CELL_SIZE = 1.0 - 2.0 * CELL_MARGIN
+        
+        SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
+        UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
+
+        patches = []
+        colors = []
+
+        for r, c in obstacle_cells:
+            patches.append(Rectangle((c + CELL_MARGIN, r + CELL_MARGIN), CELL_SIZE, CELL_SIZE))
+
+            if self.occupancy[r, c] == 1:
+                colors.append(SIMPLE_OBSTACLE_COLOR)
+            else:
+                colors.append(UNIT_LOAD_COLOR)
+
+        collection = PatchCollection(patches, facecolor=colors, edgecolor="black", linewidth=1, zorder=2)
+        
+        # remove tick marks and labels
+        ax.tick_params(axis='both', which='both', length=0) 
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+                
+        for ax in axes:
+            ax.set_xticks([])
+            ax.set_yticks([])
+
+        self._setup_visualization(ax, show_grid=False)
+        ax.add_collection(collection)
+        self._draw_special_points(ax)
+
+        # colorbar on the right, spanning the full height
+        cax = fig.add_subplot(gs[0, 2])
+        fig.colorbar(image, cax=cax, label="Probability")
+        
+        # title
+        fig.suptitle(f"Iteration {self.iteration} - {title}", fontsize=16)
+
+        filename = f"probability_{title}_{self.iteration}.pdf"
+        fig.savefig(filename, format="pdf")
+        plt.show()
+        plt.close(fig)
 
     def save_scenario(self, filename):
         
@@ -495,26 +564,25 @@ def main():
     width = int(sys.argv[2]) if len(sys.argv)>2 else 20
 
     io_points = { # (y, x)
-        (1,0),
         # (height-1,int(width*0.9)),
         # (height-1,int(width*0.8)),
-        # (int(height*0.5),width-1),
-        (int(height*0.8),int(width*0.7)),
-        (int(height*0.8),int(width*0.75)),
-        (int(height*0.8),int(width*0.8)),
+        (int(height*0.1),0),
+        (int(height*0.8),int(width*0.55)),
+        (int(height*0.8),int(width*0.67)),
+        (int(height*0.8),int(width*0.79)),
     }
 
-    occupancy_rate = float(sys.argv[3]) if len(sys.argv)>3 else 0.2 # area occupied by obstacles
+    occupancy_rate = float(sys.argv[3]) if len(sys.argv)>3 else 0.3 # area occupied by obstacles
     
     print(f"Obstacles required: {int(height*width*occupancy_rate)} ({occupancy_rate*100:.1f}%)")
     
-    coarse_sigma = float(sys.argv[4]) if len(sys.argv)>4 else 4  # standard deviation for coarse noise
-    fine_sigma = float(sys.argv[5]) if len(sys.argv)>5 else 0.5 # standard deviation for fine noise
+    coarse_sigma = float(sys.argv[4]) if len(sys.argv)>4 else 4 # standard deviation for coarse noise
+    fine_sigma = float(sys.argv[5]) if len(sys.argv)>5 else 1 # standard deviation for fine noise
     
-    seed = int(sys.argv[6]) if len(sys.argv)>6 else 45  # random seed for reproducibility
+    seed = int(sys.argv[6]) if len(sys.argv)>6 else 42  # random seed for reproducibility
         
     noisy_aisles_num = 0  # number of aisles to generate
-    noisy_aisle_sigma = 3    # determines the width of aisles
+    noisy_aisle_sigma = 2    # determines the width of aisles
         
     IO_points_radius = 3  # how much free space around IO points is created
 
@@ -542,7 +610,6 @@ def main():
     
     # print("Elapsed for static scenario:", time.perf_counter()-start)
 
-
     dynamic_generator = ScenarioGenerator(
         seed,
         height, width,
@@ -552,35 +619,35 @@ def main():
         io_points, IO_points_radius,
         simple_obstacle_rate,
         agv_radius,
-        ordered_aisle_widths=(2, 1),
-        ordered_aisle_spacing=(8, 2),
-        # ordered_aisle_offset=(int(height * 0.05), int(width * 0.05)),
-        ordered_aisle_offset=(0, 0),
-        wall_clearance=(1, 1, 2, 2) # n, s, e, w
+        # ordered_aisle_widths=(2, 1),
+        # ordered_aisle_spacing=(8, 2),
+        # # ordered_aisle_offset=(int(height * 0.05), int(width * 0.05)),
+        # ordered_aisle_offset=(0, 0),
+        # wall_clearance=(2, 2, 3, 3) # n, s, e, w
     )
     
     # initial
-    start = time.perf_counter()
+    # start = time.perf_counter()
     dynamic_generator.generate_map()
     dynamic_generator.save_scenario("scenario/0")
-    dynamic_generator.visualize(iteration="dynamic initial")
+    dynamic_generator.visualize("Initial")
     
     # iteration 1
     # dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
-    dynamic_generator.remove_region((2, 26), (10, 38))
+    dynamic_generator.remove_region((4, 26), (10, 38))
     dynamic_generator.save_scenario("scenario/1")
-    dynamic_generator.visualize(iteration="dynamic after region removal")
+    dynamic_generator.visualize("Iteration 1")
     
     # iteration 2
-    dynamic_generator.add_region((20, 15), (25, 23), obstacle_type=1)
+    dynamic_generator.add_region((5, 29), (7, 35), obstacle_type=2)
     dynamic_generator.save_scenario("scenario/2")
-    dynamic_generator.visualize(iteration="dynamic")
+    dynamic_generator.visualize("Iteration 2")
     
-    # # iteration 3
-    # dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
-    # dynamic_generator.save_scenario("scenario/3")
-    # dynamic_generator.visualize(iteration="dynamic")
+    # iteration 3
+    dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
+    dynamic_generator.save_scenario("scenario/3")
+    dynamic_generator.visualize("Iteration 3")
     
-    print("Elapsed for dynamic scenario:", time.perf_counter()-start)
+    # print("Elapsed for dynamic scenario:", time.perf_counter()-start)
 if __name__ == "__main__":
     main()

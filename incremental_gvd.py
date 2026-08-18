@@ -438,8 +438,12 @@ class IncrementalGVD:
             dir_vec = dirs[dir]
             while True:
                 
-                # get current cell
-                on_voro = self.voro[int(y), int(x)]
+                try:
+                    # get current cell
+                    on_voro = self.voro[int(y), int(x)]
+                except IndexError:
+                    self.visualize_gvd(title="Voronoi Diagram with Special Points Connected")
+                    print(F"Access point {ap} ray went out of bounds at ({y}, {x}). Stopping ray.")
 
                 # if on a Voronoi cell, stop the ray
                 if on_voro:
@@ -1029,7 +1033,6 @@ class IncrementalGVD:
         
         plt.savefig(f"distance_and_voro_map_{self.iteration}_{title}.pdf", format="pdf", bbox_inches="tight")
         
-        plt.tight_layout()
         plt.show()
     
     def draw_grid(self, title=None):
@@ -1128,7 +1131,6 @@ class IncrementalGVD:
 
     def visualize_gvd(self, title=None):
         fig, ax = self.draw_grid(title=title or "Incremental GVD")
-        fig.tight_layout()
         plt.show()
 
     def visualize_graph(self, title=None):
