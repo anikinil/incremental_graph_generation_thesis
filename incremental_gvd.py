@@ -210,7 +210,12 @@ class IncrementalGVD:
                         
         # propagate wavefronts
         print()
+        dist = 0
         while not self.open.is_empty():
+            print(f"{self.open.current_min_distance} > {dist} - {self.open.current_min_distance > dist}")
+            if self.open.current_min_distance > dist:
+                dist = self.open.current_min_distance
+                self.visualize_distance_map(title=dist)
             print(f"\r{' ' * 100}\rProcessing queue with current min distance {self.open.current_min_distance}", end="", flush=True)
             s, _ = self.open.pop() # pop cell with smallest distance
             self.lower(s) # propagate to neighbors and update their distances if closer to obstacle
@@ -822,9 +827,24 @@ class IncrementalGVD:
         vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
 
         # distance map
-        D_normalized = self.D / np.max(self.D) if np.max(self.D) > 0 else self.D
-        D_colormap = plt.cm.plasma(D_normalized)
-        vis_map[self.D < np.inf] = D_colormap[self.D < np.inf]
+        
+        # D_normalized = self.D / np.max(self.D) if np.max(self.D) > 0 else self.D
+        # D_colormap = plt.cm.plasma(D_normalized)
+        # vis_map[self.D < np.inf] = D_colormap[self.D < np.inf]
+        
+        finite = np.isfinite(self.D)
+
+        D_colormap = np.zeros((*self.D.shape, 4))
+
+        if np.any(finite):
+            # max_D = np.max(self.D[finite])
+            max_D = 146
+            D_normalized = np.zeros_like(self.D, dtype=float)
+            D_normalized[finite] = self.D[finite] / max_D if max_D > 0 else 0
+
+            D_colormap[finite] = plt.cm.plasma(D_normalized[finite])
+
+        ax.imshow(D_colormap, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", alpha=0.8, zorder=1)
 
         ax.imshow(vis_map, origin="lower", extent=(0, self.width, 0, self.height), interpolation="none", alpha=0.8, zorder=1)
         
@@ -838,12 +858,13 @@ class IncrementalGVD:
         
         from mpl_toolkits.axes_grid1 import make_axes_locatable
         
-        norm = Normalize(vmin=0, vmax=np.max(self.D) if np.max(self.D) > 0 else 1)
-        sm = ScalarMappable(cmap=plt.cm.plasma, norm=norm)
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="3%", pad=0.1)
-        cbar = fig.colorbar(sm, cax=cax)
-        cbar.set_label('Distance to Nearest Obstacle', rotation=270, labelpad=15)
+        # norm = Normalize(vmin=0, vmax=np.max(self.D) if np.max(self.D) > 0 else 1)
+        # norm = Normalize(vmin=0, vmax=146 if np.max(self.D) > 0 else 1)
+        # sm = ScalarMappable(cmap=plt.cm.plasma, norm=norm)
+        # divider = make_axes_locatable(ax)
+        # cax = divider.append_axes("right", size="3%", pad=0.1)
+        # cbar = fig.colorbar(sm, cax=cax)
+        # cbar.set_label('Distance to Nearest Obstacle', rotation=270, labelpad=15)
         
         ax.set_xticks(np.arange(1, self.width, self.scale_factor))
         ax.set_yticks(np.arange(1, self.height, self.scale_factor))
@@ -863,9 +884,12 @@ class IncrementalGVD:
         # if title:
         #     ax.set_title(title, fontsize=20, pad=5)
                 
-        fig.savefig(f"distance_map_{self.iteration}_{title}.pdf", format="pdf", bbox_inches="tight")
+        # fig.savefig(f"distance_map_{self.iteration}_{title}.pdf", format="pdf", bbox_inches="tight")
         
-        plt.show()
+        filename = f"gvd_steps/gvd_{title}.pdf"
+        fig.savefig(filename, format="pdf", bbox_inches="tight")
+        
+        # plt.show()
     
     def visualize_voro(self, title=None):
         """Draw obstacles and voro"""
@@ -1131,6 +1155,7 @@ class IncrementalGVD:
 
     def visualize_gvd(self, title=None):
         fig, ax = self.draw_grid(title=title or "Incremental GVD")
+        
         plt.show()
 
     def visualize_graph(self, title=None):
@@ -1168,9 +1193,9 @@ if __name__ == "__main__":
     
     # load initial scenario and add outer walls
     scenario_0 = load_scenario_as_numpy(0)
-    scenario_1 = load_scenario_as_numpy(1)
-    scenario_2 = load_scenario_as_numpy(2)
-    scenario_3 = load_scenario_as_numpy(3)
+    # scenario_1 = load_scenario_as_numpy(1)
+    # scenario_2 = load_scenario_as_numpy(2)
+    # scenario_3 = load_scenario_as_numpy(3)
     
     if len(sys.argv) > 1:
         scale_factor = int(sys.argv[1])

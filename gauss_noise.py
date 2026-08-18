@@ -427,7 +427,7 @@ class ScenarioGenerator:
         ax.set_yticks(np.arange(self.height + 1))
 
         if show_grid:
-            ax.grid(which="major", color="white", linewidth=1, alpha=0.5)
+            ax.grid(which="major", color="black", linewidth=1, alpha=0.5)
 
         ax.set_aspect("equal", adjustable="box")
         ax.margins(0)
@@ -439,32 +439,32 @@ class ScenarioGenerator:
         IO_POINT_COLOR = (1, 0.4, 0.15)
         IO_POINT_EDGE_COLOR = (0, 0, 0)
         
-        x = []
-        y = []
-        u = []
-        v = []
-        for r, c, direction in self.access_points:
-            if direction == "n":
-                x.append(c)
-                y.append(r + 0.3)
-                u.append(0)
-                v.append(-0.5)
-            elif direction == "s":
-                x.append(c)
-                y.append(r - 0.3)
-                u.append(0)
-                v.append(0.5)
-            elif direction == "e":
-                x.append(c - 0.3)
-                y.append(r)
-                u.append(0.5)
-                v.append(0)
-            elif direction == "w":
-                x.append(c + 0.3)
-                y.append(r)
-                u.append(-0.5)
-                v.append(0)
-        ax.quiver(x, y, u, v, angles="xy", scale_units="xy", scale=1, color="red", width=0.008, zorder=3)
+        # x = []
+        # y = []
+        # u = []
+        # v = []
+        # for r, c, direction in self.access_points:
+        #     if direction == "n":
+        #         x.append(c)
+        #         y.append(r + 0.3)
+        #         u.append(0)
+        #         v.append(-0.5)
+        #     elif direction == "s":
+        #         x.append(c)
+        #         y.append(r - 0.3)
+        #         u.append(0)
+        #         v.append(0.5)
+        #     elif direction == "e":
+        #         x.append(c - 0.3)
+        #         y.append(r)
+        #         u.append(0.5)
+        #         v.append(0)
+        #     elif direction == "w":
+        #         x.append(c + 0.3)
+        #         y.append(r)
+        #         u.append(-0.5)
+        #         v.append(0)
+        # ax.quiver(x, y, u, v, angles="xy", scale_units="xy", scale=1, color="red", width=0.008, zorder=3)
 
         if self.io_points:
             rows, cols = zip(*self.io_points)
@@ -481,9 +481,9 @@ class ScenarioGenerator:
         from matplotlib.collections import PatchCollection
         
         fig = plt.figure(figsize=(17, 4))
-        gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 0.05], height_ratios=[1], wspace=0.1, hspace=0.1)
+        gs = fig.add_gridspec(1, 3, width_ratios=[1, 0.05, 1], height_ratios=[1], wspace=0.1, hspace=0.1)
         
-        axes = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])]
+        axes = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 2])]
 
         # probability field
         ax = axes[0]
@@ -492,7 +492,7 @@ class ScenarioGenerator:
 
         # probability field + obstacles
         ax = axes[1]
-        ax.imshow(self.probability_field, cmap="viridis", origin="upper", interpolation="nearest", extent=(0, self.width, self.height, 0), zorder=0)
+        # ax.imshow(self.probability_field, cmap="viridis", origin="upper", interpolation="nearest", extent=(0, self.width, self.height, 0), zorder=0)
 
         obstacle_cells = np.argwhere(self.occupancy > 0)
 
@@ -524,18 +524,19 @@ class ScenarioGenerator:
             ax.set_xticks([])
             ax.set_yticks([])
 
-        self._setup_visualization(ax, show_grid=False)
+        self._setup_visualization(ax, show_grid=True)
         ax.add_collection(collection)
         self._draw_special_points(ax)
 
         # colorbar on the right, spanning the full height
-        cax = fig.add_subplot(gs[0, 2])
+        cax = fig.add_subplot(gs[0, 1])
         fig.colorbar(image, cax=cax, label="Probability")
         
         # title
-        fig.suptitle(f"Iteration {self.iteration} - {title}", fontsize=16)
+        # fig.suptitle(f"Iteration {self.iteration} - {title}", fontsize=16)
 
-        filename = f"probability_{title}_{self.iteration}.pdf"
+        filename = f"probability/{title}_{self.iteration}.pdf"
+        print(filename)
         fig.savefig(filename, format="pdf")
         plt.show()
         plt.close(fig)
@@ -582,12 +583,12 @@ def main():
     seed = int(sys.argv[6]) if len(sys.argv)>6 else 42  # random seed for reproducibility
         
     noisy_aisles_num = 0  # number of aisles to generate
-    noisy_aisle_sigma = 2    # determines the width of aisles
+    noisy_aisle_sigma = 1    # determines the width of aisles
         
     IO_points_radius = 3  # how much free space around IO points is created
 
-    simple_obstacle_rate = 0.05 # how common non-unit-load (regular) obstacles should be
-    # simple_obstacle_rate = 1 # how common non-unit-load (regular) obstacles should be
+    # simple_obstacle_rate = 0.05 # how common non-unit-load (regular) obstacles should be
+    simple_obstacle_rate = 1 # how common non-unit-load (regular) obstacles should be
 
     agv_radius = 0.42  # radius of the AGV in block units
 
@@ -610,6 +611,13 @@ def main():
     
     # print("Elapsed for static scenario:", time.perf_counter()-start)
 
+    noisy_aisles_num = 0
+    height= 30
+    width = 50
+    occupancy_rate = 0.1
+    coarse_sigma = 3
+    fine_sigma = 3
+    seed = 45
     dynamic_generator = ScenarioGenerator(
         seed,
         height, width,
@@ -625,28 +633,74 @@ def main():
         # ordered_aisle_offset=(0, 0),
         # wall_clearance=(2, 2, 3, 3) # n, s, e, w
     )
-    
-    # initial
-    # start = time.perf_counter()
+    dynamic_generator.iteration = 1
     dynamic_generator.generate_map()
     dynamic_generator.save_scenario("scenario/0")
-    dynamic_generator.visualize("Initial")
+    # dynamic_generator.visualize()
     
-    # iteration 1
-    # dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
-    dynamic_generator.remove_region((4, 26), (10, 38))
-    dynamic_generator.save_scenario("scenario/1")
-    dynamic_generator.visualize("Iteration 1")
+    # noisy_aisles_num = 0
+    # occupancy_rate = 0.3
+    # dynamic_generator = ScenarioGenerator(
+    #     seed,
+    #     height, width,
+    #     occupancy_rate,
+    #     coarse_sigma, fine_sigma,
+    #     noisy_aisles_num, noisy_aisle_sigma,
+    #     io_points, IO_points_radius,
+    #     simple_obstacle_rate,
+    #     agv_radius,
+    #     ordered_aisle_widths=(2, 1),
+    #     ordered_aisle_spacing=(8, 2),
+    #     # ordered_aisle_offset=(int(height * 0.05), int(width * 0.05)),
+    #     ordered_aisle_offset=(0, 0),
+    #     wall_clearance=(2, 2, 3, 3) # n, s, e, w
+    # )
+    # dynamic_generator.iteration = 2
+    # dynamic_generator.generate_map()
+    # dynamic_generator.visualize()
     
-    # iteration 2
-    dynamic_generator.add_region((5, 29), (7, 35), obstacle_type=2)
-    dynamic_generator.save_scenario("scenario/2")
-    dynamic_generator.visualize("Iteration 2")
+    # noisy_aisles_num = 5
+    # occupancy_rate = 0.6
+    # dynamic_generator = ScenarioGenerator(
+    #     seed,
+    #     height, width,
+    #     occupancy_rate,
+    #     coarse_sigma, fine_sigma,
+    #     noisy_aisles_num, noisy_aisle_sigma,
+    #     io_points, IO_points_radius,
+    #     simple_obstacle_rate,
+    #     agv_radius,
+    #     # ordered_aisle_widths=(2, 1),
+    #     # ordered_aisle_spacing=(8, 2),
+    #     # # ordered_aisle_offset=(int(height * 0.05), int(width * 0.05)),
+    #     # ordered_aisle_offset=(0, 0),
+    #     # wall_clearance=(2, 2, 3, 3) # n, s, e, w
+    # )
+    # dynamic_generator.iteration = 3
+    # dynamic_generator.generate_map()
+    # dynamic_generator.visualize()
     
-    # iteration 3
-    dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
-    dynamic_generator.save_scenario("scenario/3")
-    dynamic_generator.visualize("Iteration 3")
+    # # initial
+    # # start = time.perf_counter()
+    # dynamic_generator.generate_map()
+    # dynamic_generator.save_scenario("scenario/0")
+    # dynamic_generator.visualize("Initial")
+    
+    # # iteration 1
+    # # dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
+    # dynamic_generator.remove_region((4, 26), (10, 38))
+    # dynamic_generator.save_scenario("scenario/1")
+    # dynamic_generator.visualize("Iteration 1")
+    
+    # # iteration 2
+    # dynamic_generator.add_region((5, 29), (7, 35), obstacle_type=2)
+    # dynamic_generator.save_scenario("scenario/2")
+    # dynamic_generator.visualize("Iteration 2")
+    
+    # # iteration 3
+    # dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
+    # dynamic_generator.save_scenario("scenario/3")
+    # dynamic_generator.visualize("Iteration 3")
     
     # print("Elapsed for dynamic scenario:", time.perf_counter()-start)
 if __name__ == "__main__":
