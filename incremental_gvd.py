@@ -210,12 +210,11 @@ class IncrementalGVD:
                         
         # propagate wavefronts
         print()
-        dist = 0
+        # dist = 0
         while not self.open.is_empty():
-            print(f"{self.open.current_min_distance} > {dist} - {self.open.current_min_distance > dist}")
-            if self.open.current_min_distance > dist:
-                dist = self.open.current_min_distance
-                self.visualize_distance_map(title=dist)
+            # if self.open.current_min_distance > dist:
+            #     dist = self.open.current_min_distance
+            #     self.visualize_distance_map(title=dist)
             print(f"\r{' ' * 100}\rProcessing queue with current min distance {self.open.current_min_distance}", end="", flush=True)
             s, _ = self.open.pop() # pop cell with smallest distance
             self.lower(s) # propagate to neighbors and update their distances if closer to obstacle
@@ -789,27 +788,27 @@ class IncrementalGVD:
         fig, ax = plt.subplots()
         vis_map = np.zeros((self.height, self.width, 4), dtype=np.float32)
 
-        # # buffer zone
-        # from shapely.geometry import box
-        # from shapely.ops import unary_union
-        # occupied = self.occupancy_grid > 0
-        # ys, xs = np.where(occupied)
-        # obstacle_polygons = [box(x, y, x + 1, y + 1) for y, x in zip(ys, xs)]
-        # obstacles = unary_union(obstacle_polygons)
-        # buffer_zone = obstacles.buffer(self.agv_radius, resolution=BUFFER_RES, join_style=shapely.BufferJoinStyle.round)
-        # buffer_zone = buffer_zone.intersection(box(0, 0, self.width, self.height))
-        # polygons = (list(buffer_zone.geoms) if hasattr(buffer_zone, "geoms") else [buffer_zone])
-        # for poly in polygons:
-        #     vertices = []
-        #     codes = []
-        #     exterior = np.asarray(poly.exterior.coords)
-        #     vertices.extend(exterior)
-        #     codes.extend([Path.MOVETO] + [Path.LINETO] * (len(exterior) - 2) + [Path.CLOSEPOLY])
-        #     for hole in poly.interiors:
-        #         hole = np.asarray(hole.coords)
-        #         vertices.extend(hole)
-        #         codes.extend([Path.MOVETO] + [Path.LINETO] * (len(hole) - 2) + [Path.CLOSEPOLY])
-        #     ax.add_patch(PathPatch( Path(vertices, codes), facecolor=BUFFER_COLOR[:3], alpha=BUFFER_COLOR[3], edgecolor="none", zorder=0))
+        # buffer zone
+        from shapely.geometry import box
+        from shapely.ops import unary_union
+        occupied = self.occupancy_grid > 0
+        ys, xs = np.where(occupied)
+        obstacle_polygons = [box(x, y, x + 1, y + 1) for y, x in zip(ys, xs)]
+        obstacles = unary_union(obstacle_polygons)
+        buffer_zone = obstacles.buffer(self.agv_radius, resolution=BUFFER_RES, join_style=shapely.BufferJoinStyle.round)
+        buffer_zone = buffer_zone.intersection(box(0, 0, self.width, self.height))
+        polygons = (list(buffer_zone.geoms) if hasattr(buffer_zone, "geoms") else [buffer_zone])
+        for poly in polygons:
+            vertices = []
+            codes = []
+            exterior = np.asarray(poly.exterior.coords)
+            vertices.extend(exterior)
+            codes.extend([Path.MOVETO] + [Path.LINETO] * (len(exterior) - 2) + [Path.CLOSEPOLY])
+            for hole in poly.interiors:
+                hole = np.asarray(hole.coords)
+                vertices.extend(hole)
+                codes.extend([Path.MOVETO] + [Path.LINETO] * (len(hole) - 2) + [Path.CLOSEPOLY])
+            ax.add_patch(PathPatch( Path(vertices, codes), facecolor=BUFFER_COLOR[:3], alpha=BUFFER_COLOR[3], edgecolor="none", zorder=0))
         
         # occupancy
         vis_map[self.occupancy_grid == 1] = SIMPLE_OBSTACLE_COLOR
@@ -837,8 +836,7 @@ class IncrementalGVD:
         D_colormap = np.zeros((*self.D.shape, 4))
 
         if np.any(finite):
-            # max_D = np.max(self.D[finite])
-            max_D = 146
+            max_D = np.max(self.D[finite])
             D_normalized = np.zeros_like(self.D, dtype=float)
             D_normalized[finite] = self.D[finite] / max_D if max_D > 0 else 0
 
@@ -884,12 +882,12 @@ class IncrementalGVD:
         # if title:
         #     ax.set_title(title, fontsize=20, pad=5)
                 
-        # fig.savefig(f"distance_map_{self.iteration}_{title}.pdf", format="pdf", bbox_inches="tight")
+        fig.savefig(f"distance_map_{self.iteration}_{title}.pdf", format="pdf", bbox_inches="tight")
         
-        filename = f"gvd_steps/gvd_{title}.pdf"
-        fig.savefig(filename, format="pdf", bbox_inches="tight")
+        # filename = f"gvd_steps/gvd_{title}.pdf"
+        # fig.savefig(filename, format="pdf", bbox_inches="tight")
         
-        # plt.show()
+        plt.show()
     
     def visualize_voro(self, title=None):
         """Draw obstacles and voro"""
@@ -1176,7 +1174,7 @@ class IncrementalGVD:
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles, labels, loc="upper right")
 
-        fig.tight_layout()
+        # fig.tight_layout()
         plt.show()
 
 
@@ -1193,9 +1191,9 @@ if __name__ == "__main__":
     
     # load initial scenario and add outer walls
     scenario_0 = load_scenario_as_numpy(0)
-    # scenario_1 = load_scenario_as_numpy(1)
-    # scenario_2 = load_scenario_as_numpy(2)
-    # scenario_3 = load_scenario_as_numpy(3)
+    scenario_1 = load_scenario_as_numpy(1)
+    scenario_2 = load_scenario_as_numpy(2)
+    scenario_3 = load_scenario_as_numpy(3)
     
     if len(sys.argv) > 1:
         scale_factor = int(sys.argv[1])
@@ -1260,16 +1258,16 @@ if __name__ == "__main__":
 
     # # ---- iteration 3 ----
     
-    # # apply updates to the occupancy grid
-    # print("\nApplying updates to the occupancy grid...")
-    # incr_gvd.apply_obstacle_updates(scenario_3["updates"], scenario_3["access_points"], scenario_3["io_points"])
+    # apply updates to the occupancy grid
+    print("\nApplying updates to the occupancy grid...")
+    incr_gvd.apply_obstacle_updates(scenario_3["updates"], scenario_3["access_points"], scenario_3["io_points"])
     
-    # # recompute distance map and Voronoi diagram after changes
-    # print("\nUpdating distance map and recomputing Voronoi diagram...")
-    # incr_gvd.updateDistanceMap()
-    # incr_gvd.visualize_distance_map(title="Distance Map After Changes")
-    # incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
+    # recompute distance map and Voronoi diagram after changes
+    print("\nUpdating distance map and recomputing Voronoi diagram...")
+    incr_gvd.updateDistanceMap()
+    incr_gvd.visualize_distance_map(title="Distance Map After Changes")
+    incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
 
-    # # build Voronoi graph
-    # incr_gvd.build_graph()
-    # incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
+    # build Voronoi graph
+    incr_gvd.build_graph()
+    incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
