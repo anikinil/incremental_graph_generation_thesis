@@ -1,16 +1,11 @@
-import sys
-import time
-
 import numpy as np
 from scipy.ndimage import binary_closing, distance_transform_edt, gaussian_filter, label
 
 
-
-class ScenarioGenerator:
-    def __init__(self, seed, height, width, occupancy_rate, sigma_coarse, sigma_fine, noisy_aisles_num, noisy_aisle_sigma, io_points, IO_points_radius, simple_obstacle_rate, agv_radius, ordered_aisle_widths = (0, 0), ordered_aisle_spacing = (0, 0), ordered_aisle_offset = (0, 0), wall_clearance = (0, 0, 0, 0)):
+class Scenario:
+    def __init__(self, rng, height, width, occupancy_rate, sigma_coarse, sigma_fine, noisy_aisles_num, noisy_aisle_sigma, io_points, io_points_radius, simple_obstacle_rate, agv_radius, ordered_aisle_widths = (0, 0), ordered_aisle_spacing = (0, 0), ordered_aisle_offset = (0, 0), wall_clearance = (0, 0, 0, 0), recorder=None):
         
-        self.seed = seed
-        self.rng = np.random.default_rng(seed)  # random number generator with a fixed seed for reproducibility
+        self.rng = rng
         
         self.height = height
         self.width = width
@@ -24,7 +19,7 @@ class ScenarioGenerator:
 
         self.io_points = set(io_points) # input/output points that should remain free of obstacles (y, x)
         self.access_points = set() # (y, x, direction)
-        self.IO_points_radius = IO_points_radius
+        self.io_points_radius = io_points_radius
         self.simple_obstacle_rate = simple_obstacle_rate # how many of the obstacles are regular (non-unit-load) obstacles
         
         self.agv_radius = agv_radius
@@ -48,8 +43,10 @@ class ScenarioGenerator:
         self.probability_field = None  # normalized probability field for obstacle placement
     
         self.iteration = 0
+        
+        self.recorder = recorder
     
-    def generate_noise_field(self):
+    def _generate_noise_field(self):
         
         # generate initial gaussian noise field
         noise = self.rng.normal(size=(self.height, self.width))
@@ -67,7 +64,7 @@ class ScenarioGenerator:
         io_penalty = np.zeros_like(field)
         for r, c in self.io_points:
             distance = (rr - r) ** 2 + (cc - c) ** 2
-            io_penalty += np.exp(-distance / (2 * self.IO_points_radius ** 2))
+            io_penalty += np.exp(-distance / (2 * self.io_points_radius ** 2))
             
         # reduce obstacle probability around I/O points
         field -= io_penalty
@@ -149,10 +146,10 @@ class ScenarioGenerator:
         cell = tuple(free_cells[self.rng.integers(len(free_cells))])
         return cell
         
-    def generate_map(self):
+    def generate(self):
 
         # generate the noise field
-        self.generate_noise_field()
+        self._generate_noise_field()
         selection_field = self.probability_field.copy()
         
         # determine the number of obstacles to place
@@ -216,6 +213,18 @@ class ScenarioGenerator:
         self.update_access_points()
         print(f"\nFinished placing {placed_obstacles}/{self.obstacle_count} obstacles.")
         
+        # save scenario in recorder, if provided
+        if self.recorder is not None:
+            scenario_data = {
+                "occupancy": self.occupancy.copy(),
+                "access_points": list(self.access_points),
+                "io_points": list(self.io_points),
+                "height": self.height,
+                "width": self.width,
+                "agv_radius": self.agv_radius,
+            }
+            self.recorder.set_scenario(scenario_data, plot=True)
+
 
     # check if the free sapce is connected, by checking that the occupancy contains not more than one free component
     # time complexity: O(width*height)
@@ -417,152 +426,3 @@ class ScenarioGenerator:
         self.update_access_points(locations=[(r, c) for r in range(r1, r2) for c in range(c1, c2)])
         
         self.iteration += 1
-    
-
-        
-def main():
-    
-    height = int(sys.argv[1]) if len(sys.argv)>1 else 15
-    width = int(sys.argv[2]) if len(sys.argv)>2 else 20
-
-    io_points = { # (y, x)
-        # (height-1,int(width*0.9)),
-        # (height-1,int(width*0.8)),
-        (int(height*0.1),0),
-        (int(height*0.8),int(width*0.55)),
-        (int(height*0.8),int(width*0.67)),
-        (int(height*0.8),int(width*0.79)),
-    }
-
-    occupancy_rate = float(sys.argv[3]) if len(sys.argv)>3 else 0.3 # area occupied by obstacles
-    
-    print(f"Obstacles required: {int(height*width*occupancy_rate)} ({occupancy_rate*100:.1f}%)")
-    
-    coarse_sigma = float(sys.argv[4]) if len(sys.argv)>4 else 4 # standard deviation for coarse noise
-    fine_sigma = float(sys.argv[5]) if len(sys.argv)>5 else 1 # standard deviation for fine noise
-    
-    seed = int(sys.argv[6]) if len(sys.argv)>6 else 42  # random seed for reproducibility
-        
-    noisy_aisles_num = 0  # number of aisles to generate
-    noisy_aisle_sigma = 1    # determines the width of aisles
-        
-    IO_points_radius = 3  # how much free space around IO points is created
-
-    # simple_obstacle_rate = 0.05 # how common non-unit-load (regular) obstacles should be
-    simple_obstacle_rate = 1 # how common non-unit-load (regular) obstacles should be
-
-    agv_radius = 0.42  # radius of the AGV in block units
-
-
-    # static_generator = ScenarioGenerator(
-    #     seed,
-    #     height, width,
-    #     occupancy_rate,
-    #     coarse_sigma, fine_sigma,
-    #     noisy_aisles_num, noisy_aisle_sigma,
-    #     io_points, IO_points_radius,
-    #     simple_obstacle_rate,
-    #     agv_radius,
-    # )
-
-    # start = time.perf_counter()
-    # static_generator.generate_map()
-    # static_generator.save_scenario("scenario")
-    # static_generator.visualize(iteration="static")
-    
-    # print("Elapsed for static scenario:", time.perf_counter()-start)
-
-    noisy_aisles_num = 0
-    height= 30
-    width = 50
-    occupancy_rate = 0.1
-    coarse_sigma = 3
-    fine_sigma = 3
-    seed = 45
-    dynamic_generator = ScenarioGenerator(
-        seed,
-        height, width,
-        occupancy_rate,
-        coarse_sigma, fine_sigma,
-        noisy_aisles_num, noisy_aisle_sigma,
-        io_points, IO_points_radius,
-        simple_obstacle_rate,
-        agv_radius,
-        # ordered_aisle_widths=(2, 1),
-        # ordered_aisle_spacing=(8, 2),
-        # # ordered_aisle_offset=(int(height * 0.05), int(width * 0.05)),
-        # ordered_aisle_offset=(0, 0),
-        # wall_clearance=(2, 2, 3, 3) # n, s, e, w
-    )
-    dynamic_generator.iteration = 1
-    dynamic_generator.generate_map()
-    dynamic_generator.save_scenario("scenario/0")
-    # dynamic_generator.visualize()
-    
-    # noisy_aisles_num = 0
-    # occupancy_rate = 0.3
-    # dynamic_generator = ScenarioGenerator(
-    #     seed,
-    #     height, width,
-    #     occupancy_rate,
-    #     coarse_sigma, fine_sigma,
-    #     noisy_aisles_num, noisy_aisle_sigma,
-    #     io_points, IO_points_radius,
-    #     simple_obstacle_rate,
-    #     agv_radius,
-    #     ordered_aisle_widths=(2, 1),
-    #     ordered_aisle_spacing=(8, 2),
-    #     # ordered_aisle_offset=(int(height * 0.05), int(width * 0.05)),
-    #     ordered_aisle_offset=(0, 0),
-    #     wall_clearance=(2, 2, 3, 3) # n, s, e, w
-    # )
-    # dynamic_generator.iteration = 2
-    # dynamic_generator.generate_map()
-    # dynamic_generator.visualize()
-    
-    # noisy_aisles_num = 5
-    # occupancy_rate = 0.6
-    # dynamic_generator = ScenarioGenerator(
-    #     seed,
-    #     height, width,
-    #     occupancy_rate,
-    #     coarse_sigma, fine_sigma,
-    #     noisy_aisles_num, noisy_aisle_sigma,
-    #     io_points, IO_points_radius,
-    #     simple_obstacle_rate,
-    #     agv_radius,
-    #     # ordered_aisle_widths=(2, 1),
-    #     # ordered_aisle_spacing=(8, 2),
-    #     # # ordered_aisle_offset=(int(height * 0.05), int(width * 0.05)),
-    #     # ordered_aisle_offset=(0, 0),
-    #     # wall_clearance=(2, 2, 3, 3) # n, s, e, w
-    # )
-    # dynamic_generator.iteration = 3
-    # dynamic_generator.generate_map()
-    # dynamic_generator.visualize()
-    
-    # # initial
-    # # start = time.perf_counter()
-    # dynamic_generator.generate_map()
-    # dynamic_generator.save_scenario("scenario/0")
-    # dynamic_generator.visualize("Initial")
-    
-    # # iteration 1
-    # # dynamic_generator.remove_region((int(height * 0.1), int(width * 0.1)), (int(height * 0.4), int(width * 0.4)))
-    # dynamic_generator.remove_region((4, 26), (10, 38))
-    # dynamic_generator.save_scenario("scenario/1")
-    # dynamic_generator.visualize("Iteration 1")
-    
-    # # iteration 2
-    # dynamic_generator.add_region((5, 29), (7, 35), obstacle_type=2)
-    # dynamic_generator.save_scenario("scenario/2")
-    # dynamic_generator.visualize("Iteration 2")
-    
-    # # iteration 3
-    # dynamic_generator.make_updates(respect_probab_field=True, number_of_updates=10)
-    # dynamic_generator.save_scenario("scenario/3")
-    # dynamic_generator.visualize("Iteration 3")
-    
-    # print("Elapsed for dynamic scenario:", time.perf_counter()-start)
-if __name__ == "__main__":
-    main()

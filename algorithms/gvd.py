@@ -73,9 +73,9 @@ class BucketPriorityQueue:
         return all(len(cells) == 0 for cells in self.buckets.values())
 
 
-class IncrementalGVD:
+class GVD:
     
-    def __init__(self, rng, occupancy_grid, scale_factor, access_points, io_points, agv_radius):
+    def __init__(self, rng, occupancy_grid, scale_factor, access_points, io_points, agv_radius, recorder):
         self.rng = rng
 
         self.occupancy_grid = occupancy_grid
@@ -87,7 +87,9 @@ class IncrementalGVD:
         self.io_points = io_points
         
         self.agv_radius = agv_radius
-                
+
+        self.recorder = recorder
+        
         # increase resolution and add outer walls
         self.increase_resolution()
         self.add_outer_walls()
@@ -106,7 +108,6 @@ class IncrementalGVD:
         
         # voronoi map: True if cell is on Voronoi diagram
         self.voro = np.zeros((self.height, self.width), dtype=bool)
-        print(self.voro.shape)
         
         # queue for wavefront propagation
         self.open = BucketPriorityQueue(max_distance=self.height ** 2 + self.width ** 2)  # max possible squared distance in grid
@@ -125,6 +126,7 @@ class IncrementalGVD:
         self.special_point_bridges = np.zeros((self.height, self.width), dtype=bool)
     
         self.iteration = 0 # increased after every layout update
+    
     
     def increase_resolution(self):
         
@@ -221,7 +223,12 @@ class IncrementalGVD:
         print(f"\r{' ' * 100}\rDistance map complete.")
         
         # self.prune_voronoi(connectivity=8) # prune
-            
+        
+        self.recorder.save(data_type="distance_map", data={"D": self.D, "obst": self.obst}, plot=True)
+        self.recorder.save(data_type="voronoi_skeleton", data={"voro": self.voro}, plot=True)
+        self.recorder.save(data_type="special_point_bridges", data={"bridges": self.special_point_bridges}, plot=True)
+        self.recorder.save(data_type="graph", data=self.graph, plot=True)
+        
     def lower(self, s):
         
         # get the obstacle reference of the current cell
@@ -308,6 +315,11 @@ class IncrementalGVD:
         # changed_mask = (previous_D != self.D)
         # # store as tuples
         # self.affected_distance_cells = {(int(y), int(x)) for y, x in np.argwhere(changed_mask)}
+        
+        self.recorder.save(data_type="distance_map", data={"D": self.D, "obst": self.obst}, plot=True)
+        self.recorder.save(data_type="voronoi_skeleton", data={"voro": self.voro}, plot=True)
+        self.recorder.save(data_type="special_point_bridges", data={"bridges": self.special_point_bridges}, plot=True)
+        self.recorder.save(data_type="graph", data=self.graph, plot=True)
 
     def raise_(self, s):
         
@@ -420,6 +432,7 @@ class IncrementalGVD:
         self.special_point_bridges.fill(False)  # clear special bridges, as they need to be recalculated now
         
         self.iteration += 1
+        self.recorder.new_iteration(self.iteration)
 
 
     def build_special_point_bridges(self):
@@ -446,7 +459,6 @@ class IncrementalGVD:
                     # get current cell
                     on_voro = self.voro[int(y), int(x)]
                 except IndexError:
-                    self.visualize_gvd(title="Voronoi Diagram with Special Points Connected")
                     print(F"Access point {ap} ray went out of bounds at ({y}, {x}). Stopping ray.")
 
                 # if on a Voronoi cell, stop the ray
@@ -504,7 +516,6 @@ class IncrementalGVD:
                 print(f"Warning: Could not connect IO point {iop} to Voronoi skeleton in any direction.")
             
         print(f"Connected {connected}/{len(self.io_points)} IO points to Voronoi skeleton.")
-        self.visualize_gvd(title="Voronoi Diagram with Special Points Connected")
 
     def clear_bridges(self):
         self.special_point_bridges.fill(False)
@@ -725,7 +736,6 @@ class IncrementalGVD:
             print("Generated graph is NOT connected!")
             print("\n[MAP GENERATION FAILED]")
             self._visualize_graph_components()
-            self.visualize_graph(title="Disconnected Graph")
             # raise ValueError("Generated graph is not connected!")
         
     
@@ -761,93 +771,3 @@ class IncrementalGVD:
 # TODO: edge splitting (obstacle avoidance) -- necessary?
 #         - probably YES (edges can cross buffer zone, at least for CORNER_SEGMENTS=0)
 
-
-if __name__ == "__main__":
-    
-    
-    from model.store import load_scenario_as_numpy
-    
-    rng = np.random.default_rng(42)
-    
-    # load initial scenario and add outer walls
-    scenario_0 = load_scenario_as_numpy(0)
-    scenario_1 = load_scenario_as_numpy(1)
-    scenario_2 = load_scenario_as_numpy(2)
-    scenario_3 = load_scenario_as_numpy(3)
-    
-    if len(sys.argv) > 1:
-        scale_factor = int(sys.argv[1])
-    else:
-        # one Voronoi cell must fit between two obstacles, inflated by the AGV radius in a one unit-load wide passage
-        scale_factor = math.ceil(1 / (1 - 2 * (scenario_0["agv_radius"])))
-    
-    # ---- iteration 0 ----
-    
-    # initialize spatial representation
-    print("\nInitialize and compute GVD...")
-    incr_gvd = IncrementalGVD(
-        rng=rng,
-        occupancy_grid=scenario_0["occupancy"],
-        access_points=scenario_0["access_points"],
-        io_points=scenario_0["io_points"],
-        agv_radius=scenario_0["agv_radius"],
-        scale_factor=scale_factor,
-    )
-    
-    # compute initial distance map and Voronoi diagram
-    incr_gvd.computeDistanceMap()
-    # incr_gvd.visualize_distance_map(title="Initial Distance Map")
-    # incr_gvd.visualize_voro(title="Voronoi Diagram After Changes")
-    incr_gvd.visualize_distance_map_and_voro(title="dist_and_voro")
-    # incr_gvd.visualize_gvd(title="Incremental GVD Results")
-    
-    # build Voronoi graph
-    incr_gvd.build_graph()
-    incr_gvd.visualize_graph(title="Incremental GVD Graph")
-    
-    # ---- iteration 1 ----
-    
-    # apply updates to the occupancy grid
-    print("\nApplying updates to the occupancy grid...")
-    incr_gvd.apply_obstacle_updates(scenario_1["updates"], scenario_1["access_points"], scenario_1["io_points"])
-    
-    # recompute distance map and Voronoi diagram after changes
-    print("\nUpdating distance map and recomputing Voronoi diagram...")
-    incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_distance_map_and_voro(title="dist_and_voro")
-    
-    
-    # build Voronoi graph
-    incr_gvd.build_graph()
-    incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
-    
-    # ---- iteration 2 ----
-    
-    # apply updates to the occupancy grid
-    print("\nApplying updates to the occupancy grid...")
-    incr_gvd.apply_obstacle_updates(scenario_2["updates"], scenario_2["access_points"], scenario_2["io_points"])
-    
-    # recompute distance map and Voronoi diagram after changes
-    print("\nUpdating distance map and recomputing Voronoi diagram...")
-    incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_distance_map_and_voro(title="dist_and_voro")
-
-    # build Voronoi graph
-    incr_gvd.build_graph()
-    incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
-
-    # # ---- iteration 3 ----
-    
-    # apply updates to the occupancy grid
-    print("\nApplying updates to the occupancy grid...")
-    incr_gvd.apply_obstacle_updates(scenario_3["updates"], scenario_3["access_points"], scenario_3["io_points"])
-    
-    # recompute distance map and Voronoi diagram after changes
-    print("\nUpdating distance map and recomputing Voronoi diagram...")
-    incr_gvd.updateDistanceMap()
-    incr_gvd.visualize_distance_map(title="Distance Map After Changes")
-    incr_gvd.visualize_gvd(title="Incremental GVD Results After Changes")
-
-    # build Voronoi graph
-    incr_gvd.build_graph()
-    incr_gvd.visualize_graph(title="Incremental GVD Graph After Changes")
