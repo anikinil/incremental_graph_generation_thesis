@@ -666,9 +666,8 @@ class PlotManager:
         title = None
         if title_info:
             title = (
-                f"{title_info['algorithm']} | "
-                f"iteration {title_info['iteration']} | "
-                f"step {title_info['step']} | "
+                f"scenario {title_info['scenario_version']:03d} | "
+                f"{title_info['algorithm'] or 'scenario'} | "
                 f"{data_type}"
             )
 

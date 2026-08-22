@@ -35,12 +35,12 @@ class ExperimentRecorder:
         self.experiment_dir.mkdir(parents=True, exist_ok=True)
 
         self.algorithm = None
-        self.algorithm_dir = None
 
         self.use_iterations = True
 
         self.iteration = 0
-        self.step = 0
+        self.scenario_version = -1
+        self.scenario_dir = None
 
         self.scenario = None
 
@@ -62,16 +62,6 @@ class ExperimentRecorder:
         self.algorithm = algorithm
         self.use_iterations = use_iterations
 
-        self.algorithm_dir = (self.experiment_dir / algorithm)
-        self.algorithm_dir.mkdir(parents=True, exist_ok=True)
-
-        self.iteration = 0
-        self.step = 0
-
-        self.metadata["algorithm"] = self.algorithm
-
-        self._save_metadata()
-
     def set_scenario(self, scenario, plot=False):
         """
         Sets the scenario in recorder to later use in plotting of roadmap generation results.
@@ -79,21 +69,19 @@ class ExperimentRecorder:
         """
         self.scenario = self._snapshot(scenario)
         self.plot_manager.scenario = self.scenario
-        self.save(data_type="scenario", data=self.scenario, plot=plot)
+        self.scenario_version += 1
+        self.scenario_dir = self.experiment_dir / f"scenario_{self.scenario_version:03d}"
+        self.scenario_dir.mkdir(parents=True, exist_ok=True)
+        return self.save(data_type="scenario", data=self.scenario, plot=plot, algorithm="scenario")
 
-    def save(self, data_type, data, plot=False):
+    def save(self, data_type, data, plot=False, algorithm=None):
         if not self.enabled:
             return None
 
-        if self.algorithm is None:
-            base_dir = self.experiment_dir
+        if self.scenario_dir is None:
+            raise RuntimeError("A scenario must be recorded before saving artifacts.")
 
-        elif self.use_iterations:
-            base_dir = self._get_iteration_dir()
-            filename = f"{self.step:05d}_{data_type}"
-
-        else:
-            base_dir = self.algorithm_dir
+        base_dir = self.scenario_dir
 
         data_dir = base_dir / "data"
         plot_dir = base_dir / "plots"
@@ -103,20 +91,21 @@ class ExperimentRecorder:
         if plot:
             plot_dir.mkdir(parents=True, exist_ok=True)
 
-        if self.algorithm is not None and self.use_iterations:
-            filename = f"{self.step:05d}_{data_type}"
-        else:
-            filename = data_type
+        filename = data_type
+        sequence = 1
+        while (data_dir / f"{filename}.pkl").exists():
+            filename = f"{data_type}_{sequence:03d}"
+            sequence += 1
 
         pkl_path = data_dir / f"{filename}.pkl"
         pdf_path = plot_dir / f"{filename}.pdf"
 
         data_snapshot = self._snapshot(data)
+        record_algorithm = self.algorithm if algorithm is None else algorithm
 
         record = {
-            "algorithm": self.algorithm,
-            "iteration": self.iteration if self.use_iterations else None,
-            "step": self.step if self.use_iterations else None,
+            "algorithm": record_algorithm,
+            "scenario_version": self.scenario_version,
             "data_type": data_type,
             "timestamp": datetime.now().isoformat(),
             "data": data_snapshot,
@@ -131,14 +120,10 @@ class ExperimentRecorder:
                 data=data_snapshot,
                 path=pdf_path,
                 title_info={
-                    "algorithm": self.algorithm,
-                    "iteration": self.iteration if self.use_iterations else "-",
-                    "step": self.step if self.use_iterations else "-",
+                    "algorithm": record_algorithm,
+                    "scenario_version": self.scenario_version,
                 },
             )
-
-        if self.algorithm is not None and self.use_iterations:
-            self.step += 1
 
         return {
             "pkl": pkl_path,
@@ -147,21 +132,12 @@ class ExperimentRecorder:
 
     def new_iteration(self, iteration=None):
         """
-        Starts a new iteration for the current algorithm bucket.
-        If iteration is None, increments the current iteration by 1.
+        Updates the active algorithm iteration metadata.
         """
         if iteration is not None:
             self.iteration = iteration
         else:
             self.iteration += 1
-            self.step = 0
-        self._get_iteration_dir()
-
-    def _get_iteration_dir(self):
-        """Makes sure the directory for the current iteration exists and returns it."""
-        path = (self.algorithm_dir / f"iteration_{self.iteration:03d}")
-        path.mkdir(parents=True, exist_ok=True)
-        return path
 
     def _save_metadata(self):
         path = self.experiment_dir / "metadata.pkl"

@@ -232,20 +232,21 @@ class Scenario:
                 f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
             )
         
-        # save scenario in recorder, if provided
         if self.recorder is not None:
-            scenario_data = {
-                "occupancy": self.occupancy.copy(),
-                "probability_field": self.probability_field.copy(),
-                "access_points": list(self.access_points),
-                "io_points": list(self.io_points),
-                "height": self.height,
-                "width": self.width,
-                "agv_radius": self.agv_radius,
-            }
-            self.recorder.set_scenario(scenario_data, plot=True)
+            self._record_scenario()
 
         return success
+
+    def _record_scenario(self):
+        self.recorder.set_scenario({
+            "occupancy": self.occupancy,
+            "probability_field": self.probability_field,
+            "access_points": list(self.access_points),
+            "io_points": list(self.io_points),
+            "height": self.height,
+            "width": self.width,
+            "agv_radius": self.agv_radius,
+        }, plot=True)
 
 
     # check if the free sapce is connected, by checking that the occupancy contains not more than one free component
@@ -340,6 +341,8 @@ class Scenario:
         self.update_access_points(changed_cells)
         
         self.iteration += 1
+        if self.recorder is not None:
+            self._record_scenario()
         progress.finish(True, f"applied {number_of_updates}/{number_of_updates} updates")
         print("[Scenario] Dynamic-update workflow: successful")
         print()
@@ -445,6 +448,8 @@ class Scenario:
         self.update_access_points(locations=[(r, c) for r in range(r1, r2) for c in range(c1, c2)])
         
         self.iteration += 1
+        if self.recorder is not None:
+            self._record_scenario()
         
     def add_region(self, top_left, bottom_right, obstacle_type=2):
         """Add obstacles of the specified type in a rectangular region."""
@@ -472,3 +477,5 @@ class Scenario:
         self.update_access_points(locations=[(r, c) for r in range(r1, r2) for c in range(c1, c2)])
         
         self.iteration += 1
+        if self.recorder is not None:
+            self._record_scenario()
