@@ -116,17 +116,17 @@ def main():
     updates_per_iteration = 10
     for _ in range(gvd_iterations):
         scenario.make_updates(number_of_updates=updates_per_iteration)
-        gvd.apply_obstacle_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+        gvd.apply_layout_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
         gvd.updateDistanceMap()
         gvd.build_graph()
         
     scenario.remove_region(top_left=(10, 10), bottom_right=(20, 20))
-    gvd.apply_obstacle_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+    gvd.apply_layout_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
     gvd.updateDistanceMap()
     gvd.build_graph()
     
     scenario.add_region(top_left=(12, 12), bottom_right=(15, 15))
-    gvd.apply_obstacle_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+    gvd.apply_layout_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
     gvd.updateDistanceMap()
     gvd.build_graph()
 

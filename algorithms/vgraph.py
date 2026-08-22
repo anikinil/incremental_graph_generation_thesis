@@ -1,10 +1,11 @@
 from matplotlib import pyplot as plt
 from matplotlib.colors import ListedColormap
-from shapely.geometry import LineString, Point
+from shapely.geometry import LineString, Point, box
 from itertools import combinations
 import networkx as nx
 import geopandas as gpd
 from artifacts.progress import GenerationProgress
+from scenario.geometry import buffered_obstacle_space, continuous_special_points
 
 
 class VGraph:
@@ -35,6 +36,7 @@ class VGraph:
 
 
     def _get_convex_vertices(self, polygon):
+        """Get all convex vertices of a polygon."""
         convex_vertices = []
         coords = list(polygon.exterior.coords)[:-1]  # remove duplicate closing point
         for i in range(len(coords)):
@@ -47,6 +49,11 @@ class VGraph:
             if cross_product < 0:  # clockwise turn indicates convex vertex
                 convex_vertices.append(curr_vertex)
         return convex_vertices
+
+
+    def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points):
+        pass
+        # TODO is naive incremental update of visibility graph reasonable? Or the same time complexity as recomputing the whole graph?
 
     def create_visibility_graph(self):
 
@@ -61,7 +68,7 @@ class VGraph:
         else:
             obstacle_polygons = [self.obstacle_space]
             
-        # collect all boundary vertices
+        # collect all convex boundary vertices of the obstacle polygons
         vertices = []
         for poly in obstacle_polygons:
             # exclude concave vertices

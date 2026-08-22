@@ -374,14 +374,14 @@ class GVD:
                 self.voro[n] = True
                 self.affected_voro_cells.add(n)
 
-    def apply_obstacle_updates(self, updates, new_access_points, new_io_points):
+    def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points):
 
         # clear affected cells
         self.affected_voro_cells.clear()
         self.affected_distance_cells.clear()
 
         scaled_updates = []
-        for update in updates:
+        for update in obstacle_updates:
             action = update["action"]
             if action =='add':
                 (y, x), value = update["cell"], update["obstacle_type"]
