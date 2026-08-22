@@ -26,9 +26,9 @@ VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.1)      # blue, semi-transparent for b
 
 IO_POINT_COLOR = (0.1, 0.5, 0.3)                  # green
 ACCESS_POINT_COLOR = (0.9, 0.1, 0.1)              # red
-SPECIAL_POINT_EDGE_COLOR = (1, 1, 1, 1)           # white
+SPECIAL_POINT_EDGE_COLOR = (0.1, 0.1, 0.1, 1)     # dark grey
 
-GRID_COLOR = (0.5, 0.7, 0.7, 0.6)
+GRID_COLOR = (0, 0, 0, 1)                         # black
 
 # sizes
 # TODO
@@ -162,6 +162,30 @@ def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordi
                    zorder=20, label="IO points")
 
 
+def _draw_scenario_access_points(ax, access_points):
+    """Draw scenario access points as arrows toward their accessible free space."""
+    direction_vectors = {
+        "n": (0, -1),
+        "s": (0, 1),
+        "w": (-1, 0),
+        "e": (1, 0),
+    }
+
+    for row, column, direction in access_points:
+        dx, dy = direction_vectors[direction]
+        x, y = column, row
+        ax.add_patch(FancyArrowPatch(
+            (x, y),
+            (x + 0.20 * dx, y + 0.20 * dy),
+            arrowstyle="-|>",
+            mutation_scale=7,
+            linewidth=0.55,
+            facecolor=ACCESS_POINT_COLOR,
+            edgecolor=SPECIAL_POINT_EDGE_COLOR,
+            zorder=20,
+        ))
+
+
 def _draw_grid_special_points(ax, access_points, io_points):
     """Scatter access and IO-points stored as grid (row, col[, direction]) tuples."""
     handles = []
@@ -189,8 +213,8 @@ def _setup_grid_axes(ax, height, width, scale_factor):
     ax.tick_params(axis="both", which="both", length=0)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
-    ax.set_axisbelow(True)
-    ax.grid(True, color=GRID_COLOR, linestyle="-", linewidth=0.35)
+    ax.set_axisbelow(False)
+    ax.grid(True, color="black", linestyle="-", linewidth=0.5, zorder=40)
     ax.set_xlim(0, width)
     ax.set_ylim(height, 0)
     ax.set_aspect("equal")
@@ -277,7 +301,8 @@ class ScenarioPlotter(BasePlotter):
         ax_obst.yaxis.tick_right()
 
         _setup_continuous_axes(ax_prob, bounds=(0, 0, width, height))
-        _draw_continuous_special_points(ax_obst, access_points, io_points, grid_coordinates=True)
+        _draw_scenario_access_points(ax_obst, access_points)
+        _draw_continuous_special_points(ax_obst, [], io_points, grid_coordinates=True)
 
         colorbar = ax_obst.figure.colorbar(mesh, cax=ax_cbar, label="Probability")
         colorbar.ax.yaxis.set_ticks_position("left")
