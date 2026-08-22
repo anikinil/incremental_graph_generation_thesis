@@ -4,6 +4,7 @@ from shapely.geometry import LineString, Point
 from itertools import combinations
 import networkx as nx
 import geopandas as gpd
+from artifacts.progress import GenerationProgress
 
 
 class VGraph:
@@ -49,6 +50,9 @@ class VGraph:
 
     def create_visibility_graph(self):
 
+        vertex_progress = GenerationProgress("Visibility graph", "Collecting vertices")
+        vertex_progress.start()
+
         # check if obstacle_space is a MultiPolygon, else no .geoms attribute
         if self.obstacle_space.is_empty:
             obstacle_polygons = []
@@ -57,7 +61,6 @@ class VGraph:
         else:
             obstacle_polygons = [self.obstacle_space]
             
-        print(f"Collecting vertices...")
         # collect all boundary vertices
         vertices = []
         for poly in obstacle_polygons:
@@ -79,11 +82,18 @@ class VGraph:
             # print(f"Added access point node {i} at position {(x, y)}")
     
         num_nodes_total = len(vertices) + len(self.io_points) + len(self.access_points)
+        vertex_progress.finish(
+            True,
+            f"collected {len(vertices)} obstacle vertices | total nodes: {num_nodes_total}",
+        )
         
-        print(f"Checking visibility..")
+        total_pairs = num_nodes_total * (num_nodes_total - 1) // 2
+        visibility_progress = GenerationProgress("Visibility graph", "Checking visibility")
+        visibility_progress.start(f"target: {total_pairs} node pairs")
         # check visibility
-        for i, j in combinations(range(num_nodes_total), 2):
-            print(f"\r{' ' * 100}\r{i*100/num_nodes_total:.2f}% - Checking visibility between {i} and {j}", end="", flush=True)
+        for pair_number, (i, j) in enumerate(combinations(range(num_nodes_total), 2), start=1):
+            if pair_number % 100 == 0 or pair_number == total_pairs:
+                visibility_progress.update(pair_number, total_pairs, f"checking nodes {i} and {j}")
             
             a = Point(self.G.nodes[i]["pos"])
             b = Point(self.G.nodes[j]["pos"])
@@ -93,7 +103,10 @@ class VGraph:
             if self.free_space.covers(line):
                 self.G.add_edge(i, j, weight=line.length)
 
-        print(f"Visibility graph complete: {self.G.number_of_nodes()} nodes, {self.G.number_of_edges()} edges")
+        visibility_progress.finish(
+            True,
+            f"generated {self.G.number_of_nodes()} nodes and {self.G.number_of_edges()} edges",
+        )
 
     def record_graph(self):
         """Record the visibility graph using via recorder if available."""

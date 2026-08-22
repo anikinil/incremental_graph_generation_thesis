@@ -2,6 +2,7 @@ import numpy as np
 from scipy.ndimage import binary_closing, distance_transform_edt, gaussian_filter, label
 from shapely.geometry import box
 from scenario.geometry import buffered_obstacle_space
+from artifacts.progress import GenerationProgress
 
 
 class Scenario:
@@ -143,21 +144,22 @@ class Scenario:
         # free=True: select a free cell, free=False: select an occupied cell
         free_cells = np.argwhere(self.occupancy != free)
         if len(free_cells) == 0:
-            print("No free cells available to add an obstacle.")
+            print("[Scenario] Selecting obstacle location: failed — no free cells available")
             return None
         cell = tuple(free_cells[self.rng.integers(len(free_cells))])
         return cell
         
     def generate(self):
-
-        # generate the noise field
-        self._generate_noise_field()
-        selection_field = self.probability_field.copy()
-        
         # determine the number of obstacles to place
         unit_loads_num = int(self.height * self.width * self.occupancy_rate * (1-self.simple_obstacle_rate))
         simple_obstacles_num = int(self.height * self.width * self.occupancy_rate) - unit_loads_num
         self.obstacle_count = unit_loads_num + simple_obstacles_num
+        progress = GenerationProgress("Scenario", "Generating obstacle layout")
+        progress.start(f"target: {self.obstacle_count} obstacles")
+
+        # generate the noise field
+        self._generate_noise_field()
+        selection_field = self.probability_field.copy()
 
         obstacles = np.concatenate([
             np.zeros(simple_obstacles_num, dtype=bool), # False: simple obstacles
@@ -200,7 +202,11 @@ class Scenario:
                     simple_obstacles_placed += 1
                 # print progress
                 if placed_obstacles % 100 == 0:
-                    print(f"\r{' ' * 50}\rPlaced {placed_obstacles}/{self.obstacle_count} obstacles - {placed_obstacles/self.obstacle_count*100:.1f}% (unit-load: {unit_loads_placed}, simple: {simple_obstacles_placed})...", end="", flush=True)
+                    progress.update(
+                        placed_obstacles,
+                        self.obstacle_count,
+                        f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
+                    )
                 obstacles = obstacles[1:] # remove the placed obstacle from the list
             else:
                 # else: undo placement
@@ -208,12 +214,23 @@ class Scenario:
                 
             processed_cells += 1
             if processed_cells >= max_free_cells:
-                print(f"\nWarning: Not enough free cells to place all obstacles. Stopping generation prematurely. Placed {placed_obstacles}/{self.obstacle_count} obstacles.")
                 break
 
         # determine access points for placed obstacles
         self.update_access_points()
-        print(f"\nFinished placing {placed_obstacles}/{self.obstacle_count} obstacles.")
+        success = placed_obstacles == self.obstacle_count
+        if success:
+            progress.finish(
+                True,
+                f"placed {placed_obstacles}/{self.obstacle_count} obstacles | "
+                f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
+            )
+        else:
+            progress.finish(
+                False,
+                f"not enough free cells; stopped prematurely after {placed_obstacles}/{self.obstacle_count} obstacles | "
+                f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
+            )
         
         # save scenario in recorder, if provided
         if self.recorder is not None:
@@ -227,6 +244,8 @@ class Scenario:
                 "agv_radius": self.agv_radius,
             }
             self.recorder.set_scenario(scenario_data, plot=True)
+
+        return success
 
 
     # check if the free sapce is connected, by checking that the occupancy contains not more than one free component
@@ -279,11 +298,10 @@ class Scenario:
     def make_updates(self, respect_probab_field=True, number_of_updates=100):
         """Make random updates to the scenario by adding, moving, or removing obstacles."""
         changed_cells = set()  # track changed cells to update access points after map updates
+        progress = GenerationProgress("Scenario", "Generating dynamic updates")
+        progress.start(f"target: {number_of_updates} updates")
         
         for _ in range(number_of_updates):
-            
-            print(f"Making change {_+1}/{number_of_updates}...", end="\r")
-            
             action = self.rng.choice(["add", "move", "remove"])
             
             success = False
@@ -318,9 +336,13 @@ class Scenario:
                     success = self._remove_obstacle(cell)
                     if success:
                         changed_cells.add(cell)
+            progress.update(_ + 1, number_of_updates, f"latest action: {action}")
         self.update_access_points(changed_cells)
         
         self.iteration += 1
+        progress.finish(True, f"applied {number_of_updates}/{number_of_updates} updates")
+        print("[Scenario] Dynamic-update workflow: successful")
+        print()
 
     def consume_updates(self):
         """Return and clear the changes since the last consumer update."""

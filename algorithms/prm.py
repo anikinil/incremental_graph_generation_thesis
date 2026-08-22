@@ -7,6 +7,7 @@ import geopandas as gpd
 import numpy as np
 from scipy.spatial import KDTree
 from collections import defaultdict
+from artifacts.progress import GenerationProgress
 
 
 class UnionFind:
@@ -197,8 +198,8 @@ class PRM:
     
     def construction_step(self, num_nodes):
         """Builds initial roadmap without special points."""
-        
-        print("==== CONSTRUCTION STEP ====")
+        progress = GenerationProgress("PRM", "Generating initial roadmap")
+        progress.start(f"target: {num_nodes} sampling attempts")
         
         nodes_added = 0
         for iteration in range(num_nodes):
@@ -235,16 +236,26 @@ class PRM:
                     self.failure_count[node_idx] += 1
                     self.failure_count[neighbor_idx] += 1
             
-            # print consruction iteration stats
-            if (iteration + 1) % 100 == 0:
+            # print construction iteration stats
+            if (iteration + 1) % 100 == 0 or iteration + 1 == num_nodes:
                 num_components = self.union_find.get_num_components(self.num_nodes)
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-                print(f"\r{' ' * 100}\r  Nodes: {self.num_nodes}/{num_nodes} - {(self.num_nodes / num_nodes) * 100:.2f}% | Edges: {num_edges} | Components: {num_components}", end="", flush=True)
+                progress.update(
+                    iteration + 1,
+                    num_nodes,
+                    f"nodes: {self.num_nodes}/{num_nodes} ({self.num_nodes / num_nodes * 100:.1f}%) | "
+                    f"edges: {num_edges} | components: {num_components}",
+                )
         
         # update KDTree
         self._update_kdtree()
         
-        print(f"\nConstruction step complete: {self.num_nodes} nodes")
+        num_components = self.union_find.get_num_components(self.num_nodes)
+        num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+        progress.finish(
+            True,
+            f"generated {self.num_nodes} nodes and {num_edges} edges | components: {num_components}",
+        )
     
     def _random_bounce_walk(self, start_config, walk_length, max_bounces):
         """
@@ -292,7 +303,9 @@ class PRM:
     
     def connect_special_points(self):
         """Attempts to connect special points (access + IO points) to the roadmap."""
-        print("=== CONNECTING SPECIAL POINTS ===")
+        total_special_points = len(self.special_points)
+        progress = GenerationProgress("PRM", "Connecting special points")
+        progress.start(f"target: {total_special_points} special points")
         
         # add every special point to the roadmap first, then rebuild the KDTree
         
@@ -300,7 +313,7 @@ class PRM:
         self._update_kdtree()
         
         # attempt to connect each special point to its neighbors
-        for node_idx in special_indices:
+        for point_number, node_idx in enumerate(special_indices, start=1):
             config = self.nodes[node_idx]
             candidate_indices = self._get_candidate_neighbors(config)
             
@@ -326,17 +339,23 @@ class PRM:
                     # else, mark failure and continue
                     self.failure_count[node_idx] += 1
                     self.failure_count[neighbor_idx] += 1
+
+            if point_number % 10 == 0 or point_number == total_special_points:
+                num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+                progress.update(point_number, total_special_points, f"nodes: {self.num_nodes} | edges: {num_edges}")
         
         # keep the KDTree in sync with the newly connected special points
         self._update_kdtree()
         
-        print(f"\nSpecial points connection complete: {self.num_nodes} nodes")
+        num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+        progress.finish(True, f"processed {total_special_points} special points | nodes: {self.num_nodes} | edges: {num_edges}")
     
     def expansion_step(self, bounce_walk_length, max_bounces):
         """
         Expansion step: densifies difficult regions until all components and special points are connected.
         """
-        print("\n=== EXPANSION STEP ===")
+        progress = GenerationProgress("PRM", "Expanding roadmap")
+        progress.start("until all components are connected")
         
 
         # compute weights for node selection based on failure ratio (higher weight -> more likely)
@@ -358,7 +377,10 @@ class PRM:
             
             if expansions % 10 == 0:
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-                print(f"\r{' ' * 100}\r  Expansions: {expansions} | Nodes: {self.num_nodes} | Edges: {num_edges} | Components: {num_components}", end="", flush=True)
+                progress.update(
+                    expansions,
+                    details=f"nodes: {self.num_nodes} | edges: {num_edges} | components: {num_components}",
+                )
             
             # if num_components == 2:
             #     self.visualize(title=f"Expansion step {expansions} | Nodes: {self.num_nodes} | Edges: {num_edges} | Components: {num_components}")
@@ -420,13 +442,22 @@ class PRM:
             expansions += 1
             if num_components == 9:
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-                print(f"  Expansions: {expansions} | Nodes: {self.num_nodes} | Edges: {num_edges} | Components: {self.union_find.get_num_components(self.num_nodes)}")
+                progress.update(
+                    expansions,
+                    details=f"nodes: {self.num_nodes} | edges: {num_edges} | "
+                    f"components: {self.union_find.get_num_components(self.num_nodes)}",
+                )
                 self.visualize(title=f"Expansion step {expansions} | Nodes: {self.num_nodes} | Components: {self.union_find.get_num_components(self.num_nodes)}")
         
         # update KDTree
         self._update_kdtree()
         
-        print(f"\nExpansion step complete: {self.num_nodes} nodes, {self.union_find.get_num_components(self.num_nodes)} components")
+        num_components = self.union_find.get_num_components(self.num_nodes)
+        num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+        progress.finish(
+            num_components <= 1,
+            f"expansions: {expansions} | nodes: {self.num_nodes} | edges: {num_edges} | components: {num_components}",
+        )
         
     def smoothing_step(self):
         # J.-P. Laumond, M. Taix, and P. Jacobs, “A motion planner for car-like robots based on a global/local approach,” Proc. IEEE Internat. Workshop Intell. Robot Syst., pp. 765-773. 1990

@@ -16,8 +16,8 @@ def main():
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 43
-    width = 22
+    height = 25
+    width = 30
 
     io_points = {
         (int(height * 0.1), 0),
@@ -31,7 +31,7 @@ def main():
         rng=rng,
         height=height,
         width=width,
-        occupancy_rate=0.5,
+        occupancy_rate=0.2,
         sigma_coarse=3,
         sigma_fine=1,
         noisy_aisles_num=0,
@@ -41,8 +41,15 @@ def main():
         simple_obstacle_rate=0.1,
         agv_radius=0.42,
         recorder=recorder,
+        
+        ordered_aisle_widths = (2, 1),
+        ordered_aisle_spacing = (3, 5),
+        ordered_aisle_offset = (0, 0),
+        wall_clearance = (2, 2, 3, 3)
     )
-    scenario.generate()
+    scenario_success = scenario.generate()
+    print(f"[Scenario] Workflow: {'successful' if scenario_success else 'failed'}")
+    print()
 
     continuous_access_points, continuous_io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
     bounds = (0, 0, width, height)
@@ -64,6 +71,8 @@ def main():
     )
     vgraph.create_visibility_graph()
     vgraph.record_graph()
+    print("[Visibility graph] Workflow: successful")
+    print()
 
     recorder.set_algorithm("prm", use_iterations=False)
     buffer_segments = 2  # PRM may use a different buffered-corner approximation
@@ -86,6 +95,8 @@ def main():
     prm.construction_step(num_nodes=500)
     prm.connect_special_points()
     prm.record_graph()
+    print("[PRM] Workflow: successful")
+    print()
 
     scale_factor = 3
     recorder.set_algorithm("gvd", use_iterations=True)
@@ -99,7 +110,7 @@ def main():
         recorder=recorder
     )
     gvd.computeDistanceMap()
-    gvd.build_graph()
+    gvd_success = gvd.build_graph()
 
     gvd_iterations = 3
     updates_per_iteration = 10
@@ -107,12 +118,12 @@ def main():
         scenario.make_updates(number_of_updates=updates_per_iteration)
         gvd.apply_obstacle_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
         gvd.updateDistanceMap()
-        gvd.build_graph()
+        gvd_success = gvd.build_graph()
         
     scenario.remove_region(top_left=(10, 10), bottom_right=(20, 20))
     gvd.apply_obstacle_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
     gvd.updateDistanceMap()
-    gvd.build_graph()
+    gvd_success = gvd.build_graph()
 
 if __name__ == "__main__":
     main()
