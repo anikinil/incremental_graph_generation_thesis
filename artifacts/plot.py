@@ -32,6 +32,11 @@ GRID_COLOR = (0, 0, 0, 1)                         # black
 
 # sizes
 # TODO
+GRID_LINE_WIDTH = 0.5
+
+# zorders
+# TODO
+GRID_ZORDER = 100
 
 # utility
 
@@ -113,17 +118,25 @@ def _major_ticks(lower, upper, max_ticks=10):
     return np.append(ticks, upper) if ticks[-1] != upper else ticks
 
 
+def _draw_grid_lines(ax, x_boundaries, y_boundaries):
+    """Draw a uniform cell-boundary grid above every plot element."""
+    x_boundaries = np.asarray(x_boundaries)
+    y_boundaries = np.asarray(y_boundaries)
+    if len(x_boundaries) < 2 or len(y_boundaries) < 2:
+        return
+    x_min, x_max = x_boundaries[0], x_boundaries[-1]
+    y_min, y_max = y_boundaries[0], y_boundaries[-1]
+    segments = [[(x, y_min), (x, y_max)] for x in x_boundaries] + [[(x_min, y), (x_max, y)] for y in y_boundaries]
+    ax.add_collection(LineCollection(segments, colors=[GRID_COLOR], linewidths=GRID_LINE_WIDTH, zorder=GRID_ZORDER))
+
+
 def _setup_continuous_axes(ax, bounds):
     """Apply the shared PRM/VGraph axis labels and unit-cell grid."""
     min_x, min_y, max_x, max_y = bounds
     ax.set_xticks(_major_ticks(min_x, max_x))
     ax.set_yticks(_major_ticks(min_y, max_y))
-    ax.set_xticks(np.arange(min_x, max_x + 1), minor=True)
-    ax.set_yticks(np.arange(min_y, max_y + 1), minor=True)
-    ax.tick_params(which="minor", length=0)
-    ax.set_axisbelow(True)
-    ax.grid(True, which="major", color=GRID_COLOR, linewidth=0.55)
-    ax.grid(True, which="minor", color=GRID_COLOR, linewidth=0.30)
+    ax.grid(False)
+    _draw_grid_lines(ax, np.arange(min_x, max_x + 1), np.arange(min_y, max_y + 1))
     ax.set_xlim(min_x, max_x)
     ax.set_ylim(max_y, min_y)
     ax.set_aspect("equal")
@@ -213,8 +226,8 @@ def _setup_grid_axes(ax, height, width, scale_factor):
     ax.tick_params(axis="both", which="both", length=0)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
-    ax.set_axisbelow(False)
-    ax.grid(True, color="black", linestyle="-", linewidth=0.5, zorder=40)
+    ax.grid(False)
+    _draw_grid_lines(ax, np.arange(width + 1), np.arange(height + 1))
     ax.set_xlim(0, width)
     ax.set_ylim(height, 0)
     ax.set_aspect("equal")

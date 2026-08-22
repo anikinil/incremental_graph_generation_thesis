@@ -83,6 +83,8 @@ class VGraph:
         print(f"Checking visibility..")
         # check visibility
         for i, j in combinations(range(num_nodes_total), 2):
+            print(f"\r{' ' * 100}\r{i*100/num_nodes_total:.2f}% - Checking visibility between {i} and {j}", end="", flush=True)
+            
             a = Point(self.G.nodes[i]["pos"])
             b = Point(self.G.nodes[j]["pos"])
             line = LineString([a, b])
