@@ -33,10 +33,12 @@ GRID_COLOR = (0, 0, 0, 1)                         # black
 # sizes
 # TODO
 GRID_LINE_WIDTH = 0.5
+UNIT_CELL_GRID_LINE_WIDTH = 0.9
 
 # zorders
 # TODO
 GRID_ZORDER = 100
+UNIT_CELL_GRID_ZORDER = GRID_ZORDER + 1
 
 # utility
 
@@ -117,7 +119,7 @@ def _major_ticks(lower, upper, max_ticks=10):
     return np.arange(lower, upper + 1, step)
 
 
-def _draw_grid_lines(ax, x_boundaries, y_boundaries):
+def _draw_grid_lines(ax, x_boundaries, y_boundaries, *, linewidth=GRID_LINE_WIDTH, zorder=GRID_ZORDER):
     """Draw a uniform cell-boundary grid above every plot element."""
     x_boundaries = np.asarray(x_boundaries)
     y_boundaries = np.asarray(y_boundaries)
@@ -126,7 +128,7 @@ def _draw_grid_lines(ax, x_boundaries, y_boundaries):
     x_min, x_max = x_boundaries[0], x_boundaries[-1]
     y_min, y_max = y_boundaries[0], y_boundaries[-1]
     segments = [[(x, y_min), (x, y_max)] for x in x_boundaries] + [[(x_min, y), (x_max, y)] for y in y_boundaries]
-    ax.add_collection(LineCollection(segments, colors=[GRID_COLOR], linewidths=GRID_LINE_WIDTH, zorder=GRID_ZORDER))
+    ax.add_collection(LineCollection(segments, colors=[GRID_COLOR], linewidths=linewidth, zorder=zorder))
 
 
 def _setup_continuous_axes(ax, bounds):
@@ -218,7 +220,7 @@ def _draw_grid_special_points(ax, access_points, io_points):
 
 
 def _setup_grid_axes(ax, height, width, scale_factor):
-    """Set up axes for a grid plot."""
+    """Set up GVD axes with fine GVD cells and thicker original unit-cell boundaries."""
     ax.set_xticks(np.arange(1, width, scale_factor))
     ax.set_yticks(np.arange(1, height, scale_factor))
     ax.tick_params(axis="both", which="both", length=0)
@@ -226,6 +228,7 @@ def _setup_grid_axes(ax, height, width, scale_factor):
     ax.set_yticklabels([])
     ax.grid(False)
     _draw_grid_lines(ax, np.arange(width + 1), np.arange(height + 1))
+    _draw_grid_lines(ax, np.arange(1, width, scale_factor), np.arange(1, height, scale_factor), linewidth=UNIT_CELL_GRID_LINE_WIDTH, zorder=UNIT_CELL_GRID_ZORDER)
     ax.set_xlim(0, width)
     ax.set_ylim(height, 0)
     ax.set_aspect("equal")
