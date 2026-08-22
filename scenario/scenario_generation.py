@@ -144,7 +144,7 @@ class Scenario:
         # free=True: select a free cell, free=False: select an occupied cell
         free_cells = np.argwhere(self.occupancy != free)
         if len(free_cells) == 0:
-            print("[Scenario] Selecting obstacle location: failed — no free cells available")
+            print(f"[Scenario {self.iteration}] Selecting obstacle location: failed — no free cells available")
             return None
         cell = tuple(free_cells[self.rng.integers(len(free_cells))])
         return cell
@@ -154,7 +154,7 @@ class Scenario:
         unit_loads_num = int(self.height * self.width * self.occupancy_rate * (1-self.simple_obstacle_rate))
         simple_obstacles_num = int(self.height * self.width * self.occupancy_rate) - unit_loads_num
         self.obstacle_count = unit_loads_num + simple_obstacles_num
-        progress = GenerationProgress("Scenario", "Generating obstacle layout")
+        progress = GenerationProgress("Scenario", "Generating obstacle layout", self.iteration)
         progress.start(f"target: {self.obstacle_count} obstacles")
 
         # generate the noise field
@@ -246,7 +246,7 @@ class Scenario:
             "height": self.height,
             "width": self.width,
             "agv_radius": self.agv_radius,
-        }, plot=True)
+        }, plot=True, iteration=self.iteration)
 
 
     # check if the free sapce is connected, by checking that the occupancy contains not more than one free component
@@ -298,8 +298,9 @@ class Scenario:
 
     def make_updates(self, respect_probab_field=True, number_of_updates=100):
         """Make random updates to the scenario by adding, moving, or removing obstacles."""
+        self.iteration += 1
         changed_cells = set()  # track changed cells to update access points after map updates
-        progress = GenerationProgress("Scenario", "Generating dynamic updates")
+        progress = GenerationProgress("Scenario", "Generating dynamic updates", self.iteration)
         progress.start(f"target: {number_of_updates} updates")
         
         for _ in range(number_of_updates):
@@ -340,11 +341,10 @@ class Scenario:
             progress.update(_ + 1, number_of_updates, f"latest action: {action}")
         self.update_access_points(changed_cells)
         
-        self.iteration += 1
+        progress.finish(True, f"applied {number_of_updates}/{number_of_updates} updates")
         if self.recorder is not None:
             self._record_scenario()
-        progress.finish(True, f"applied {number_of_updates}/{number_of_updates} updates")
-        print("[Scenario] Dynamic-update workflow: successful")
+        print(f"[Scenario {self.iteration}] Dynamic-update workflow: successful")
         print()
 
     def consume_updates(self):

@@ -28,6 +28,7 @@ class VGraph:
         self.access_points = access_points
         self.io_points = io_points
         self.recorder = recorder
+        self.iteration = 0
 
         self.G = nx.Graph()
         
@@ -57,7 +58,7 @@ class VGraph:
 
     def create_visibility_graph(self):
 
-        vertex_progress = GenerationProgress("Visibility graph", "Collecting vertices")
+        vertex_progress = GenerationProgress("Visibility graph", "Collecting vertices", self.iteration)
         vertex_progress.start()
 
         # check if obstacle_space is a MultiPolygon, else no .geoms attribute
@@ -95,7 +96,7 @@ class VGraph:
         )
         
         total_pairs = num_nodes_total * (num_nodes_total - 1) // 2
-        visibility_progress = GenerationProgress("Visibility graph", "Checking visibility")
+        visibility_progress = GenerationProgress("Visibility graph", "Checking visibility", self.iteration)
         visibility_progress.start(f"target: {total_pairs} node pairs")
         # check visibility
         for pair_number, (i, j) in enumerate(combinations(range(num_nodes_total), 2), start=1):

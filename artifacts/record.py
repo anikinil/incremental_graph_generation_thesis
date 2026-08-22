@@ -62,7 +62,7 @@ class ExperimentRecorder:
         self.algorithm = algorithm
         self.use_iterations = use_iterations
 
-    def set_scenario(self, scenario, plot=False):
+    def set_scenario(self, scenario, plot=False, iteration=None):
         """
         Sets the scenario in recorder to later use in plotting of roadmap generation results.
         Saves the scenario to disk and plots scenario (warehouse layout) if plot=True.
@@ -72,9 +72,9 @@ class ExperimentRecorder:
         self.scenario_version += 1
         self.scenario_dir = self.experiment_dir / f"scenario_{self.scenario_version:03d}"
         self.scenario_dir.mkdir(parents=True, exist_ok=True)
-        return self.save(data_type="scenario", data=self.scenario, plot=plot, algorithm="scenario")
+        return self.save(data_type="scenario", data=self.scenario, plot=plot, algorithm="scenario", iteration=iteration)
 
-    def save(self, data_type, data, plot=False, algorithm=None):
+    def save(self, data_type, data, plot=False, algorithm=None, iteration=None):
         if not self.enabled:
             return None
 
@@ -102,9 +102,11 @@ class ExperimentRecorder:
 
         data_snapshot = self._snapshot(data)
         record_algorithm = self.algorithm if algorithm is None else algorithm
+        record_iteration = self.iteration if iteration is None else iteration
 
         record = {
             "algorithm": record_algorithm,
+            "iteration": record_iteration,
             "scenario_version": self.scenario_version,
             "data_type": data_type,
             "timestamp": datetime.now().isoformat(),
@@ -121,6 +123,7 @@ class ExperimentRecorder:
                 path=pdf_path,
                 title_info={
                     "algorithm": record_algorithm,
+                    "iteration": record_iteration,
                     "scenario_version": self.scenario_version,
                 },
             )

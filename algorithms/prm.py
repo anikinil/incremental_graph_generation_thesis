@@ -74,6 +74,7 @@ class PRM:
         self.agv_radius = agv_radius # radius of the AGV for collision costraints
         self.buffer_segments = buffer_segments # segments per rounded-corner quadrant
         self.recorder = recorder
+        self.iteration = 0
         
         # initialize with empty nodes (pre-allocate capacity)
         self.nodes = np.empty((100, 2), dtype=np.float64)
@@ -198,7 +199,7 @@ class PRM:
     
     def construction_step(self, num_nodes):
         """Builds initial roadmap without special points."""
-        progress = GenerationProgress("PRM", "Generating initial roadmap")
+        progress = GenerationProgress("PRM", "Generating initial roadmap", self.iteration)
         progress.start(f"target: {num_nodes} sampling attempts")
         
         nodes_added = 0
@@ -304,7 +305,7 @@ class PRM:
     def connect_special_points(self):
         """Attempts to connect special points (access + IO points) to the roadmap."""
         total_special_points = len(self.special_points)
-        progress = GenerationProgress("PRM", "Connecting special points")
+        progress = GenerationProgress("PRM", "Connecting special points", self.iteration)
         progress.start(f"target: {total_special_points} special points")
         
         # add every special point to the roadmap first, then rebuild the KDTree
@@ -354,7 +355,7 @@ class PRM:
         """
         Expansion step: densifies difficult regions until all components and special points are connected.
         """
-        progress = GenerationProgress("PRM", "Expanding roadmap")
+        progress = GenerationProgress("PRM", "Expanding roadmap", self.iteration)
         progress.start("until all components are connected")
         
 

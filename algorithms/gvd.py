@@ -201,7 +201,7 @@ class GVD:
         # return neighbors
     
     def computeDistanceMap(self):
-        progress = GenerationProgress("GVD", "Generating distance map")
+        progress = GenerationProgress("GVD", "Generating distance map", self.iteration)
         progress.start(f"grid: {self.height}x{self.width}")
 
         # initialize and enqueue occupied cells
@@ -222,9 +222,8 @@ class GVD:
             if processed_cells % 1000 == 0:
                 progress.update(processed_cells, details="wavefront cells processed")
         progress.finish(True, f"processed {processed_cells} wavefront cells")
-        
+
         # self.prune_voronoi(connectivity=8) # prune
-        
         self._record("distance_map", D=self.D, obst=self.obst)
         self._record("voronoi_skeleton", voro=self.voro)
         
@@ -292,7 +291,7 @@ class GVD:
         return value  # return the type of obstacle that was removed (for move operations)
     
     def updateDistanceMap(self):
-        progress = GenerationProgress("GVD", "Updating distance map")
+        progress = GenerationProgress("GVD", "Updating distance map", self.iteration)
         progress.start()
         processed_cells = 0
         while not self.open.is_empty():
@@ -320,9 +319,9 @@ class GVD:
         # # store as tuples
         # self.affected_distance_cells = {(int(y), int(x)) for y, x in np.argwhere(changed_mask)}
         
+        progress.finish(True, f"processed {processed_cells} wavefront cells")
         self._record("distance_map", D=self.D, obst=self.obst)
         self._record("voronoi_skeleton", voro=self.voro)
-        progress.finish(True, f"processed {processed_cells} wavefront cells")
 
     def raise_(self, s):
         
@@ -454,7 +453,7 @@ class GVD:
         dirs = {'n': (-1, 0), 's': (1, 0), 'e': (0, 1), 'w': (0, -1)} # dir: (dy, dx)
         
         total_special_points = len(self.access_points) + len(self.io_points)
-        progress = GenerationProgress("GVD", "Connecting special points to Voronoi skeleton")
+        progress = GenerationProgress("GVD", "Connecting special points to Voronoi skeleton", self.iteration)
         progress.start(f"target: {total_special_points} special points")
 
         connected = 0
@@ -612,7 +611,7 @@ class GVD:
         grid = voronoi_grid + obstacle_grid + bridge_grid  # 0 = free, 1 = skeleton/bridge, 2 = occupied
         
         skeleton_cell_count = int(np.sum(voronoi_grid))
-        progress = GenerationProgress("GVD", "Generating graph from Voronoi skeleton")
+        progress = GenerationProgress("GVD", "Generating graph from Voronoi skeleton", self.iteration)
         progress.start(f"skeleton cells: {skeleton_cell_count}")
 
         def neighbors(cell):
@@ -736,11 +735,10 @@ class GVD:
             f"vertices: {len(vertex_id_to_cell_coords)} | edges: {len(edges)} | "
             f"special points connected: {connected_special_points}/{len(self.access_points) + len(self.io_points)}",
         )
-        print(f"[GVD] Workflow: {'successful' if graph_connected else 'failed'}")
-        print()
-        
         self._record("graph", graph=self.graph, voro=self.voro,
                      bridges=self.special_point_bridges)
+        print(f"[GVD {self.iteration}] Workflow: {'successful' if graph_connected else 'failed'}")
+        print()
         return graph_connected
     
     def _connect_special_points_to_graph(self):
@@ -748,7 +746,7 @@ class GVD:
         Connects special points to the graph vertex located on the same Voronoi cell.
         """
         total_special_points = len(self.access_points) + len(self.io_points)
-        progress = GenerationProgress("GVD", "Connecting special points to graph")
+        progress = GenerationProgress("GVD", "Connecting special points to graph", self.iteration)
         progress.start(f"target: {total_special_points} special points")
         
         grid = self.voro.astype(np.uint8) + self.special_point_bridges.astype(np.uint8)  # 0 = free cell, 1 = skeleton/bridge, 2 = occupied

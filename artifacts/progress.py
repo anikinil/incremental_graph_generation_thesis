@@ -3,16 +3,21 @@ class GenerationProgress:
 
     _active_progress = None
 
-    def __init__(self, generator, stage):
+    def __init__(self, generator, stage, iteration=0):
         self.generator = generator
         self.stage = stage
+        self.iteration = iteration
         self._last_line_length = 0
+
+    @property
+    def prefix(self):
+        return f"[{self.generator} {self.iteration}]"
 
     def start(self, details=""):
         """Start a new generation stage, printing its name and optional details."""
         self._close_other_active_line()
         suffix = f" — {details}" if details else ""
-        print(f"[{self.generator}] {self.stage}: started{suffix}")
+        print(f"{self.prefix} {self.stage}: started{suffix}")
 
     def _close_other_active_line(self):
         """Close any other active progress line, if it exists, to avoid overwriting it."""
@@ -33,7 +38,7 @@ class GenerationProgress:
         else:
             progress = f"{completed}/{total} ({completed / total * 100:.1f}%)"
         suffix = f" | {details}" if details else ""
-        line = f"[{self.generator}] {self.stage}: {progress}{suffix}"
+        line = f"{self.prefix} {self.stage}: {progress}{suffix}"
         padding = " " * max(0, self._last_line_length - len(line))
         print(f"\r{line}{padding}", end="", flush=True)
         self._last_line_length = len(line)
@@ -44,7 +49,7 @@ class GenerationProgress:
         self._close_other_active_line()
         outcome = "successful" if success else "failed"
         suffix = f" — {details}" if details else ""
-        line = f"[{self.generator}] {self.stage}: {outcome}{suffix}"
+        line = f"{self.prefix} {self.stage}: {outcome}{suffix}"
         padding = " " * max(0, self._last_line_length - len(line))
         print(f"\r{line}{padding}")
         self._last_line_length = 0
@@ -55,7 +60,7 @@ class GenerationProgress:
         """Print a warning without leaving an in-place progress line behind."""
         self._close_other_active_line()
         padding = " " * self._last_line_length
-        print(f"\r{padding}\r[{self.generator}] {self.stage}: warning — {details}")
+        print(f"\r{padding}\r{self.prefix} {self.stage}: warning — {details}")
         self._last_line_length = 0
         if GenerationProgress._active_progress is self:
             GenerationProgress._active_progress = None

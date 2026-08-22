@@ -48,31 +48,31 @@ def main():
         wall_clearance = (2, 2, 3, 3)
     )
     scenario_success = scenario.generate()
-    print(f"[Scenario] Workflow: {'successful' if scenario_success else 'failed'}")
+    print(f"[Scenario {scenario.iteration}] Workflow: {'successful' if scenario_success else 'failed'}")
     print()
 
     continuous_access_points, continuous_io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
     bounds = (0, 0, width, height)
 
-    recorder.set_algorithm("vgraph", use_iterations=False)
-    buffer_segments = 3  # Shapely segments per 90-degree buffered corner
-    free_space, obstacle_space = scenario.navigation_space(buffer_segments=buffer_segments)
-    vgraph = VGraph(
-        width=width,
-        height=height,
-        free_space=free_space,
-        obstacle_space=obstacle_space,
-        occupancy=scenario.occupancy,
-        agv_radius=scenario.agv_radius,
-        access_points=continuous_access_points,
-        io_points=continuous_io_points,
-        buffer_segments=buffer_segments,
-        recorder=recorder,
-    )
-    vgraph.create_visibility_graph()
-    vgraph.record_graph()
-    print("[Visibility graph] Workflow: successful")
-    print()
+    # recorder.set_algorithm("vgraph", use_iterations=False)
+    # buffer_segments = 3  # Shapely segments per 90-degree buffered corner
+    # free_space, obstacle_space = scenario.navigation_space(buffer_segments=buffer_segments)
+    # vgraph = VGraph(
+    #     width=width,
+    #     height=height,
+    #     free_space=free_space,
+    #     obstacle_space=obstacle_space,
+    #     occupancy=scenario.occupancy,
+    #     agv_radius=scenario.agv_radius,
+    #     access_points=continuous_access_points,
+    #     io_points=continuous_io_points,
+    #     buffer_segments=buffer_segments,
+    #     recorder=recorder,
+    # )
+    # vgraph.create_visibility_graph()
+    # vgraph.record_graph()
+    # print("[Visibility graph] Workflow: successful")
+    # print()
 
     recorder.set_algorithm("prm", use_iterations=False)
     buffer_segments = 2  # PRM may use a different buffered-corner approximation
@@ -95,7 +95,7 @@ def main():
     prm.construction_step(num_nodes=500)
     prm.connect_special_points()
     prm.record_graph()
-    print("[PRM] Workflow: successful")
+    print(f"[PRM {prm.iteration}] Workflow: successful")
     print()
 
     scale_factor = 3
@@ -116,17 +116,17 @@ def main():
     updates_per_iteration = 10
     for _ in range(gvd_iterations):
         scenario.make_updates(number_of_updates=updates_per_iteration)
-        gvd.apply_layout_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+        gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
         gvd.updateDistanceMap()
         gvd.build_graph()
         
     scenario.remove_region(top_left=(10, 10), bottom_right=(20, 20))
-    gvd.apply_layout_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+    gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
     gvd.updateDistanceMap()
     gvd.build_graph()
     
     scenario.add_region(top_left=(12, 12), bottom_right=(15, 15))
-    gvd.apply_layout_updates(updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+    gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
     gvd.updateDistanceMap()
     gvd.build_graph()
 
