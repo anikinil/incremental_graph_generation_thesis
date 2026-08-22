@@ -16,8 +16,8 @@ def main():
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 50
-    width = 80
+    height = 40
+    width = 60
 
     io_points = {
         (int(height * 0.1), 0),
@@ -31,9 +31,9 @@ def main():
         rng=rng,
         height=height,
         width=width,
-        occupancy_rate=0.1,
+        occupancy_rate=0.5,
         sigma_coarse=3,
-        sigma_fine=3,
+        sigma_fine=1,
         noisy_aisles_num=0,
         noisy_aisle_sigma=1,
         io_points=io_points,

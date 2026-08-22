@@ -20,12 +20,15 @@ AFFECTED_VORO_CELLS_COLOR = (0.8, 0.2, 0.2, 0.7)  # red overlay
 AFFECTED_DISTANCES_COLOR = (0.9, 0.1, 0.1, 0.3)   # red
 BRIDGE_COLOR = (0.2, 0.5, 0.2, 0.7)               # green
 
-EDGE_COLOR = (1.0, 0.6, 0.2, 1)                   # orange
-VERTEX_COLOR = (0.9, 0.4, 0.1, 1)                 # dark orange
+GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 0.8)           # blue
+GRAPH_VERTEX_COLOR = (0.1, 0.4, 0.7, 1)           # blue
+VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.1)      # blue, semi-transparent for better visibility
 
-IO_POINT_COLOR = (1, 0.4, 0.15)                   # orange
-IO_POINT_EDGE_COLOR = (0, 0, 0)                   # black
-ACCESS_POINT_COLOR = (1, 0.1, 0.1)                # red  
+IO_POINT_COLOR = (0.1, 0.5, 0.3)                  # green
+ACCESS_POINT_COLOR = (0.9, 0.1, 0.1)              # red
+SPECIAL_POINT_EDGE_COLOR = (1, 1, 1, 1)           # white
+
+GRID_COLOR = (0.5, 0.7, 0.7, 0.6)
 
 # sizes
 # TODO
@@ -118,8 +121,9 @@ def _setup_continuous_axes(ax, bounds):
     ax.set_xticks(np.arange(min_x, max_x + 1), minor=True)
     ax.set_yticks(np.arange(min_y, max_y + 1), minor=True)
     ax.tick_params(which="minor", length=0)
-    ax.grid(True, which="major", color="black", linewidth=0.5, zorder=40)
-    ax.grid(True, which="minor", color="black", linewidth=0.5, zorder=40)
+    ax.set_axisbelow(True)
+    ax.grid(True, which="major", color=GRID_COLOR, linewidth=0.55)
+    ax.grid(True, which="minor", color=GRID_COLOR, linewidth=0.30)
     ax.set_xlim(min_x, max_x)
     ax.set_ylim(max_y, min_y)
     ax.set_aspect("equal")
@@ -148,10 +152,14 @@ def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordi
 
     if access_points:
         xs, ys = zip(*access_points)
-        ax.scatter(xs, ys, s=30, color="red", zorder=20, label="Access points")
+        ax.scatter(xs, ys, s=34, color=ACCESS_POINT_COLOR,
+                   edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.7,
+                   zorder=20, label="Access points")
     if io_points:
         xs, ys = zip(*io_points)
-        ax.scatter(xs, ys, s=50, color="green", zorder=20, label="IO points")
+        ax.scatter(xs, ys, s=48, color=IO_POINT_COLOR,
+                   edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.8,
+                   zorder=20, label="IO points")
 
 
 def _draw_grid_special_points(ax, access_points, io_points):
@@ -159,10 +167,18 @@ def _draw_grid_special_points(ax, access_points, io_points):
     handles = []
     if access_points:
         access = np.asarray([(p[1], p[0]) for p in access_points], dtype=float)
-        handles.append(ax.scatter(access[:, 0], access[:, 1], s=10, color=ACCESS_POINT_COLOR, zorder=20, label="Access points"))
+        handles.append(ax.scatter(access[:, 0], access[:, 1], s=34,
+                                  color=ACCESS_POINT_COLOR,
+                                  edgecolors=SPECIAL_POINT_EDGE_COLOR,
+                                  linewidths=0.7, zorder=20,
+                                  label="Access points"))
     if io_points:
         io = np.asarray([(p[1], p[0]) for p in io_points], dtype=float)
-        handles.append(ax.scatter(io[:, 0], io[:, 1], s=20, color=IO_POINT_COLOR, edgecolors=IO_POINT_EDGE_COLOR, linewidths=1.5, zorder=20, label="IO points"))
+        handles.append(ax.scatter(io[:, 0], io[:, 1], s=48,
+                                  color=IO_POINT_COLOR,
+                                  edgecolors=SPECIAL_POINT_EDGE_COLOR,
+                                  linewidths=0.8, zorder=20,
+                                  label="IO points"))
     return handles
 
 
@@ -173,8 +189,8 @@ def _setup_grid_axes(ax, height, width, scale_factor):
     ax.tick_params(axis="both", which="both", length=0)
     ax.set_xticklabels([])
     ax.set_yticklabels([])
-    ax.set_axisbelow(False)
-    ax.grid(True, color="black", linestyle="-", linewidth=0.5, zorder=40)
+    ax.set_axisbelow(True)
+    ax.grid(True, color=GRID_COLOR, linestyle="-", linewidth=0.35)
     ax.set_xlim(0, width)
     ax.set_ylim(height, 0)
     ax.set_aspect("equal")
@@ -322,6 +338,9 @@ class _GVDGridPlotter(BasePlotter):
             "affected_distance_cells": affected_distance_cells,
             "affected_voro_cells": affected_voro_cells
         }
+
+    def setup_figure(self):
+        return plt.subplots(figsize=(16, 10))
 
     def _draw_obstacles(self, ax, occupancy, agv_radius):
         """Draw occupancy cells and the buffer zone."""
@@ -474,19 +493,28 @@ class GraphPlotter(_GVDGridPlotter):
             edges = graph["edges"]
 
             edge_segments = [[(vertices[v1][1], vertices[v1][0]), (vertices[v2][1], vertices[v2][0])] for v1, v2 in edges]
-            ax.add_collection(LineCollection(edge_segments, colors=[EDGE_COLOR], linewidths=3, zorder=10, label="Graph edges"))
+            ax.add_collection(LineCollection(edge_segments, colors=[GRAPH_EDGE_COLOR], linewidths=1.6, capstyle="round", joinstyle="round", zorder=10, label="Graph edges"))
 
             coords = np.asarray([(x, y) for y, x in vertices.values()], dtype=float)
-            ax.scatter(coords[:, 0], coords[:, 1], color=VERTEX_COLOR, linewidth=1, s=50, zorder=11, label="Graph vertices")
+            ax.scatter(coords[:, 0], coords[:, 1], color=GRAPH_VERTEX_COLOR,
+                       edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.6,
+                       s=13, zorder=11, label="Graph vertices")
 
         handles, labels = ax.get_legend_handles_labels()
-        handles += [
-            Patch(facecolor=AFFECTED_DISTANCES_COLOR, edgecolor="none"),
-            Patch(facecolor=AFFECTED_VORO_CELLS_COLOR, edgecolor="none"),
-            Patch(facecolor=VORO_SKELETON_COLOR, edgecolor="none"),
-        ]
-        labels += ["Changed distance cells", "Affected Voronoi cells", "Voronoi skeleton"]
-        ax.legend(handles, labels, loc="upper right", fontsize="small")
+        if voro is not None:
+            handles.append(Patch(facecolor=VORO_SKELETON_COLOR, edgecolor="none"))
+            labels.append("Voronoi skeleton")
+        if bridges is not None:
+            handles.append(Patch(facecolor=BRIDGE_COLOR, edgecolor="none"))
+            labels.append("Bridge cells")
+        if ctx["iteration"] > 0:
+            handles.extend([
+                Patch(facecolor=AFFECTED_DISTANCES_COLOR, edgecolor="none"),
+                Patch(facecolor=AFFECTED_VORO_CELLS_COLOR, edgecolor="none"),
+            ])
+            labels.extend(["Changed distance cells", "Affected Voronoi cells"])
+        ax.legend(handles, labels, loc="upper right", fontsize="small",
+                  frameon=True, framealpha=0.92)
 
 
 class _ContinuousGraphPlotter(BasePlotter):
@@ -525,7 +553,9 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
         nodes = np.asarray(data["nodes"])
         edges = data["edges"]
         if len(edges):
-            ax.add_collection(LineCollection([[nodes[left], nodes[right]] for left, right in edges], colors="gray", alpha=0.5, linewidths=2, zorder=10))
+            ax.add_collection(LineCollection([[nodes[left], nodes[right]] for left, right in edges],
+                                             colors=[GRAPH_EDGE_COLOR], linewidths=1.1, alpha=0.55,
+                                             capstyle="round", zorder=10, label="Graph edges"))
 
         adjacency = [set() for _ in range(len(nodes))]
         for left, right in edges:
@@ -544,13 +574,14 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
                     frontier.append(neighbor)
             components.append(component)
 
-        colors = plt.cm.tab20(np.linspace(0, 1, max(1, len(components))))
-        for color, component in zip(colors, components):
+        for component in components:
             coordinates = nodes[list(component)]
-            ax.scatter(coordinates[:, 0], coordinates[:, 1], s=15, color=[color], edgecolors=[color], linewidths=1, zorder=11)
+            ax.scatter(coordinates[:, 0], coordinates[:, 1], s=18, color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.35, zorder=11, label="Graph vertices")
 
         self._draw_special_points(ax, context)
-        ax.legend(loc="upper right")
+        handles, labels = ax.get_legend_handles_labels()
+        unique_handles = dict(zip(labels, handles))
+        ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
 
 
 class VisibilityGraphPlotter(_ContinuousGraphPlotter):
@@ -563,10 +594,14 @@ class VisibilityGraphPlotter(_ContinuousGraphPlotter):
         nodes = data["nodes"]
         edges = data["edges"]
         if edges:
-            ax.add_collection(LineCollection([[nodes[left]["pos"], nodes[right]["pos"]] for left, right in edges], colors="blue", linewidths=0.5, zorder=10))
+            ax.add_collection(LineCollection(
+                [[nodes[left]["pos"], nodes[right]["pos"]] for left, right in edges],
+                colors=[VISIBILITY_EDGE_COLOR], linewidths=0.45,
+                capstyle="round", zorder=10, label="Visibility edges",
+            ))
 
         self._draw_special_points(ax, context)
-        ax.legend(loc="upper right")
+        ax.legend(loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
 
 # -----------------------------------------------
 
