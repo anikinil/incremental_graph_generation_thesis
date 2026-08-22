@@ -737,7 +737,6 @@ class GVD:
         )
         self._record("graph", graph=self.graph, voro=self.voro,
                      bridges=self.special_point_bridges)
-        print(f"[GVD {self.iteration}] Workflow: {'successful' if graph_connected else 'failed'}")
         print()
         return graph_connected
     

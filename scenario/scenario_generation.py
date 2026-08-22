@@ -344,7 +344,6 @@ class Scenario:
         progress.finish(True, f"applied {number_of_updates}/{number_of_updates} updates")
         if self.recorder is not None:
             self._record_scenario()
-        print(f"[Scenario {self.iteration}] Dynamic-update workflow: successful")
         print()
 
     def consume_updates(self):

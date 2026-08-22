@@ -358,7 +358,6 @@ class PRM:
         progress = GenerationProgress("PRM", "Expanding roadmap", self.iteration)
         progress.start("until all components are connected")
         
-
         # compute weights for node selection based on failure ratio (higher weight -> more likely)
         weights = np.zeros(self.num_nodes, dtype=np.float64)
         for i in range(self.num_nodes):
@@ -369,19 +368,15 @@ class PRM:
             # if i >= self.num_nodes - len(self.special_points):
             #     weights[i] *= 2.0  # Prioritize special points
         
-        
         expansions = 0
         while True:
             num_components = self.union_find.get_num_components(self.num_nodes)
-            if num_components <= 1:
+            if num_components == 1:
                 break
-            
+
             if expansions % 10 == 0:
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-                progress.update(
-                    expansions,
-                    details=f"nodes: {self.num_nodes} | edges: {num_edges} | components: {num_components}",
-                )
+                progress.update(expansions, details=f"nodes: {self.num_nodes} | edges: {num_edges} | components: {num_components}")
             
             # if num_components == 2:
             #     self.visualize(title=f"Expansion step {expansions} | Nodes: {self.num_nodes} | Edges: {num_edges} | Components: {num_components}")
@@ -441,24 +436,18 @@ class PRM:
                 prev_idx = new_idx
                 
             expansions += 1
-            if num_components == 9:
-                num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-                progress.update(
-                    expansions,
-                    details=f"nodes: {self.num_nodes} | edges: {num_edges} | "
-                    f"components: {self.union_find.get_num_components(self.num_nodes)}",
-                )
-                self.visualize(title=f"Expansion step {expansions} | Nodes: {self.num_nodes} | Components: {self.union_find.get_num_components(self.num_nodes)}")
+            num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+            progress.update(expansions, details=f"nodes: {self.num_nodes} | edges: {num_edges} | " f"components: {self.union_find.get_num_components(self.num_nodes)}")
+                # self.visualize(title=f"Expansion step {expansions} | Nodes: {self.num_nodes} | Components: {self.union_find.get_num_components(self.num_nodes)}")
         
         # update KDTree
         self._update_kdtree()
         
         num_components = self.union_find.get_num_components(self.num_nodes)
         num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-        progress.finish(
-            num_components <= 1,
-            f"expansions: {expansions} | nodes: {self.num_nodes} | edges: {num_edges} | components: {num_components}",
-        )
+        success = num_components == 1
+        progress.finish(success, f"expansions: {expansions} | nodes: {self.num_nodes} | edges: {num_edges} | components: {num_components}")
+        return success
         
     def smoothing_step(self):
         # J.-P. Laumond, M. Taix, and P. Jacobs, “A motion planner for car-like robots based on a global/local approach,” Proc. IEEE Internat. Workshop Intell. Robot Syst., pp. 765-773. 1990

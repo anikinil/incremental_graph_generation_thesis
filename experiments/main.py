@@ -16,8 +16,8 @@ def main():
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 25
-    width = 30
+    height = 250
+    width = 300
 
     io_points = {
         (int(height * 0.1), 0),
@@ -31,7 +31,7 @@ def main():
         rng=rng,
         height=height,
         width=width,
-        occupancy_rate=0.2,
+        occupancy_rate=0.6,
         sigma_coarse=3,
         sigma_fine=1,
         noisy_aisles_num=0,
@@ -42,13 +42,12 @@ def main():
         agv_radius=0.42,
         recorder=recorder,
         
-        ordered_aisle_widths = (2, 1),
-        ordered_aisle_spacing = (3, 5),
-        ordered_aisle_offset = (0, 0),
-        wall_clearance = (2, 2, 3, 3)
+        # ordered_aisle_widths = (2, 1),
+        # ordered_aisle_spacing = (3, 5),
+        # ordered_aisle_offset = (0, 0),
+        # wall_clearance = (2, 2, 3, 3)
     )
     scenario_success = scenario.generate()
-    print(f"[Scenario {scenario.iteration}] Workflow: {'successful' if scenario_success else 'failed'}")
     print()
 
     continuous_access_points, continuous_io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
@@ -94,8 +93,8 @@ def main():
     )
     prm.construction_step(num_nodes=500)
     prm.connect_special_points()
+    prm.expansion_step(bounce_walk_length=5, max_bounces=10)
     prm.record_graph()
-    print(f"[PRM {prm.iteration}] Workflow: successful")
     print()
 
     scale_factor = 3

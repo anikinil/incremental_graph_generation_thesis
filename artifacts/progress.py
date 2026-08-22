@@ -47,9 +47,9 @@ class GenerationProgress:
     def finish(self, success, details=""):
         """Finish the current generation stage, printing its final outcome and optional details."""
         self._close_other_active_line()
-        outcome = "successful" if success else "failed"
+        outcome = "SUCCESS" if success else "FAILURE"
         suffix = f" — {details}" if details else ""
-        line = f"{self.prefix} {self.stage}: {outcome}{suffix}"
+        line = f"{self.prefix} [{outcome}] {self.stage}{suffix}"
         padding = " " * max(0, self._last_line_length - len(line))
         print(f"\r{line}{padding}")
         self._last_line_length = 0
