@@ -114,8 +114,7 @@ def _rgba_quadmesh(ax, rgba, extent, zorder=1):
 def _major_ticks(lower, upper, max_ticks=10):
     """Return evenly spaced ticks without overcrowding a continuous plot."""
     step = max(1, int(np.ceil((upper - lower) / max_ticks)))
-    ticks = np.arange(lower, upper + 1, step)
-    return np.append(ticks, upper) if ticks[-1] != upper else ticks
+    return np.arange(lower, upper + 1, step)
 
 
 def _draw_grid_lines(ax, x_boundaries, y_boundaries):
@@ -161,7 +160,7 @@ def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordi
     """Draw PRM/VGraph-style special points, optionally converting grid coordinates."""
     if grid_coordinates:
         access_points = [(column, row) for row, column, *_ in access_points]
-        io_points = [(column, row) for row, column in io_points]
+        io_points = [(column + 0.5, row + 0.5) for row, column in io_points]
 
     if access_points:
         xs, ys = zip(*access_points)
@@ -188,13 +187,12 @@ def _draw_scenario_access_points(ax, access_points):
         dx, dy = direction_vectors[direction]
         x, y = column, row
         ax.add_patch(FancyArrowPatch(
+            (x - 0.5 * dx, y - 0.5 * dy),
             (x, y),
-            (x + 0.20 * dx, y + 0.20 * dy),
             arrowstyle="-|>",
-            mutation_scale=7,
-            linewidth=0.55,
+            mutation_scale=5,
+            linewidth=0,
             facecolor=ACCESS_POINT_COLOR,
-            edgecolor=SPECIAL_POINT_EDGE_COLOR,
             zorder=20,
         ))
 
