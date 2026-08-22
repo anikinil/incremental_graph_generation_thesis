@@ -56,7 +56,8 @@ class PRM:
     """
     
     def __init__(self, rng, free_space, obstacle_space, occupancy, access_points, io_points, bounds,
-                 eps, max_dist, max_neighbors, agv_radius):
+                 eps, max_dist, max_neighbors, agv_radius,
+                 buffer_segments, recorder=None):
 
         self.rng = rng # random number generator
         self.free_space = free_space # free space (shapely Polygon)
@@ -70,6 +71,8 @@ class PRM:
         self.max_dist = max_dist # maximum distance to consider for neighbors
         self.max_neighbors = max_neighbors # maximum number of neighbors to consider for connection
         self.agv_radius = agv_radius # radius of the AGV for collision costraints
+        self.buffer_segments = buffer_segments # segments per rounded-corner quadrant
+        self.recorder = recorder
         
         # initialize with empty nodes (pre-allocate capacity)
         self.nodes = np.empty((100, 2), dtype=np.float64)
@@ -97,7 +100,7 @@ class PRM:
             y = self.rng.uniform(y_min, y_max)
             point = Point(x, y)
             
-            if self.free_space.contains(point):
+            if self.free_space.covers(point):
                 return np.array([x, y], dtype=np.float64)
         
         return None
@@ -127,7 +130,7 @@ class PRM:
         for config in configs:
             point = Point(config[0], config[1])  # shapely uses (x, y)
             # if a point in obstacle space, reject path
-            if not self.free_space.contains(point):
+            if not self.free_space.covers(point):
                 return False
         return True
     
@@ -209,9 +212,7 @@ class PRM:
             node_idx = self._add_node(config)
             nodes_added += 1
             
-            # rebuild KDTree periodically for accurate neighbor queries
-            if node_idx % 1000 == 0 and node_idx > 0:
-                self._update_kdtree()
+            self._update_kdtree()
             
             # get candidate neighbors
             candidate_indices = self._get_candidate_neighbors(config)
@@ -272,7 +273,7 @@ class PRM:
                 
                 # check if in free space
                 next_point = Point(next_pos[0], next_pos[1])
-                if not self.free_space.contains(next_point):
+                if not self.free_space.covers(next_point):
                     break
                 
                 # move to next step
@@ -451,61 +452,83 @@ class PRM:
                     added_edges.add(edge)
         
         return G
+
+    def record_graph(self):
+        """Records the current roadmap graph."""
+        if self.recorder is None:
+            return None
+
+        edges = sorted(tuple(sorted((node, neighbor))) for node, neighbors in self.adjacency.items() for neighbor in neighbors if node < neighbor)
+        return self.recorder.save(
+            data_type="prm_graph",
+            data={
+                "occupancy": self.occupancy,
+                "agv_radius": self.agv_radius,
+                "buffer_segments": self.buffer_segments,
+                "access_points": self.access_points,
+                "io_points": self.io_points,
+                "bounds": self.bounds,
+                "nodes": self.nodes[:self.num_nodes],
+                "edges": edges,
+                "num_nodes": self.num_nodes,
+            },
+            plot=True,
+        )
     
 
-def main():
-    from model.store import load_scenario_as_shapely
-    scenario = load_scenario_as_shapely()
+# def main():
+#     from model.store import load_scenario_as_shapely
+#     scenario = load_scenario_as_shapely()
     
-    # convert access and io points to (x, y)
-    access_points = [(point[1], point[0]) for point in scenario["access_points"]] # only the coordinates, direction not used
-    io_points = [(point[1], point[0]) for point in scenario["io_points"]]
+#     # convert access and io points to (x, y)
+#     access_points = [(point[1], point[0]) for point in scenario["access_points"]] # only the coordinates, direction not used
+#     io_points = [(point[1], point[0]) for point in scenario["io_points"]]
     
-    rng = np.random.default_rng(42)
+#     rng = np.random.default_rng(42)
     
-    # parameters
+#     # parameters
     
-    # num_construction_nodes = int((width * height) / occupancy_rate)
-    num_construction_nodes = int(scenario["width"] * scenario["height"] * (1 - scenario["occupancy_rate"]) * 3)
-    max_dist = 5 # maximum distance to consider for neighbors
-    max_neighbors = 15 # maximum number of neighbors to consider for connection
-    eps = 0.1 # step size for path discretization
+#     # num_construction_nodes = int((width * height) / occupancy_rate)
+#     num_construction_nodes = int(scenario["width"] * scenario["height"] * (1 - scenario["occupancy_rate"]) * 3)
+#     max_dist = 5 # maximum distance to consider for neighbors
+#     max_neighbors = 15 # maximum number of neighbors to consider for connection
+#     eps = 0.1 # step size for path discretization
     
-    bounce_walk_length = 5
-    max_bounces = 10
+#     bounce_walk_length = 5
+#     max_bounces = 10
     
-    # build PRM
-    bounds = (0, 0, scenario["width"], scenario["height"])
-    prm = PRM(
-        rng,
-        scenario["free_space"],
-        scenario["obstacle_space"],
-        scenario["occupancy"],
-        access_points,
-        io_points,
-        bounds,
-        eps=eps,
-        max_dist=max_dist,
-        max_neighbors=max_neighbors,
-        agv_radius=scenario["agv_radius"]
-    )
+#     # build PRM
+#     bounds = (0, 0, scenario["width"], scenario["height"])
+#     prm = PRM(
+#         rng,
+#         scenario["free_space"],
+#         scenario["obstacle_space"],
+#         scenario["occupancy"],
+#         access_points,
+#         io_points,
+#         bounds,
+#         eps=eps,
+#         max_dist=max_dist,
+#         max_neighbors=max_neighbors,
+#         agv_radius=scenario["agv_radius"]
+#     )
         
-    # construction step (no special points)
-    prm.construction_step(num_construction_nodes)
-    prm.visualize(title="PRM Roadmap After Construction Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
+#     # construction step (no special points)
+#     prm.construction_step(num_construction_nodes)
+#     prm.visualize(title="PRM Roadmap After Construction Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
     
-    # connect special points (acce
-    prm.connect_special_points()
-    prm.visualize(title="PRM Roadmap After Connecting Special Points: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
+#     # connect special points (acce
+#     prm.connect_special_points()
+#     prm.visualize(title="PRM Roadmap After Connecting Special Points: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
     
-    # expand (with special points)
-    prm.expansion_step(bounce_walk_length, max_bounces)
-    prm.visualize(title="PRM Roadmap After Expansion Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
+#     # expand (with special points)
+#     prm.expansion_step(bounce_walk_length, max_bounces)
+#     prm.visualize(title="PRM Roadmap After Expansion Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
     
-    # perform smoothing
-    prm.smoothing_step()
-    prm.visualize(title="PRM Roadmap After Smoothing Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
+#     # perform smoothing
+#     prm.smoothing_step()
+#     prm.visualize(title="PRM Roadmap After Smoothing Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
     
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

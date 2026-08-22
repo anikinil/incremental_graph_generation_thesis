@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.ndimage import binary_closing, distance_transform_edt, gaussian_filter, label
+from shapely.geometry import box
+from scenario.geometry import buffered_obstacle_space
 
 
 class Scenario:
@@ -217,6 +219,7 @@ class Scenario:
         if self.recorder is not None:
             scenario_data = {
                 "occupancy": self.occupancy.copy(),
+                "probability_field": self.probability_field.copy(),
                 "access_points": list(self.access_points),
                 "io_points": list(self.io_points),
                 "height": self.height,
@@ -274,6 +277,7 @@ class Scenario:
                     self.access_points.discard(point)
 
     def make_updates(self, respect_probab_field=True, number_of_updates=100):
+        """Make random updates to the scenario by adding, moving, or removing obstacles."""
         changed_cells = set()  # track changed cells to update access points after map updates
         
         for _ in range(number_of_updates):
@@ -317,8 +321,24 @@ class Scenario:
         self.update_access_points(changed_cells)
         
         self.iteration += 1
-        
+
+    def consume_updates(self):
+        """Return and clear the changes since the last consumer update."""
+        updates = self.updates
+        self.updates = []
+        return updates
+
+    def navigation_space(self, buffer_segments):
+        """
+        Return the free space and obstacle space as Shapely geometries, with obstacles buffered for AGV radius.
+        Used in prm and vgraph generation.
+        """
+        world = box(0, 0, self.width, self.height)
+        obstacle_space = buffered_obstacle_space(self.occupancy, self.agv_radius, buffer_segments)
+        return world.difference(obstacle_space), obstacle_space
+
     def _add_obstacle(self, cell, type):
+        """Add an obstacle of the specified type at the given cell if it does not disconnect the free space."""
         self.occupancy[cell] = type  # 1 for simple obstacle, 2 for unit-load obstacle
         
         if (cell in self.io_points):
@@ -338,6 +358,7 @@ class Scenario:
         return True
     
     def _move_obstacle(self, from_cell, to_cell):
+        """Move an obstacle from one cell to another if it does not disconnect the free space."""
         
         # do not move if an IO point is at target
         if (to_cell in self.io_points):
@@ -359,6 +380,7 @@ class Scenario:
         return True
 
     def _remove_obstacle(self, cell):
+        """Remove an obstacle from the given cell if it does not disconnect the free space."""
         
         value = self.occupancy[cell]
         self.occupancy[cell] = 0
@@ -375,6 +397,7 @@ class Scenario:
         return True
     
     def remove_region(self, top_left, bottom_right):
+        """Remove all obstacles in a rectangular region."""
 
         r1, c1 = top_left
         r2, c2 = bottom_right
@@ -402,6 +425,7 @@ class Scenario:
         self.iteration += 1
         
     def add_region(self, top_left, bottom_right, obstacle_type=2):
+        """Add obstacles of the specified type in a rectangular region."""
         r1, c1 = top_left
         r2, c2 = bottom_right
         

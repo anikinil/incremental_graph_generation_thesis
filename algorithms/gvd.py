@@ -4,41 +4,14 @@ Lau, Sprunk, Burgard
 (Robotics and Autonomous Systems, 2013)
 """
 
-import math
-import sys
-
-from matplotlib import pyplot as plt
-from matplotlib.collections import LineCollection
 import numpy as np
 from collections import defaultdict, deque
-
-from matplotlib.path import Path
-from matplotlib.patches import PathPatch
-        
-import shapely
-
-
-
-BUFFER_COLOR = [0.8, 0.8, 0.8, 1] # light grey
-BUFFER_RES = 2
-
-SIMPLE_OBSTACLE_COLOR = [0.3, 0.3, 0.3, 1] # dark grey
-UNIT_LOAD_COLOR = [0.5, 0.5, 0.5, 1] # grey
-
-VORO_SKELETON_COLOR = [0.3, 0.3, 0.5, 0.7] # blue
-AFFECTED_VORO_CELLS_COLOR = [0.8, 0.2, 0.2, 0.7] # red overlay
-AFFECTED_DISTANCES_COLOR = [0.9, 0.1, 0.1, 0.3] # red
-BRIDGE_COLOR = [0.2, 0.5, 0.2, 0.7] # green
-
-
-EDGE_COLOR = [1.0, 0.6, 0.2, 1] # orange
-VERTEX_COLOR = [0.9, 0.4, 0.1, 1] # dark orange
 
 
 class BucketPriorityQueue:
     
     def __init__(self, max_distance):
-        
+
         # dictionary of lists for each distance value
         self.buckets = defaultdict(list)
         # bounded by the maximum possible squared distance in the grid
@@ -78,7 +51,7 @@ class GVD:
     def __init__(self, rng, occupancy_grid, scale_factor, access_points, io_points, agv_radius, recorder):
         self.rng = rng
 
-        self.occupancy_grid = occupancy_grid
+        self.occupancy_grid = occupancy_grid.copy()
         self.height, self.width = occupancy_grid.shape
         
         self.scale_factor = scale_factor
@@ -99,12 +72,7 @@ class GVD:
         
         # obstacle reference map: stores (y, x) of closest occupied cell for each cell
         self.obst = np.empty((self.height, self.width), dtype=object)
-        print()
-        for i in range(self.height):
-            for j in range(self.width):
-                print(f"\r{' ' * 100}\rInitializing obstacle reference for cell ({i}, {j})", end="", flush=True)
-                self.obst[i, j] = (-1, -1)
-        print()
+        self.obst.fill((-1, -1))
         
         # voronoi map: True if cell is on Voronoi diagram
         self.voro = np.zeros((self.height, self.width), dtype=bool)
@@ -126,6 +94,35 @@ class GVD:
         self.special_point_bridges = np.zeros((self.height, self.width), dtype=bool)
     
         self.iteration = 0 # increased after every layout update
+
+    def _plot_context(self):
+        """Return the complete grid state in the GVD coordinate system.
+
+        The GVD changes resolution and adds its own outer wall, so plotting
+        must use this state rather than reconstructing it from the source
+        scenario.  Keeping the context here also makes every saved snapshot
+        self-contained and reproducible.
+        """
+        return {
+            "occupancy": self.occupancy_grid,
+            "access_points": self.access_points,
+            "io_points": self.io_points,
+            "agv_radius": self.agv_radius,
+            "scale_factor": self.scale_factor,
+            "iteration": self.iteration,
+            "affected_distance_cells": self.affected_distance_cells,
+            "affected_voro_cells": self.affected_voro_cells,
+        }
+
+    def _record(self, data_type, **data):
+        """Save an algorithm snapshot together with its authoritative context."""
+        if self.recorder is None:
+            return None
+        return self.recorder.save(
+            data_type=data_type,
+            data={**self._plot_context(), **data},
+            plot=True,
+        )
     
     
     def increase_resolution(self):
@@ -200,34 +197,24 @@ class GVD:
     def computeDistanceMap(self):
         
         # initialize and enqueue occupied cells
-        print()
         for y in range(self.height):
             for x in range(self.width):
                 s = (y, x)
-                print(f"\r{' ' * 100}\rInitializing cell ({y}, {x}) with occupancy {self.occupancy_grid[y, x]}", end="", flush=True)
                 if self.occupancy_grid[y, x] > 0:  # if an object is in the cell
                     self.D[y, x] = 0 # distance to itself is zero
                     self.obst[y, x] = s # is its own closest obstacle
                     self.open.insert(s, 0) # enqueue for wavefront propagation: distance=0, cell=s
                         
         # propagate wavefronts
-        print()
-        # dist = 0
         while not self.open.is_empty():
-            # if self.open.current_min_distance > dist:
-            #     dist = self.open.current_min_distance
-            #     self.visualize_distance_map(title=dist)
-            print(f"\r{' ' * 100}\rProcessing queue with current min distance {self.open.current_min_distance}", end="", flush=True)
             s, _ = self.open.pop() # pop cell with smallest distance
             self.lower(s) # propagate to neighbors and update their distances if closer to obstacle
-        print(f"\r{' ' * 100}\rDistance map complete.")
+        print("Distance map complete.")
         
         # self.prune_voronoi(connectivity=8) # prune
         
-        self.recorder.save(data_type="distance_map", data={"D": self.D, "obst": self.obst}, plot=True)
-        self.recorder.save(data_type="voronoi_skeleton", data={"voro": self.voro}, plot=True)
-        self.recorder.save(data_type="special_point_bridges", data={"bridges": self.special_point_bridges}, plot=True)
-        self.recorder.save(data_type="graph", data=self.graph, plot=True)
+        self._record("distance_map", D=self.D, obst=self.obst)
+        self._record("voronoi_skeleton", voro=self.voro)
         
     def lower(self, s):
         
@@ -316,10 +303,8 @@ class GVD:
         # # store as tuples
         # self.affected_distance_cells = {(int(y), int(x)) for y, x in np.argwhere(changed_mask)}
         
-        self.recorder.save(data_type="distance_map", data={"D": self.D, "obst": self.obst}, plot=True)
-        self.recorder.save(data_type="voronoi_skeleton", data={"voro": self.voro}, plot=True)
-        self.recorder.save(data_type="special_point_bridges", data={"bridges": self.special_point_bridges}, plot=True)
-        self.recorder.save(data_type="graph", data=self.graph, plot=True)
+        self._record("distance_map", D=self.D, obst=self.obst)
+        self._record("voronoi_skeleton", voro=self.voro)
 
     def raise_(self, s):
         
@@ -432,7 +417,8 @@ class GVD:
         self.special_point_bridges.fill(False)  # clear special bridges, as they need to be recalculated now
         
         self.iteration += 1
-        self.recorder.new_iteration(self.iteration)
+        if self.recorder is not None:
+            self.recorder.new_iteration(self.iteration)
 
 
     def build_special_point_bridges(self):
@@ -453,13 +439,9 @@ class GVD:
             y, x, dir = ap
             # determine the direction vector based on the dir label
             dir_vec = dirs[dir]
-            while True:
-                
-                try:
-                    # get current cell
-                    on_voro = self.voro[int(y), int(x)]
-                except IndexError:
-                    print(F"Access point {ap} ray went out of bounds at ({y}, {x}). Stopping ray.")
+            while 0 <= int(y) < self.height and 0 <= int(x) < self.width:
+                # get current cell
+                on_voro = self.voro[int(y), int(x)]
 
                 # if on a Voronoi cell, stop the ray
                 if on_voro:
@@ -472,7 +454,9 @@ class GVD:
                 # move in the direction of the dir label
                 y += dir_vec[0]
                 x += dir_vec[1]
-                
+            else:
+                print(f"Warning: Access point {ap} does not reach the Voronoi skeleton.")
+
         print(f"Connected {connected}/{len(self.access_points)} access points to Voronoi skeleton.")
         
         # try to connect similarly to access points, but try each direction and pick the best one:
@@ -487,7 +471,7 @@ class GVD:
             for dir_vec in dirs.values():
                 curr_x, curr_y = x, y
                 current_bridge_cells = []
-                while True:
+                while 0 <= int(curr_y) < self.height and 0 <= int(curr_x) < self.width:
                     on_voro = self.voro[int(curr_y), int(curr_x)]
                     if on_voro: # if on skeleton, stop the ray
                         found_connection = True
@@ -517,6 +501,10 @@ class GVD:
             
         print(f"Connected {connected}/{len(self.io_points)} IO points to Voronoi skeleton.")
 
+        self._record("voronoi_skeleton_with_bridges", voro=self.voro,
+                     bridges=self.special_point_bridges)
+
+
     def clear_bridges(self):
         self.special_point_bridges.fill(False)
 
@@ -528,8 +516,6 @@ class GVD:
             if (int(sp[0]), int(sp[1])) == cell:
                 return True
         return False
-    
-    # ============= DEBUGGING ===================
     
     def _get_connected_components(self):
         if not self.graph or not self.graph["vertices"]:
@@ -561,38 +547,6 @@ class GVD:
         else:
             return False
     
-    def _visualize_graph_components(self):
-        components = self._get_connected_components()
-
-        fig, ax = self.draw_grid()
-
-        # edges
-        edge_segments = []
-        for v1, v2 in self.graph["edges"]:
-            y1, x1 = self.graph["vertices"][v1]
-            y2, x2 = self.graph["vertices"][v2]
-            edge_segments.append([(x1, y1), (x2, y2)])
-
-        edge_collection = LineCollection(edge_segments, colors="blue", linewidths=3, zorder=2)
-        ax.add_collection(edge_collection)
-
-        # assign each vertex its component
-        vertex_component = {}
-        for component_id, component in enumerate(components):
-            for vertex_id in component:
-                vertex_component[vertex_id] = component_id
-
-        # plot
-        for component_id, component in enumerate(components):
-            vertices = np.array([(self.graph["vertices"][v][1], self.graph["vertices"][v][0]) for v in component])
-            ax.scatter(vertices[:, 0], vertices[:, 1], s=50, zorder=3, label=f"Component {component_id}")
-
-        ax.legend()
-        plt.title(f"Graph Components ({len(components)})")
-        plt.show()
-
-    # ================================================
-
     def build_graph(self):
         """
         "Sparse 3D Topological Graphs for Micro-Aerial Vehicle Planning",
@@ -673,9 +627,6 @@ class GVD:
 
         # while there are cells to process in the flood-fill queue
         while floodfill_queue:
-            
-            print(f"\r{' ' * 100}\rBuilding graph. Flood-fill queue size: {len(floodfill_queue)}", end="", flush=True)
-            
             # pop the next cell and its source vertex_id from the queue
             curr_cell_coords, source_vertex_id = floodfill_queue.popleft()
             
@@ -735,9 +686,10 @@ class GVD:
         else:
             print("Generated graph is NOT connected!")
             print("\n[MAP GENERATION FAILED]")
-            self._visualize_graph_components()
-            # raise ValueError("Generated graph is not connected!")
+            # The graph is still recorded below for inspection.
         
+        self._record("graph", graph=self.graph, voro=self.voro,
+                     bridges=self.special_point_bridges)
     
     def _connect_special_points_to_graph(self):
         """
@@ -762,7 +714,7 @@ class GVD:
                         connected += 1
                         break
             else:
-                raise ValueError(f"Special point at ({y}, {x}) is not on a Voronoi cell.")
+                print(f"Warning: Special point at ({y}, {x}) is not connected to the graph.")
         print(f"Connected {connected}/{len(self.access_points) + len(self.io_points)} special points to graph vertices.")
     
     
@@ -770,4 +722,3 @@ class GVD:
 
 # TODO: edge splitting (obstacle avoidance) -- necessary?
 #         - probably YES (edges can cross buffer zone, at least for CORNER_SEGMENTS=0)
-

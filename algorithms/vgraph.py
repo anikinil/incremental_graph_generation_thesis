@@ -14,15 +14,18 @@ class VGraph:
     https://lis.csail.mit.edu/pubs/tlp/collision-free-planning-cacm.pdf
     """
     
-    def __init__(self, width, height, free_space, obstacle_space, occupancy, agv_radius, access_points, io_points):
+    def __init__(self, width, height, free_space, obstacle_space, occupancy, agv_radius,
+                 access_points, io_points, buffer_segments, recorder=None):
         self.width = width
         self.height = height
         self.free_space = free_space
         self.obstacle_space = obstacle_space
         self.occupancy = occupancy
         self.agv_radius = agv_radius
+        self.buffer_segments = buffer_segments
         self.access_points = access_points
         self.io_points = io_points
+        self.recorder = recorder
 
         self.G = nx.Graph()
         
@@ -47,7 +50,9 @@ class VGraph:
     def create_visibility_graph(self):
 
         # check if obstacle_space is a MultiPolygon, else no .geoms attribute
-        if self.obstacle_space.geom_type == 'MultiPolygon':
+        if self.obstacle_space.is_empty:
+            obstacle_polygons = []
+        elif self.obstacle_space.geom_type == 'MultiPolygon':
             obstacle_polygons = list(self.obstacle_space.geoms)
         else:
             obstacle_polygons = [self.obstacle_space]
@@ -78,7 +83,6 @@ class VGraph:
         print(f"Checking visibility..")
         # check visibility
         for i, j in combinations(range(num_nodes_total), 2):
-            print(f"\r{' ' * 100}\r{i*100/num_nodes_total:.2f}% - Checking visibility between {i} and {j}", end="", flush=True)
             a = Point(self.G.nodes[i]["pos"])
             b = Point(self.G.nodes[j]["pos"])
             line = LineString([a, b])
@@ -86,32 +90,57 @@ class VGraph:
             # if line inside free space, add edge with weight equal length to graph
             if self.free_space.covers(line):
                 self.G.add_edge(i, j, weight=line.length)
+
+        print(f"Visibility graph complete: {self.G.number_of_nodes()} nodes, {self.G.number_of_edges()} edges")
+
+    def record_graph(self):
+        """Record the visibility graph using via recorder if available."""
+        if self.recorder is None:
+            return None
+
+        return self.recorder.save(
+            data_type="vgraph",
+            data={
+                "occupancy": self.occupancy,
+                "agv_radius": self.agv_radius,
+                "buffer_segments": self.buffer_segments,
+                "access_points": self.access_points,
+                "io_points": self.io_points,
+                "bounds": (0, 0, self.width, self.height),
+                "nodes": {
+                    node: {"pos": tuple(attributes["pos"]), "type": attributes["type"]}
+                    for node, attributes in self.G.nodes(data=True)
+                },
+                "edges": sorted(tuple(sorted(edge)) for edge in self.G.edges),
+            },
+            plot=True,
+        )
                 
-def main():
+# def main():
     
-    from model.store import load_scenario_as_shapely
-    scenario = load_scenario_as_shapely()
+#     from model.store import load_scenario_as_shapely
+#     scenario = load_scenario_as_shapely()
     
-    access_points = [(point[1], point[0]) for point in scenario["access_points"]] # direction not required, swap ccords for shapely
-    io_points = [(point[1], point[0]) for point in scenario["io_points"]]
+#     access_points = [(point[1], point[0]) for point in scenario["access_points"]] # direction not required, swap ccords for shapely
+#     io_points = [(point[1], point[0]) for point in scenario["io_points"]]
     
-    vgraph = VGraph(
-        width=scenario["width"],
-        height=scenario["height"],
-        free_space=scenario["free_space"],
-        obstacle_space=scenario["obstacle_space"],
-        occupancy=scenario["occupancy"],
-        agv_radius=scenario["agv_radius"],
-        access_points=access_points,
-        io_points=io_points
-    )
-    vgraph.create_visibility_graph()
+#     vgraph = VGraph(
+#         width=scenario["width"],
+#         height=scenario["height"],
+#         free_space=scenario["free_space"],
+#         obstacle_space=scenario["obstacle_space"],
+#         occupancy=scenario["occupancy"],
+#         agv_radius=scenario["agv_radius"],
+#         access_points=access_points,
+#         io_points=io_points
+#     )
+#     vgraph.create_visibility_graph()
     
-    print("Nodes:", vgraph.number_of_nodes())
-    print("Edges:", vgraph.number_of_edges())
+#     print("Nodes:", vgraph.number_of_nodes())
+#     print("Edges:", vgraph.number_of_edges())
     
-    vgraph.visualize()
+#     vgraph.visualize()
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

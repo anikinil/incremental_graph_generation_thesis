@@ -5,7 +5,7 @@ import pickle
 
 import numpy as np
 
-from save.plot import PlotManager
+from artifacts.plot import PlotManager
 
 
 class ExperimentRecorder:
@@ -20,8 +20,8 @@ class ExperimentRecorder:
         experiment_name="", # if empty, will be generated based on timestamp, else gets a specified name
         enabled=True, # false to disable saving and plotting
     ):
-        
-        self.root = Path("experiments/results")
+
+        self.root = Path("artifacts/results")
         self.seed = seed
         self.enabled = enabled
 
@@ -55,7 +55,7 @@ class ExperimentRecorder:
 
         self.plot_manager = PlotManager()
 
-    def set_bucket(self, algorithm, use_iterations=True):
+    def set_algorithm(self, algorithm, use_iterations=True):
         """
         Switches the active bucket that subsequent save() calls write into.
         """
@@ -82,7 +82,6 @@ class ExperimentRecorder:
         self.save(data_type="scenario", data=self.scenario, plot=plot)
 
     def save(self, data_type, data, plot=False):
-
         if not self.enabled:
             return None
 
