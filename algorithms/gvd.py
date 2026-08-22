@@ -7,6 +7,8 @@ Lau, Sprunk, Burgard
 import numpy as np
 from collections import defaultdict, deque
 
+from scenario.geometry import centered_io_points, offset_access_points
+
 
 class BucketPriorityQueue:
     
@@ -143,9 +145,12 @@ class GVD:
         
         self.occupancy_grid = new_occupancy_grid
         
-        # scale positions of access points and IO points
-        self.access_points = [(y * self.scale_factor, x * self.scale_factor, dir) for (y, x, dir) in self.access_points]
-        self.io_points = [(y * self.scale_factor, x * self.scale_factor) for (y, x) in self.io_points]
+        # scale and translate special points to match the new resolution and offset access points to account for obstacle buffer
+        self.access_points = [
+            (y * self.scale_factor, x * self.scale_factor, direction)
+            for y, x, direction in offset_access_points(self.access_points, self.agv_radius)
+        ]
+        self.io_points = [(y * self.scale_factor, x * self.scale_factor) for y, x in centered_io_points(self.io_points)]
         
         # scale agv_radius
         self.agv_radius *= self.scale_factor
@@ -409,10 +414,12 @@ class GVD:
                 value = self.removeObstacle(s_from)
                 self.setObstacle(s_to, value)
                 
-        # adjust and update access points
-        self.access_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1, dir) for (y, x, dir) in new_access_points]
-        # adjust and update IO points (probably usually unchanged)
-        self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for (y, x) in new_io_points]
+        # the same transformations of special points like during initialization
+        source_agv_radius = self.agv_radius / self.scale_factor
+        self.access_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1, direction)
+            for y, x, direction in offset_access_points(new_access_points, source_agv_radius)
+        ]
+        self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for y, x in centered_io_points(new_io_points)]
 
         self.special_point_bridges.fill(False)  # clear special bridges, as they need to be recalculated now
         

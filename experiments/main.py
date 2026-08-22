@@ -3,6 +3,7 @@ import sys
 
 import numpy as np
 
+from scenario.geometry import continuous_special_points
 from scenario.scenario_generation import Scenario
 from artifacts.record import ExperimentRecorder
 
@@ -43,8 +44,7 @@ def main():
     )
     scenario.generate()
 
-    continuous_access_points = [(x, y) for y, x, _direction in scenario.access_points]
-    continuous_io_points = [(x, y) for y, x in scenario.io_points]
+    continuous_access_points, continuous_io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
     bounds = (0, 0, width, height)
 
     recorder.set_algorithm("vgraph", use_iterations=False)
