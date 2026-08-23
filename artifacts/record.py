@@ -81,7 +81,11 @@ class ExperimentRecorder:
         if self.scenario_dir is None:
             raise RuntimeError("A scenario must be recorded before saving artifacts.")
 
-        base_dir = self.scenario_dir
+        record_algorithm = self.algorithm if algorithm is None else algorithm
+        if not record_algorithm:
+            raise RuntimeError("An algorithm must be selected before saving artifacts.")
+
+        base_dir = self.scenario_dir / record_algorithm
 
         data_dir = base_dir / "data"
         plot_dir = base_dir / "plots"
@@ -101,7 +105,6 @@ class ExperimentRecorder:
         pdf_path = plot_dir / f"{filename}.pdf"
 
         data_snapshot = self._snapshot(data)
-        record_algorithm = self.algorithm if algorithm is None else algorithm
         record_iteration = self.iteration if iteration is None else iteration
 
         record = {
