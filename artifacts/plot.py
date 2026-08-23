@@ -22,6 +22,8 @@ BRIDGE_COLOR = (0.2, 0.5, 0.2, 0.7)               # green
 
 GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 0.8)           # blue
 GRAPH_VERTEX_COLOR = (0.1, 0.4, 0.7, 1)           # blue
+INACTIVE_GRAPH_EDGE_COLOR = (0.4, 0.4, 0.4, 0.3)    # semi-transparent grey
+INACTIVE_GRAPH_VERTEX_COLOR = (0.4, 0.4, 0.4, 0.4)  # semi-transparent  grey
 VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.1)      # blue, semi-transparent for better visibility
 
 IO_POINT_COLOR = (0.1, 0.5, 0.3)                  # green
@@ -623,6 +625,85 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
         ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
 
 
+class IncrementalPRMGraphPlotter(_ContinuousGraphPlotter):
+    """Plot a DRM snapshot, distinguishing active and inactive roadmap items."""
+
+    def draw(self, ax, data):
+        context = self._context(data)
+        self._draw_environment(ax, context)
+
+        vertices = np.asarray(data["vertices"])
+        vertex_active = np.asarray(data["vertex_active"], dtype=bool)
+        if len(vertex_active) != len(vertices):
+            raise ValueError("Incremental PRM snapshot has mismatched vertex labels")
+
+        active_edges = []
+        inactive_edges = []
+        for left, right in data["edges"]:
+            arc = (left, right) if left < right else (right, left)
+            if (data["edge_active"].get(arc, False) and vertex_active[left] and vertex_active[right]):
+                active_edges.append((left, right))
+            else:
+                inactive_edges.append((left, right))
+
+        if inactive_edges:
+            ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in inactive_edges],
+                                             colors=[INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.75, capstyle="round", zorder=8, label="Inactive roadmap arcs"))
+        if active_edges:
+            ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in active_edges],
+                                             colors=[GRAPH_EDGE_COLOR], linewidths=1.1, capstyle="round", zorder=10, label="Active roadmap arcs"))
+
+        if np.any(~vertex_active):
+            inactive_vertices = vertices[~vertex_active]
+            ax.scatter(inactive_vertices[:, 0], inactive_vertices[:, 1], s=13,
+                       color=INACTIVE_GRAPH_VERTEX_COLOR, edgecolors="none",
+                       zorder=9, label="Inactive roadmap vertices")
+        if np.any(vertex_active):
+            active_vertices = vertices[vertex_active]
+            ax.scatter(active_vertices[:, 0], active_vertices[:, 1], s=18,
+                       color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR,
+                       linewidths=0.35, zorder=11, label="Active roadmap vertices")
+
+        self._draw_special_points(ax, context)
+        handles, labels = ax.get_legend_handles_labels()
+        unique_handles = dict(zip(labels, handles))
+        ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
+
+
+class IncrementalKingsGridPlotter(_GVDGridPlotter):
+    """Plot an eight-connected occupancy-grid graph and its special points."""
+
+    def draw(self, ax, data):
+        ctx = self._context(data)
+        occupancy = ctx["occupancy"]
+        height = ctx["height"]
+        width = ctx["width"]
+
+        self._draw_obstacles(ax, occupancy, ctx["agv_radius"])
+
+        nodes = data["nodes"]
+        edges = data["edges"]
+        if edges:
+            ax.add_collection(LineCollection([[nodes[left]["pos"], nodes[right]["pos"]] for left, right in edges],
+                                             colors=[GRAPH_EDGE_COLOR], linewidths=0.65, alpha=0.65, capstyle="round", zorder=10, label="King's-grid edges",))
+
+        grid_vertices = [node["pos"] for node in nodes.values() if node["type"] in {"grid", "graph"}]
+        if grid_vertices:
+            vertices = np.asarray(grid_vertices, dtype=float)
+            ax.scatter(vertices[:, 0], vertices[:, 1], s=9,
+                       color=GRAPH_VERTEX_COLOR, edgecolors="none",
+                       zorder=11, label="King's-grid vertices")
+
+        _setup_grid_axes(ax, height, width, ctx["scale_factor"])
+        _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            unique_handles = dict(zip(labels, handles))
+            ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right",
+                      fontsize="small", frameon=True, framealpha=0.92)
+
+
 class VisibilityGraphPlotter(_ContinuousGraphPlotter):
     """Plot a self-contained visibility graph snapshot."""
 
@@ -657,6 +738,8 @@ class PlotManager:
             "voronoi_skeleton_with_bridges": VoronoiSkeletonWithBridgeCells(),
             "graph": GraphPlotter(),
             "prm_graph": PRMGraphPlotter(),
+            "incremental_prm_graph": IncrementalPRMGraphPlotter(),
+            "incremental_kings_grid": IncrementalKingsGridPlotter(),
             "vgraph": VisibilityGraphPlotter(),
         }
 
@@ -671,6 +754,8 @@ class PlotManager:
         display_name = {
             "gvd": "GVD",
             "prm": "PRM",
+            "incremental_prm": "Incremental PRM",
+            "incremental_kings_grid": "Incremental King's grid",
             "vgraph": "Visibility graph",
             "scenario": "Scenario",
         }.get(algorithm, algorithm or "Scenario")

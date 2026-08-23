@@ -20,8 +20,8 @@ def main():
     width = 35
 
     io_points = {
-        (int(height * 0.1), 0),
-        (height - 1, int(width * 0.7)),
+        (height * 0.18, 0),
+        (height - 1.6, width * 0.73),
     }
 
     recorder = ExperimentRecorder(seed=seed)

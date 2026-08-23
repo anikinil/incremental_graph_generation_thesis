@@ -129,7 +129,7 @@ class Scenario:
 
         # force every I/O point cell to be guaranteed free
         for r, c in self.io_points:
-            field[r, c] = 0.0
+            field[int(r), int(c)] = 0.0
 
         self.probability_field = field
         
