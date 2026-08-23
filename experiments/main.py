@@ -16,8 +16,8 @@ def main():
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 250
-    width = 300
+    height = 20
+    width = 35
 
     io_points = {
         (int(height * 0.1), 0),
@@ -31,7 +31,7 @@ def main():
         rng=rng,
         height=height,
         width=width,
-        occupancy_rate=0.6,
+        occupancy_rate=0.7,
         sigma_coarse=3,
         sigma_fine=1,
         noisy_aisles_num=0,
@@ -77,7 +77,7 @@ def main():
     buffer_segments = 2  # PRM may use a different buffered-corner approximation
     free_space, obstacle_space = scenario.navigation_space(buffer_segments=buffer_segments)
     prm = PRM(
-        rng=np.random.default_rng(seed + 1),
+        rng=rng,
         free_space=free_space,
         obstacle_space=obstacle_space,
         occupancy=scenario.occupancy,
@@ -85,8 +85,8 @@ def main():
         io_points=continuous_io_points,
         bounds=bounds,
         eps=0.1,
-        max_dist=5,
-        max_neighbors=15,
+        max_dist=8,
+        max_neighbors=30,
         agv_radius=scenario.agv_radius,
         buffer_segments=buffer_segments,
         recorder=recorder,

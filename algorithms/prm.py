@@ -92,8 +92,11 @@ class PRM:
         
         # save adjacency, to build graph at the end
         self.adjacency = defaultdict(set)
-    
-    def _generate_random_free_config(self, max_attempts = 100):
+
+        # store paths for edges created during random-bounce walks
+        self.edge_paths = {}
+
+    def _generate_random_free_config(self, max_attempts = 1000):
         """Generates a random configuration in the free space using rejection sampling."""
         
         x_min, y_min, x_max, y_max = self.bounds
@@ -104,30 +107,21 @@ class PRM:
             
             if self.free_space.covers(point):
                 return np.array([x, y], dtype=np.float64)
+        raise RuntimeError(f"Failed to generate a random free configuration after {max_attempts} attempts.")
+
+
+    def _local_planner(self, config1, config2):
+        """Checks if a straight-line path between two configurations is collision-free."""
         
-        return None
-    
-    def _discretize_path(self, config1, config2):
-        """Discretizes the straight-line path between two configurations into steps of size eps."""
-        
+        # discretize the straight line between config1 and config2
         delta = config2 - config1
         distance = np.linalg.norm(delta)
-        
-        if distance == 0:
-            return np.array([config1])
-        
         num_steps = int(np.ceil(distance / self.eps))
         t_vals = np.linspace(0, 1, num_steps + 1)
         
         # interpolation
         configs = config1[np.newaxis, :] + t_vals[:, np.newaxis] * delta[np.newaxis, :]
-        return configs
-    
-    def _local_planner(self, config1, config2):
-        """Checks if a straight-line path between two configurations is collision-free."""
-        
-        configs = self._discretize_path(config1, config2)
-        
+
         # check each discretized configuration
         for config in configs:
             point = Point(config[0], config[1])  # shapely uses (x, y)
@@ -139,27 +133,26 @@ class PRM:
     def _distance_function(self, config1, config2):
         """Returns euclidean distance between configurations."""
         return float(np.linalg.norm(config2 - config1))
-    
-    def _get_candidate_neighbors(self, new_config):
-        """Returns candidate neighbors for a new configuration using KDTree."""
-        
+
+    def _get_candidate_neighbors(self, config):
+        """Returns candidates from current roadmap in increasing distance order."""
+
+        # if no vertices created yet, return empty list
         if self.kdtree is None or self.num_nodes == 0:
             return []
-        
-        # query all neighbors within max_dist
+
+        # number of neighbors to query
         k = min(self.max_neighbors, self.num_nodes)
-        distances, indices = self.kdtree.query(new_config, k=k, 
-                                                distance_upper_bound=self.max_dist)
-        
-        # filter out invalid results (distance > max_dist gives inf)
-        if isinstance(distances, np.ndarray):
-            valid_mask = np.isfinite(distances)
-            return indices[valid_mask].tolist()
-        elif np.isfinite(distances):
-            return [indices]
-        else:
-            return []
-    
+        # get distances and indices of the nearest candidates within max_dist
+        distances, indices = self.kdtree.query(config, k=k, distance_upper_bound=self.max_dist)
+        # make sure distances and indices are 1D arrays (query returns scalars if k=1)
+        distances = np.atleast_1d(distances)
+        indices = np.atleast_1d(indices)
+
+        # filter out infinite distances (no neighbor found within max_dist)
+        candidates = [int(index) for distance, index in zip(distances, indices) if np.isfinite(distance)]
+        return candidates
+
     def _update_kdtree(self):
         """Rebuilds KDTree with current nodes."""
         
@@ -199,6 +192,8 @@ class PRM:
     
     def construction_step(self, num_nodes):
         """Builds initial roadmap without special points."""
+        
+        # progress tracking
         progress = GenerationProgress("PRM", "Generating initial roadmap", self.iteration)
         progress.start(f"target: {num_nodes} sampling attempts")
         
@@ -206,38 +201,38 @@ class PRM:
         for iteration in range(num_nodes):
             
             # generate random free configuration
-            config = self._generate_random_free_config()
-            if config is None:
-                continue
-            
-            # add new configuration to nodes
-            node_idx = self._add_node(config)
+            c = self._generate_random_free_config()
+
+            # get candidate neighbors of c
+            candidate_indices = self._get_candidate_neighbors(c)
+
+            # add c to nodes
+            c_idx = self._add_node(c)
             nodes_added += 1
-            
-            self._update_kdtree()
-            
-            # get candidate neighbors
-            candidate_indices = self._get_candidate_neighbors(config)
+
             # try to connect in order of increasing distance
-            for neighbor_idx in candidate_indices:
-                # track attempt
-                self.attempt_count[node_idx] += 1
-                self.attempt_count[neighbor_idx] += 1
-                
-                # skip if already in same component (avoids cycles)
-                if self.union_find.find(node_idx) == self.union_find.find(neighbor_idx):
-                    continue
-                
-                # check if can be connected via local planner
-                if self._local_planner(self.nodes[node_idx], self.nodes[neighbor_idx]):
-                    # if yes, connect new node to neighbor
-                    self._connect_nodes(node_idx, neighbor_idx)
-                else:
-                    # else, mark failure and coninue
-                    self.failure_count[node_idx] += 1
-                    self.failure_count[neighbor_idx] += 1
-            
-            # print construction iteration stats
+            for n_idx in candidate_indices:
+
+                # if not already in same component (avoids cycles)
+                if not self.union_find.find(c_idx) == self.union_find.find(n_idx):
+
+                    # track attempts
+                    self.attempt_count[c_idx] += 1
+                    self.attempt_count[n_idx] += 1
+
+                    # check if can be connected via local planner (\delta(c, n) = True)
+                    if self._local_planner(self.nodes[c_idx], self.nodes[n_idx]):
+                        # if yes, connect new node to neighbor and update component status
+                        self._connect_nodes(c_idx, n_idx)
+                    else:
+                        # else, mark failure and continue
+                        self.failure_count[c_idx] += 1
+                        self.failure_count[n_idx] += 1
+
+            # update KDTree after added nodes
+            self._update_kdtree()
+
+            # progress updates
             if (iteration + 1) % 100 == 0 or iteration + 1 == num_nodes:
                 num_components = self.union_find.get_num_components(self.num_nodes)
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
@@ -247,199 +242,182 @@ class PRM:
                     f"nodes: {self.num_nodes}/{num_nodes} ({self.num_nodes / num_nodes * 100:.1f}%) | "
                     f"edges: {num_edges} | components: {num_components}",
                 )
-        
-        # update KDTree
-        self._update_kdtree()
-        
+
+        # progress finish
         num_components = self.union_find.get_num_components(self.num_nodes)
         num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-        progress.finish(
-            True,
-            f"generated {self.num_nodes} nodes and {num_edges} edges | components: {num_components}",
-        )
+        progress.finish(True, f"generated {self.num_nodes} nodes and {num_edges} edges | components: {num_components}")
     
     def _random_bounce_walk(self, start_config, walk_length, max_bounces):
         """
         Generates configurations via random-bounce walk.
-        Picks random direction an moves until hitting obstacle, or max steps reached, then repeats.
+        Picks random direction an moves until hitting obstacle, or max steps reached.
         """
+        # warehouse bounds
         x_min, y_min, x_max, y_max = self.bounds
         current = start_config.copy()
-        
-        visited = []
-        # for every bounce
-        for bounce in range(max_bounces):
-            # pick random direction
+
+        # all checked configurations
+        path = [current.copy()]
+        remaining_steps = int(np.ceil(walk_length / self.eps))
+        bounces = 0
+        # stop when walk length or max bounces reached
+        while remaining_steps > 0 and bounces < max_bounces:
             angle = self.rng.uniform(0, 2 * np.pi)
             direction = np.array([np.cos(angle), np.sin(angle)], dtype=np.float64)
             
-            # move until hitting obstacle or reaching max number of steps allowed in one bounce
-            step_size = self.eps
-            num_steps = int(walk_length / step_size)
-            for step in range(num_steps):
-                next_pos = current + direction * step_size
-                
-                # check if within bounds
+            # move in the chosen direction until hitting obstacle or max steps reached
+            while remaining_steps > 0:
+                next_pos = current + direction * self.eps
+                # stop if left warehouse bounds
                 if not (x_min <= next_pos[0] <= x_max and y_min <= next_pos[1] <= y_max):
                     break
-                
-                # check if in free space
                 next_point = Point(next_pos[0], next_pos[1])
+                # stop if hit obstacle
                 if not self.free_space.covers(next_point):
                     break
-                
-                # move to next step
                 current = next_pos
-            
-            visited.append(current.copy())
-        return visited
-    
-    def _connect_nodes(self, node_a, node_b):
+                remaining_steps -= 1
+            # append the last valid position (before hitting something, or reaching max steps) to the path
+            path.append(current.copy())
+            bounces += 1
+
+        return current, np.asarray(path)
+
+    def _connect_nodes(self, node_a, node_b, path=None):
         """Connects two nodes and update data structures."""
         # store new edge
         self.adjacency[node_a].add(node_b)
         self.adjacency[node_b].add(node_a)
         # store union for efficient component check
         self.union_find.union(node_a, node_b)
-    
+
+        if path is not None:
+            edge = tuple(sorted((node_a, node_b)))
+            edge_path = np.asarray(path, dtype=np.float64)
+            self.edge_paths[edge] = edge_path if edge == (node_a, node_b) else edge_path[::-1].copy()
+
     def connect_special_points(self):
         """Attempts to connect special points (access + IO points) to the roadmap."""
+
+        # progress tracking
         total_special_points = len(self.special_points)
         progress = GenerationProgress("PRM", "Connecting special points", self.iteration)
         progress.start(f"target: {total_special_points} special points")
-        
-        # add every special point to the roadmap first, then rebuild the KDTree
-        
-        special_indices = [self._add_node(config) for config in self.special_points]
-        self._update_kdtree()
-        
-        # attempt to connect each special point to its neighbors
-        for point_number, node_idx in enumerate(special_indices, start=1):
-            config = self.nodes[node_idx]
+
+        # for each special point
+        for point_number, config in enumerate(self.special_points, start=1):
+
+            # get candidate neighbors of the special point
             candidate_indices = self._get_candidate_neighbors(config)
-            
+
+            # add special point to nodes
+            node_idx = self._add_node(config)
+
             for neighbor_idx in candidate_indices:
-                
-                # do not connect to itself
-                if neighbor_idx == node_idx:
-                    continue
-                
-                # track attempt
-                self.attempt_count[node_idx] += 1
-                self.attempt_count[neighbor_idx] += 1
-                
                 # skip if already in same component
-                if self.union_find.find(node_idx) == self.union_find.find(neighbor_idx):
-                    continue
-                
-                # check if can be connected via local planner
-                if self._local_planner(self.nodes[node_idx], self.nodes[neighbor_idx]):
-                    # if yes, connect new node to neighbor
-                    self._connect_nodes(node_idx, neighbor_idx)
-                else:
-                    # else, mark failure and continue
-                    self.failure_count[node_idx] += 1
-                    self.failure_count[neighbor_idx] += 1
+                if not self.union_find.find(node_idx) == self.union_find.find(neighbor_idx):
+
+                    # check if can be connected via local planner
+                    self.attempt_count[node_idx] += 1
+                    self.attempt_count[neighbor_idx] += 1
+
+                    if self._local_planner(self.nodes[node_idx], self.nodes[neighbor_idx]):
+                        # if yes, connect new node to neighbor
+                        self._connect_nodes(node_idx, neighbor_idx)
+                    else:
+                        # else, mark failure and continue
+                        self.failure_count[node_idx] += 1
+                        self.failure_count[neighbor_idx] += 1
+
+            self._update_kdtree()
 
             if point_number % 10 == 0 or point_number == total_special_points:
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
                 progress.update(point_number, total_special_points, f"nodes: {self.num_nodes} | edges: {num_edges}")
-        
-        # keep the KDTree in sync with the newly connected special points
-        self._update_kdtree()
-        
+
         num_edges = sum(len(v) for v in self.adjacency.values()) // 2
         progress.finish(True, f"processed {total_special_points} special points | nodes: {self.num_nodes} | edges: {num_edges}")
-    
+
     def expansion_step(self, bounce_walk_length, max_bounces):
         """
         Expansion step: densifies difficult regions until all components and special points are connected.
         """
         progress = GenerationProgress("PRM", "Expanding roadmap", self.iteration)
         progress.start("until all components are connected")
-        
-        # compute weights for node selection based on failure ratio (higher weight -> more likely)
-        weights = np.zeros(self.num_nodes, dtype=np.float64)
-        for i in range(self.num_nodes):
-            if self.attempt_count[i] > 0:
-                weights[i] = self.failure_count[i] / (self.attempt_count[i] + 1)
-            else:
-                weights[i] = 1.0  # TODO improve
-            # if i >= self.num_nodes - len(self.special_points):
-            #     weights[i] *= 2.0  # Prioritize special points
-        
+
+        num_exp_nodes = self.num_nodes
+
+        weights = np.array([(self.failure_count[i] / self.attempt_count[i] if self.attempt_count[i] > 0 else 0.0) for i in range(num_exp_nodes)], dtype=np.float64)
+
+        # normalize weights to sum to 1 (or make uniform if all weights are zero)
+        total_weight = weights.sum()
+        if total_weight > 0:
+            weights /= total_weight
+        else:
+            weights = np.full(num_exp_nodes, 1.0 / num_exp_nodes)
+
         expansions = 0
         while True:
             num_components = self.union_find.get_num_components(self.num_nodes)
+
+            # if all points are connected, map generation is complete
             if num_components == 1:
                 break
 
+            # progress updates
             if expansions % 10 == 0:
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
                 progress.update(expansions, details=f"nodes: {self.num_nodes} | edges: {num_edges} | components: {num_components}")
-            
-            # if num_components == 2:
-            #     self.visualize(title=f"Expansion step {expansions} | Nodes: {self.num_nodes} | Edges: {num_edges} | Components: {num_components}")
-                            
-            # normalize weights
-            total_weight = weights.sum()
-            if total_weight > 0:
-                weights = weights / total_weight
-            else:
-                # if no difficult nodes, select uniformly
-                weights = np.ones(self.num_nodes) / self.num_nodes
-            
+
             # select node proportionally to failure ratio
-            node_idx = self.rng.choice(self.num_nodes, p=weights)
+            node_idx = self.rng.choice(num_exp_nodes, p=weights)
             # print(f"Selected node {self.nodes[node_idx]} for expansion (failure ratio: {weights[node_idx]:.4f})")
             
             # expand this node with random-bounce walk
-            bounce_points = self._random_bounce_walk(self.nodes[node_idx], walk_length=bounce_walk_length, max_bounces=max_bounces)
-            
-            # connect bounce points sequentially and to the original node
-            prev_idx = node_idx
-            # new_connections = []
-            for config in bounce_points:
-                new_idx = self._add_node(config)
-                self._connect_nodes(new_idx, prev_idx)
-                
-                # add weight with average wieght
-                weights = np.append(weights, weights.mean())
-                
-                # rebuild KDTree periodically for accurate neighbor queries (more frequent during expansion)
-                if new_idx % 100 == 0:
-                    self._update_kdtree()
-                
-                candidate_indices = self._get_candidate_neighbors(config)
-                
-                # try to connect to candidate neighbors
-                for neighbor_idx in candidate_indices:
-                    # # mark attempt
-                    # self.attempt_count[new_idx] += 1
-                    # self.attempt_count[neighbor_idx] += 1
-                    
-                    # skip if already in same component
-                    if self.union_find.find(new_idx) == self.union_find.find(neighbor_idx):
-                        continue
-                    
-                    # check if can be connected via local planner
+            config, bounce_path = self._random_bounce_walk(self.nodes[node_idx], walk_length=bounce_walk_length, max_bounces=max_bounces)
+
+            # select candidates to connect the endpoint of the bounce walk to
+            candidate_indices = self._get_candidate_neighbors(config)
+
+            # add the endpoint of the bounce walk to the roadmap with multi-edge path to the starting node of the bounce walk
+            new_idx = self._add_node(config)
+            self._connect_nodes(node_idx, new_idx, path=bounce_path)
+
+            # update tree
+            self._update_kdtree()
+
+            # try the endpoint against the previously selected candidates, track attempts and failures
+            for neighbor_idx in candidate_indices:
+                if not self.union_find.find(new_idx) == self.union_find.find(neighbor_idx):
+
+                    self.attempt_count[new_idx] += 1
+                    self.attempt_count[neighbor_idx] += 1
                     if self._local_planner(self.nodes[new_idx], self.nodes[neighbor_idx]):
-                        # if yes, connect nodes
                         self._connect_nodes(new_idx, neighbor_idx)
-                        # new_connections.append((new_idx, neighbor_idx))
-                    # else:
-                    #     # if not, mark failure
-                    #     self.failure_count[new_idx] += 1
-                    #     self.failure_count[neighbor_idx] += 1
-                
-                # go to next bounce
-                prev_idx = new_idx
-                
+                    else:
+                        self.failure_count[new_idx] += 1
+                        self.failure_count[neighbor_idx] += 1
+
             expansions += 1
             num_edges = sum(len(v) for v in self.adjacency.values()) // 2
             progress.update(expansions, details=f"nodes: {self.num_nodes} | edges: {num_edges} | " f"components: {self.union_find.get_num_components(self.num_nodes)}")
                 # self.visualize(title=f"Expansion step {expansions} | Nodes: {self.num_nodes} | Components: {self.union_find.get_num_components(self.num_nodes)}")
-        
+
+            if self.recorder is not None and expansions % 1000 == 0:
+                nodes, edges = self._expanded_graph_snapshot()
+                self.recorder.save(data_type="prm_graph", data={
+                    "occupancy": self.occupancy,
+                    "agv_radius": self.agv_radius,
+                    "buffer_segments": self.buffer_segments,
+                    "access_points": self.access_points,
+                    "io_points": self.io_points,
+                    "bounds": self.bounds,
+                    "nodes": nodes,
+                    "edges": edges,
+                    "num_nodes": self.num_nodes,
+                }, plot=True, algorithm="prm", iteration=self.iteration)
+
         # update KDTree
         self._update_kdtree()
         
@@ -456,30 +434,67 @@ class PRM:
         
     
     def build_graph(self):
-        """Converts roadmap to a NetworkX graph."""
+        """Converts the roadmap to a NetworkX graph with straight edges only."""
         G = nx.Graph()
         
+        # add all nodes to the graph
         for i in range(self.num_nodes):
             G.add_node(i, pos=tuple(self.nodes[i]))
         
-        # add edges from adjacency list
-        added_edges = set()
+        next_path_node_idx = self.num_nodes
+        added_edges = set() # track edges already added to avoid duplicates
+        # for every node, add edges to its neighbors
         for node_idx, neighbors in self.adjacency.items():
             for neighbor_idx in neighbors:
-                edge = tuple(sorted([node_idx, neighbor_idx]))
-                if edge not in added_edges:
-                    distance = self._distance_function(self.nodes[node_idx],  self.nodes[neighbor_idx])
-                    G.add_edge(node_idx, neighbor_idx, weight=distance)
-                    added_edges.add(edge)
-        
+                edge = tuple(sorted([node_idx, neighbor_idx])) # sort to avoid duplicates
+                if edge in added_edges:
+                    continue # skip if already added
+                # check if there is a stored path for this edge (from random-bounce walk)
+                path = self.edge_paths.get(edge)
+                if path is None:
+                    # if no path stored, add straight edge
+                    G.add_edge(node_idx, neighbor_idx)
+                else:
+                    # if path is stored, add intermediate nodes for the path and connect them
+                    path = np.asarray(path, dtype=np.float64)
+                    path_node_indices = [edge[0]] # nodes to add
+                    previous_config = self.nodes[edge[0]] # track previous node to avoid duplicates
+
+                    # turn path nodes created during bounce walks into graph nodes (exclude endpoints)
+                    for config in path[1:-1]:
+                        if np.array_equal(config, previous_config): # skip, if same as previous node (hit the same wall twice)
+                            continue
+                        G.add_node(next_path_node_idx, pos=tuple(config), bounce_turn=True)
+                        path_node_indices.append(next_path_node_idx)
+                        next_path_node_idx += 1
+                        previous_config = config
+                    # connect the path nodes to 
+                    path_node_indices.append(edge[1])
+                    for i in range(len(path_node_indices) - 1):
+                        left = path_node_indices[i]
+                        right = path_node_indices[i + 1]
+                        G.add_edge(left, right)
+
+                added_edges.add(edge)
+
         return G
+
+    # for visualization during generation, TODO remove later
+    def _expanded_graph_snapshot(self):
+        """Returns the straight-edge graph representation."""
+        graph = self.build_graph()
+        node_ids = sorted(graph.nodes)
+        node_id_to_index = {node_id: index for index, node_id in enumerate(node_ids)}
+        nodes = np.asarray([graph.nodes[node_id]["pos"] for node_id in node_ids], dtype=np.float64)
+        edges = sorted(tuple(sorted((node_id_to_index[left], node_id_to_index[right]))) for left, right in graph.edges)
+        return nodes, edges
 
     def record_graph(self):
         """Records the current roadmap graph."""
         if self.recorder is None:
             return None
 
-        edges = sorted(tuple(sorted((node, neighbor))) for node, neighbors in self.adjacency.items() for neighbor in neighbors if node < neighbor)
+        nodes, edges = self._expanded_graph_snapshot()
         return self.recorder.save(
             data_type="prm_graph",
             data={
@@ -489,67 +504,9 @@ class PRM:
                 "access_points": self.access_points,
                 "io_points": self.io_points,
                 "bounds": self.bounds,
-                "nodes": self.nodes[:self.num_nodes],
+                "nodes": nodes,
                 "edges": edges,
                 "num_nodes": self.num_nodes,
             },
             plot=True,
         )
-    
-
-# def main():
-#     from model.store import load_scenario_as_shapely
-#     scenario = load_scenario_as_shapely()
-    
-#     # convert access and io points to (x, y)
-#     access_points = [(point[1], point[0]) for point in scenario["access_points"]] # only the coordinates, direction not used
-#     io_points = [(point[1], point[0]) for point in scenario["io_points"]]
-    
-#     rng = np.random.default_rng(42)
-    
-#     # parameters
-    
-#     # num_construction_nodes = int((width * height) / occupancy_rate)
-#     num_construction_nodes = int(scenario["width"] * scenario["height"] * (1 - scenario["occupancy_rate"]) * 3)
-#     max_dist = 5 # maximum distance to consider for neighbors
-#     max_neighbors = 15 # maximum number of neighbors to consider for connection
-#     eps = 0.1 # step size for path discretization
-    
-#     bounce_walk_length = 5
-#     max_bounces = 10
-    
-#     # build PRM
-#     bounds = (0, 0, scenario["width"], scenario["height"])
-#     prm = PRM(
-#         rng,
-#         scenario["free_space"],
-#         scenario["obstacle_space"],
-#         scenario["occupancy"],
-#         access_points,
-#         io_points,
-#         bounds,
-#         eps=eps,
-#         max_dist=max_dist,
-#         max_neighbors=max_neighbors,
-#         agv_radius=scenario["agv_radius"]
-#     )
-        
-#     # construction step (no special points)
-#     prm.construction_step(num_construction_nodes)
-#     prm.visualize(title="PRM Roadmap After Construction Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
-    
-#     # connect special points (acce
-#     prm.connect_special_points()
-#     prm.visualize(title="PRM Roadmap After Connecting Special Points: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
-    
-#     # expand (with special points)
-#     prm.expansion_step(bounce_walk_length, max_bounces)
-#     prm.visualize(title="PRM Roadmap After Expansion Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
-    
-#     # perform smoothing
-#     prm.smoothing_step()
-#     prm.visualize(title="PRM Roadmap After Smoothing Step: Components = {}".format(prm.union_find.get_num_components(prm.num_nodes)))
-    
-
-# if __name__ == "__main__":
-#     main()
