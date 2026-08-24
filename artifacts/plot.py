@@ -168,12 +168,12 @@ def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordi
 
     if access_points:
         xs, ys = zip(*access_points)
-        ax.scatter(xs, ys, s=34, color=ACCESS_POINT_COLOR,
+        ax.scatter(xs, ys, s=20, color=ACCESS_POINT_COLOR,
                    edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.7,
                    zorder=20, label="Access points")
     if io_points:
         xs, ys = zip(*io_points)
-        ax.scatter(xs, ys, s=48, color=IO_POINT_COLOR,
+        ax.scatter(xs, ys, s=20, color=IO_POINT_COLOR,
                    edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.8,
                    zorder=20, label="IO points")
 
@@ -617,7 +617,7 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
 
         for component in components:
             coordinates = nodes[list(component)]
-            ax.scatter(coordinates[:, 0], coordinates[:, 1], s=18, color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.35, zorder=11, label="Graph vertices")
+            ax.scatter(coordinates[:, 0], coordinates[:, 1], s=5, color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.35, zorder=11, label="Graph vertices")
 
         self._draw_special_points(ax, context)
         handles, labels = ax.get_legend_handles_labels()
@@ -625,7 +625,7 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
         ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
 
 
-class IncrementalPRMGraphPlotter(_ContinuousGraphPlotter):
+class DRMGraphPlotter(_ContinuousGraphPlotter):
     """Plot a DRM snapshot, distinguishing active and inactive roadmap items."""
 
     def draw(self, ax, data):
@@ -635,7 +635,7 @@ class IncrementalPRMGraphPlotter(_ContinuousGraphPlotter):
         vertices = np.asarray(data["vertices"])
         vertex_active = np.asarray(data["vertex_active"], dtype=bool)
         if len(vertex_active) != len(vertices):
-            raise ValueError("Incremental PRM snapshot has mismatched vertex labels")
+            raise ValueError("DRM snapshot has mismatched vertex labels")
 
         active_edges = []
         inactive_edges = []
@@ -738,7 +738,7 @@ class PlotManager:
             "voronoi_skeleton_with_bridges": VoronoiSkeletonWithBridgeCells(),
             "graph": GraphPlotter(),
             "prm_graph": PRMGraphPlotter(),
-            "incremental_prm_graph": IncrementalPRMGraphPlotter(),
+            "drm_graph": DRMGraphPlotter(),
             "incremental_kings_grid": IncrementalKingsGridPlotter(),
             "vgraph": VisibilityGraphPlotter(),
         }
@@ -754,7 +754,7 @@ class PlotManager:
         display_name = {
             "gvd": "GVD",
             "prm": "PRM",
-            "incremental_prm": "Incremental PRM",
+            "drm": "Dynamic Roadmap",
             "incremental_kings_grid": "Incremental King's grid",
             "vgraph": "Visibility graph",
             "scenario": "Scenario",
