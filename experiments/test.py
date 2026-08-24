@@ -65,4 +65,9 @@ if __name__ == "__main__":
     kings_grid.apply_layout_updates_and_update_graph(scenario.consume_updates(), scenario.access_points, scenario.io_points,)
     kings_grid.record_graph()
 
+
+    scenario.add_region(top_left=(10, 8), bottom_right=(12, 11))
+    kings_grid.apply_layout_updates_and_update_graph(scenario.consume_updates(), scenario.access_points, scenario.io_points,)
+    kings_grid.record_graph()
+
     

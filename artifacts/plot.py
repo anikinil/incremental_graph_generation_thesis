@@ -687,7 +687,7 @@ class IncrementalKingsGridPlotter(_GVDGridPlotter):
             ax.add_collection(LineCollection([[nodes[left]["pos"], nodes[right]["pos"]] for left, right in edges],
                                              colors=[GRAPH_EDGE_COLOR], linewidths=0.65, alpha=0.65, capstyle="round", zorder=10, label="King's-grid edges",))
 
-        grid_vertices = [node["pos"] for node in nodes.values() if node["type"] in {"grid", "graph"}]
+        grid_vertices = [node["pos"] for node in nodes.values() if node["type"] == "grid"]
         if grid_vertices:
             vertices = np.asarray(grid_vertices, dtype=float)
             ax.scatter(vertices[:, 0], vertices[:, 1], s=9,
