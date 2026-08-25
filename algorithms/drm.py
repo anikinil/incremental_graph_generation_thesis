@@ -25,10 +25,10 @@ class DRM:
         self.recorder = recorder
         self.iteration = 0
 
-        self.empty_space = box(*self.bounds)
+        self.empty_space = box(*self.bounds) # the empty workspace, before buffering obstacles
         self.obstacle_space = None
         self.free_space = None
-        self._refresh_free_and_obstacle_space()
+        self._refresh_free_and_obstacle_space() # compute the free and obstacle space based on the initial occupancy grid
 
         self.vertices = []
         self.edges = []
