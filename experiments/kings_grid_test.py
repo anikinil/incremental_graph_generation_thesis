@@ -1,7 +1,7 @@
 import numpy as np
 
 from scenario.scenario_generation import Scenario
-from algorithms.incremental_kings_graph import IncrementalKingsGraph
+from algorithms.kings_graph import IncrementalKingsGraph
 from artifacts.record import ExperimentRecorder
 
     

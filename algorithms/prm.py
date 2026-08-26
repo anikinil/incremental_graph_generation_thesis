@@ -53,7 +53,7 @@ class UnionFind:
 class PRM:
     """
     "Probabilistic Roadmaps for Path Planning in High-Dimensional Configuration Spaces",
-    Lydia E. Kavraki, Petr Svestka, Jean-Claude Latombe, and Mark H. Overmars (1996)
+    Lydia E. Kavraki, Petr Svestka, Jean-Claude Latombe and Mark H. Overmars (1996)
     """
     
     def __init__(self, rng, free_space, obstacle_space, occupancy, access_points, io_points, bounds,
