@@ -107,16 +107,21 @@ class DRM:
         return nx.number_connected_components(self.build_graph())
 
 
-    def _repair_active_connectivity(self):
-        """Add roadmap vertices until the active roadmap has one component."""
+    def _repair_active_connectivity(self, min_num_vertices):
+        """
+        Add roadmap vertices until the active roadmap has one component.
+        
+        min_num_vertices: minimum number of vertices to add (None: add until connected)
+        """
         progress = GenerationProgress("DRM", "Connecting active roadmap", self.iteration)
         progress.start()
         
         min_x, min_y, max_x, max_y = self.bounds
         num_components = self._num_active_components()
         added_vertices = set()
+        added_vertices_num = 0
         added_edges = set()
-        while num_components != 1:
+        while num_components > 1 or (min_num_vertices is not None and added_vertices_num <= min_num_vertices):
             config = np.array([self.rng.uniform(min_x, max_x), self.rng.uniform(min_y, max_y)], dtype=np.float64)
             index = self._add_vertex(config)
             incident_edges = { tuple(sorted((index, neighbour))) for neighbour in self.adjacency[index] }
@@ -124,8 +129,9 @@ class DRM:
             num_components = self._num_active_components()
             added_vertices.add(index)
             added_edges.update(incident_edges)
-            if len(added_vertices) % 100 == 0:
-                progress.update(len(added_vertices), details=(f"components: {num_components} | vertices: {len(self.vertices)} | "
+            added_vertices_num += 1
+            if added_vertices_num % 100 == 0:
+                progress.update(added_vertices_num, details=(f"components: {num_components} | vertices: {len(self.vertices)} | "
                                                               f"edges: {len(self.edges)}"))
         progress.finish(True, (f"added vertices: {len(added_vertices)} | vertices: {len(self.vertices)} | "
                                f"edges: {len(self.edges)} | components: {num_components}"))
@@ -383,14 +389,14 @@ class DRM:
 
         self._refresh_active_status(range(len(self.vertices)), self.edges)
 
-    def preprocessing_step(self):
+    def preprocessing_step(self, min_num_vertices=None):
         
         self._build_wall_graph()
         # self._repair_active_connectivity()
         self._update_special_points(self.access_points, self.io_points)
         self._build_workspace_to_roadmap_mapping()
 
-        repair_vertices, repair_edges = self._repair_active_connectivity()
+        repair_vertices, repair_edges = self._repair_active_connectivity(min_num_vertices)
         for index in repair_vertices:
             self._map_vertex_to_occupancy_cell(index)
         for edge in repair_edges:
@@ -410,7 +416,7 @@ class DRM:
 
             self.edge_active[edge] = (both_vertices_are_active and edge_is_in_free_space)
 
-    def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points):
+    def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points, min_num_vertices=None):
         """Apply changed cells, then refresh only their mapped roadmap items."""
 
         # remove the wall graph before applying updates, will be rebuilt later
@@ -463,7 +469,7 @@ class DRM:
         )
 
         # repair the active roadmap connectivity if it has become disconnected
-        repair_vertices, repair_edges = self._repair_active_connectivity()
+        repair_vertices, repair_edges = self._repair_active_connectivity(min_num_vertices)
         for index in repair_vertices:
             self._map_vertex_to_occupancy_cell(index) # map the new vertices to their occupancy cells
         for edge in repair_edges:
