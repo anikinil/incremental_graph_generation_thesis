@@ -48,6 +48,14 @@ class DRM:
         self.io_points = io_points
         
         self.wall_vertices = {} # (row, col) -> vertex_index
+        self.affected_vertices = set()
+        self.affected_edges = set()
+        
+        self.KING_MOVES = (
+            (-1, -1), (-1, 0), (-1, 1),
+             (0, -1),           (0, 1),
+             (1, -1),  (1, 0),  (1, 1),
+        )
 
     def _refresh_free_and_obstacle_space(self):
         self.obstacle_space = buffered_obstacle_space(self.occupancy, self.agv_radius, self.buffer_segments)
@@ -101,6 +109,22 @@ class DRM:
         self.adjacency[right].add(left)
         self.edge_active[edge] = False
         return edge
+
+    def _remove_edge(self, edge):
+        """Remove one roadmap edge and its occupancy-cell mapping."""
+
+        for cell in self._get_edge_footprint_cells(edge):
+            mapped_edges = self.phi_a.get(cell)
+            if mapped_edges is not None:
+                mapped_edges.discard(edge)
+                if not mapped_edges:
+                    del self.phi_a[cell]
+
+        self.edges.remove(edge)
+        self.adjacency[edge[0]].discard(edge[1])
+        self.adjacency[edge[1]].discard(edge[0])
+        del self.edge_active[edge]
+        return True
 
     def _num_active_components(self):
         """Return the number of connected components in the active roadmap."""
@@ -181,13 +205,9 @@ class DRM:
 
         # add the King's Graph edges between the wall vertices
         new_edges = set()
-        king_moves = (
-            (-1, -1), (-1, 0), (-1, 1),
-             (0, -1),           (0, 1),
-             (1, -1),  (1, 0),  (1, 1),
-        )
+
         for (row, col), index in self.wall_vertices.items(): # for all wall vertices
-            for row_offset, col_offset in king_moves: # for all neighbors
+            for row_offset, col_offset in self.KING_MOVES: # for all neighbors
                 neighbour_row = row + row_offset
                 neighbour_col = col + col_offset
                 neighbour_cell = (neighbour_row, neighbour_col)
@@ -238,6 +258,144 @@ class DRM:
             self._map_edge_to_occupancy_cells(edge)
         self._refresh_active_status(new_vertices, new_edges)
         return new_vertices, new_edges
+
+    def _is_wall_cell(self, cell):
+        """Return whether a cell is adjacent to a free cell."""
+        row, col = cell
+        if self.occupancy[row, col] != 0: # cell not free -> not a wall cell
+            return False
+        for row_offset in (-1, 0, 1):
+            for col_offset in (-1, 0, 1):
+                if row_offset != 0 and col_offset != 0: # skip the cell itself
+                    neighbour_row = row + row_offset
+                    neighbour_col = col + col_offset
+                    if (0 <= neighbour_row < self.height and # if neighbor in bounds
+                        0 <= neighbour_col < self.width and
+                        self.occupancy[neighbour_row, neighbour_col] != 0): # and occupied
+                        return True # wall cell
+        return False # no occupied neighbour found -> not a wall cell
+
+    def _wall_update_candidate_cells(self, changed_cells):
+        """Return the set cells that may be wall cells affected by changes in occupancy."""
+        # get the neighborhood of changed cells
+        neighbordood_cells = set()
+        # for all changed cells
+        for row, col in changed_cells:
+            # for whole 8-neighborhood of changed cell (including the changed cell itself)
+            for row_offset in (-1, 0, 1):
+                for col_offset in (-1, 0, 1):
+                    neighbour_row = row + row_offset
+                    neighbour_col = col + col_offset
+                    if 0 <= neighbour_row < self.height and 0 <= neighbour_col < self.width:
+                        neighbordood_cells.add((neighbour_row, neighbour_col)) # add neihgbor to potentailly affected wall cells
+        # get the wall cells that are affected by the changed layout
+        index_to_wall_cell = {index: cell for cell, index in self.wall_vertices.items()}
+        wall_cells = set()
+        # for all changed cells
+        for cell in changed_cells:
+            # check if the cell is a wall vertex and get its index
+            for index in self.phi_n.get(cell, ()):
+                wall_cell = index_to_wall_cell.get(index)
+                if wall_cell is not None:
+                    wall_cells.add(wall_cell)
+            # check if the cell is part of any wall edge and get the indices of those edges
+            for edge in self.phi_a.get(cell, ()):
+                for index in edge:
+                    wall_cell = index_to_wall_cell.get(index)
+                    if wall_cell is not None:
+                        wall_cells.add(wall_cell)
+
+        return neighbordood_cells | wall_cells
+
+    def _update_wall_graph(self, changed_cells):
+        """Update the wall graph based on changed occupancy cells."""
+        
+        # get the set of cells that are considered affected by the changes in occupancy
+        potentially_affected_cells = self._wall_update_candidate_cells(changed_cells)
+        
+        if not potentially_affected_cells:
+            return set(), set()
+
+        # collect all wall vertices that are no longer on wall cells and remove them from the roadmap
+        removed_indices = set()
+        for cell in potentially_affected_cells:
+            # if cell is a wall vertex but no longer a wall cell, mark it for removal
+            if cell in self.wall_vertices and not self._is_wall_cell(cell):
+                removed_indices.add(self.wall_vertices[cell])
+        if removed_indices:
+            self._remove_vertices(removed_indices)
+
+        # add new wall vertices for any newly created wall cells
+        added_vertices = set()
+        for cell in potentially_affected_cells:
+            if self._is_wall_cell(cell) and cell not in self.wall_vertices:
+                row, col = cell
+                index = self._add_vertex(np.array([col + 0.5, row + 0.5], dtype=np.float64), connect=False, update_kdtree=False)
+                self.wall_vertices[cell] = index
+                added_vertices.add(index)
+        if added_vertices:
+            self._update_kdtree()
+        
+        # remove edges incident to affected wall vertices
+        affected_vertices = set()
+        for cell in potentially_affected_cells:
+            if cell in self.wall_vertices:
+                affected_vertices.add(self.wall_vertices[cell])
+        for index in affected_vertices:
+            incident_edges = [tuple(sorted((index, neighbour))) for neighbour in self.adjacency[index]]
+            for edge in incident_edges:
+                self._remove_edge(edge)
+
+        # add new edges for newly created wall vertices
+        new_edges = set()
+        for (row, col), index in self.wall_vertices.items():
+            if index in affected_vertices:
+                for row_offset, col_offset in self.KING_MOVES:
+                    neighbour_row = row + row_offset
+                    neighbour_col = col + col_offset
+                    neighbour_index = self.wall_vertices.get((neighbour_row, neighbour_col))
+                    if neighbour_index is None:
+                        continue
+                    edge = tuple(sorted((index, neighbour_index)))
+                    # check if edge already exists in the roadmap, to avoid duplicates
+                    if edge in self.edge_active: # check in edge_active, since it is a set (O(1) lookup)
+                        continue
+                    # if the edge is diagonal, check if it would cut a corner through an occupied cell and if yes skip it
+                    if (abs(row_offset) + abs(col_offset) == 2 and
+                        (self.occupancy[row, neighbour_col] != 0 or self.occupancy[neighbour_row, col] != 0)):
+                        continue
+                    new_edges.add(self._add_edge(index, neighbour_index))
+        wall_indices = set(self.wall_vertices.values())
+
+        # get the indices of the permanent vertices that are not wall vertices, to connect the new wall vertices to them
+        permanent_indices = []
+        for index in range(len(self.vertices)):
+            if index not in wall_indices:
+                permanent_indices.append(index)
+        permanent_indices = np.asarray(permanent_indices, dtype=int)
+        # convert the permanent vertices into a KDTree for efficient nearest-neighbor queries
+        permanent_tree = (KDTree(np.asarray([self.vertices[index] for index in permanent_indices], dtype=np.float64)) 
+            if permanent_indices.size > 0 else None)
+        
+        # connect the affected wall vertices to the permanent roadmap vertices
+        candidate_count = min(self.max_neighbors, len(permanent_indices))
+        for index in affected_vertices:
+            if permanent_tree is not None:
+                distances, positions = permanent_tree.query(self.vertices[index], k=candidate_count, distance_upper_bound=self.max_dist)
+                for distance, position in zip(np.atleast_1d(distances), np.atleast_1d(positions)):
+                    if np.isfinite(distance): # if the candidate is within max_dist
+                        candidate_index = int(permanent_indices[int(position)])
+                        path = LineString([self.vertices[index], self.vertices[candidate_index]])
+                        # if the edge is in free space, add it to the roadmap and go to the next affected wall vertex
+                        if self.free_space.covers(path):
+                            new_edges.add(self._add_edge(index, candidate_index))
+                            break
+        # map the added vertices and edges to occupancy cells
+        for index in added_vertices:
+            self._map_vertex_to_occupancy_cell(index)
+        for edge in new_edges:
+            self._map_edge_to_occupancy_cells(edge)
+        return affected_vertices, new_edges
 
 
     def _remove_vertices(self, removed_indices):
@@ -390,6 +548,8 @@ class DRM:
         self._refresh_active_status(range(len(self.vertices)), self.edges)
 
     def preprocessing_step(self, min_num_vertices=None):
+        self.affected_vertices.clear()
+        self.affected_edges.clear()
         
         self._build_wall_graph()
         # self._repair_active_connectivity()
@@ -417,10 +577,14 @@ class DRM:
             self.edge_active[edge] = (both_vertices_are_active and edge_is_in_free_space)
 
     def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points, min_num_vertices=None):
-        """Apply changed cells, then refresh only their mapped roadmap items."""
+        """Apply changed cells and update only the affected roadmap regions."""
 
-        # remove the wall graph before applying updates, will be rebuilt later
-        self._remove_vertices(set(self.wall_vertices.values())) 
+        self.affected_vertices.clear()
+        self.affected_edges.clear()
+
+        self.iteration += 1
+        if self.recorder is not None:
+            self.recorder.new_iteration(self.iteration)
         
         # update the occupancy grid and collect all changed cells
         changed_cells = set()
@@ -440,16 +604,33 @@ class DRM:
                 self.occupancy[target] = self.occupancy[source] or 1
                 self.occupancy[source] = 0
                 changed_cells.update((source, target))
-
+                
         # update the free space
         self._refresh_free_and_obstacle_space()
         
+        # determine which special points are new (for highlighting in plot)
+        new_special_points = (set(new_access_points) | set(new_io_points)).difference(self.special_vertices)
+
         # update special points and get their vertices and edges
-        special_vertices, special_edges = self._update_special_points(new_access_points, new_io_points)
+        self._update_special_points(new_access_points, new_io_points)
 
-        # build vertices and edges around the walls
-        wall_vertices, wall_edges = self._build_wall_graph()
+        # update only the wall-graph vertices and edges affected by the edits
+        wall_vertices, wall_edges = self._update_wall_graph(changed_cells)
 
+        # determine all edges connected to special vertices
+        special_vertices = set(self.special_vertices.values())
+        special_edges = set()
+        for index in special_vertices:
+            for neighbour in self.adjacency[index]:
+                special_edges.add(tuple(sorted((index, neighbour))))
+        
+        # track edges affected by new special points (highlighting in plot)
+        changed_special_edges = set()
+        for point in new_special_points:
+            if point in self.special_vertices:
+                for neighbor in self.adjacency[self.special_vertices[point]]:
+                    changed_special_edges.add(tuple(sorted((self.special_vertices[point], neighbor))))
+                    
         # update the active/inactive status of all vertices and edges affected by cell changes
         affected_vertices = set()
         affected_edges = set()
@@ -463,22 +644,25 @@ class DRM:
                 affected_edges.add(tuple(sorted((index, neighbour))))
 
         # refresh the active/inactive status of all affected vertices and edges, including special points
-        self._refresh_active_status(
-            affected_vertices | special_vertices | wall_vertices,
-            affected_edges | special_edges | wall_edges,
-        )
+        refreshed_vertices = affected_vertices | special_vertices | wall_vertices
+        refreshed_edges = affected_edges | special_edges | wall_edges
+        self._refresh_active_status(refreshed_vertices, refreshed_edges)
 
         # repair the active roadmap connectivity if it has become disconnected
         repair_vertices, repair_edges = self._repair_active_connectivity(min_num_vertices)
         for index in repair_vertices:
             self._map_vertex_to_occupancy_cell(index) # map the new vertices to their occupancy cells
+            self.affected_vertices.add(index) # add new vertices to affected vertices
         for edge in repair_edges:
             self._map_edge_to_occupancy_cells(edge) # map the new edges to their occupancy cells
+            self.affected_edges.add(edge) # add new edges to affected edges
+
+        # record the affected vertices and edges for highlighting
+        self.affected_vertices = refreshed_vertices | repair_vertices
+        for edge in affected_edges | wall_edges | changed_special_edges:
+            self.affected_edges.add(edge)
         
         # record the updated graph
-        self.iteration += 1
-        if self.recorder is not None:
-            self.recorder.new_iteration(self.iteration)
         self.record_graph(phase="online_update")
 
     def build_graph(self):
@@ -513,6 +697,8 @@ class DRM:
                 "vertex_active": np.asarray(self.vertex_active, dtype=bool),
                 "edges": sorted(self.edges),
                 "edge_active": {edge: self.edge_active[edge] for edge in sorted(self.edges)},
+                "affected_vertices": sorted(self.affected_vertices),
+                "affected_edges": sorted(self.affected_edges),
                 "mapped_vertex_cells": sum(len(vertices) for vertices in self.phi_n.values()),
                 "mapped_arc_cells": sum(len(edges) for edges in self.phi_a.values()),
                 "phase": phase,

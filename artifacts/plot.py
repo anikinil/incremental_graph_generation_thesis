@@ -20,14 +20,22 @@ AFFECTED_VORO_CELLS_COLOR = (0.8, 0.2, 0.2, 0.7)  # red overlay
 AFFECTED_DISTANCES_COLOR = (0.9, 0.1, 0.1, 0.3)   # red
 BRIDGE_COLOR = (0.2, 0.5, 0.2, 0.7)               # green
 
-GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 0.8)           # blue
 GRAPH_VERTEX_COLOR = (0.1, 0.4, 0.7, 1)           # blue
+GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 0.8)           # blue
+
+INACTIVE_GRAPH_VERTEX_COLOR = (0.4, 0.4, 0.4, 0.4)  # semi-transparent grey
 INACTIVE_GRAPH_EDGE_COLOR = (0.4, 0.4, 0.4, 0.3)    # semi-transparent grey
-INACTIVE_GRAPH_VERTEX_COLOR = (0.4, 0.4, 0.4, 0.4)  # semi-transparent  grey
+
+AFFECTED_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 1)   # red
+AFFECTED_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.8)   # red
+
+AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 0.4) # red
+AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.3) # red
+
 VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.1)      # blue, semi-transparent for better visibility
 
 IO_POINT_COLOR = (0.1, 0.5, 0.3)                  # green
-ACCESS_POINT_COLOR = (0.9, 0.1, 0.1)              # red
+ACCESS_POINT_COLOR = (0.9, 0.5, 0.1)              # orange
 SPECIAL_POINT_EDGE_COLOR = (0.1, 0.1, 0.1, 1)     # dark grey
 
 GRID_COLOR = (0, 0, 0, 1)                         # black
@@ -639,8 +647,10 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
 
         active_edges = []
         inactive_edges = []
+        all_edges = set()
         for left, right in data["edges"]:
             arc = (left, right) if left < right else (right, left)
+            all_edges.add(arc)
             if (data["edge_active"].get(arc, False) and vertex_active[left] and vertex_active[right]):
                 active_edges.append((left, right))
             else:
@@ -663,6 +673,44 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
             ax.scatter(active_vertices[:, 0], active_vertices[:, 1], s=18,
                        color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR,
                        linewidths=0.35, zorder=11, label="Active roadmap vertices")
+
+        affected_edges = {
+            tuple(sorted(edge)) for edge in data.get("affected_edges", ())
+        } & all_edges
+        affected_active_edges = [
+            edge for edge in affected_edges
+            if data["edge_active"].get(edge, False) and vertex_active[edge[0]] and vertex_active[edge[1]]
+        ]
+        affected_inactive_edges = affected_edges.difference(affected_active_edges)
+        if affected_active_edges:
+            ax.add_collection(LineCollection(
+                [[vertices[left], vertices[right]] for left, right in affected_active_edges],
+                colors=[AFFECTED_GRAPH_EDGE_COLOR], linewidths=1.1,
+                capstyle="round", zorder=13, label="Affected roadmap arcs",
+            ))
+        if affected_inactive_edges:
+            ax.add_collection(LineCollection(
+                [[vertices[left], vertices[right]] for left, right in affected_inactive_edges],
+                colors=[AFFECTED_INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.75,
+                capstyle="round", zorder=13, label="Affected roadmap arcs",
+            ))
+
+        affected_vertices = sorted({
+            int(index) for index in data.get("affected_vertices", ())
+            if 0 <= int(index) < len(vertices)
+        })
+        affected_active_vertices = [index for index in affected_vertices if vertex_active[index]]
+        affected_inactive_vertices = [index for index in affected_vertices if not vertex_active[index]]
+        if affected_active_vertices:
+            affected_coordinates = vertices[affected_active_vertices]
+            ax.scatter(affected_coordinates[:, 0], affected_coordinates[:, 1], s=18,
+                       color=AFFECTED_GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR,
+                       linewidths=0.35, zorder=14, label="Affected roadmap vertices")
+        if affected_inactive_vertices:
+            affected_coordinates = vertices[affected_inactive_vertices]
+            ax.scatter(affected_coordinates[:, 0], affected_coordinates[:, 1], s=13,
+                       color=AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR, edgecolors="none",
+                       zorder=14, label="Affected roadmap vertices")
 
         self._draw_special_points(ax, context)
         handles, labels = ax.get_legend_handles_labels()

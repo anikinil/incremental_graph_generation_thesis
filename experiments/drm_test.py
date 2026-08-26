@@ -80,13 +80,13 @@ if __name__ == "__main__":
 
 
     scenario.make_updates(number_of_updates=30)
-    _apply_scenario_updates(drm, scenario, min_num_vertices=1000)
+    _apply_scenario_updates(drm, scenario)
 
-    # scenario.remove_region(top_left=(int(height * 0.15), int(width * 0.25)), bottom_right=(int(height * 0.55), int(width * 0.65)))
-    # _apply_scenario_updates(drm, scenario)
+    scenario.remove_region(top_left=(int(height * 0.15), int(width * 0.25)), bottom_right=(int(height * 0.55), int(width * 0.65)))
+    _apply_scenario_updates(drm, scenario)
 
-    # scenario.add_region(top_left=(int(height * 0.25), int(width * 0.35)), bottom_right=(int(height * 0.45), int(width * 0.55)))
-    # _apply_scenario_updates(drm, scenario)
+    scenario.add_region(top_left=(int(height * 0.25), int(width * 0.35)), bottom_right=(int(height * 0.45), int(width * 0.55)))
+    _apply_scenario_updates(drm, scenario)
 
-    # scenario.add_region(top_left=(0, 0), bottom_right=(1, 1))
-    # _apply_scenario_updates(drm, scenario)
+    scenario.add_region(top_left=(0, 0), bottom_right=(1, 1))
+    _apply_scenario_updates(drm, scenario)
