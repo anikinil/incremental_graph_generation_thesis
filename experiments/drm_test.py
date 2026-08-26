@@ -20,8 +20,12 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 20
-    width = 30
+    height = 50
+    width = 70
+    
+    agv_radius = 0.45
+    
+    occupancy_rate = 0.05
 
     io_points = {
         (height * 0.15, 0),
@@ -36,7 +40,7 @@ if __name__ == "__main__":
         rng=rng,
         height=height,
         width=width,
-        occupancy_rate=0.35,
+        occupancy_rate=occupancy_rate,
         sigma_coarse=3,
         sigma_fine=1,
         noisy_aisles_num=0,
@@ -44,7 +48,7 @@ if __name__ == "__main__":
         io_points=io_points,
         io_points_radius=3,
         simple_obstacle_rate=0.1,
-        agv_radius=0.42,
+        agv_radius=agv_radius,
         recorder=recorder,
     )
 
@@ -70,15 +74,17 @@ if __name__ == "__main__":
         buffer_segments=2,
         recorder=recorder,
     )
-    drm.preprocessing_step(num_vertices=500)
+    drm.preprocessing_step()
+    # drm.preprocessing_step(num_vertices=int(width * height * (1-scenario.occupancy_rate) // 2))
 
-    scenario.make_updates(number_of_updates=10)
+
+    scenario.make_updates(number_of_updates=30)
     _apply_scenario_updates(drm, scenario)
 
-    scenario.remove_region(top_left=(4, 6), bottom_right=(8, 12))
+    scenario.remove_region(top_left=(int(height * 0.15), int(width * 0.25)), bottom_right=(int(height * 0.55), int(width * 0.65)))
     _apply_scenario_updates(drm, scenario)
 
-    scenario.add_region(top_left=(10, 18), bottom_right=(11, 19))
+    scenario.add_region(top_left=(int(height * 0.25), int(width * 0.35)), bottom_right=(int(height * 0.45), int(width * 0.55)))
     _apply_scenario_updates(drm, scenario)
 
     scenario.add_region(top_left=(0, 0), bottom_right=(1, 1))

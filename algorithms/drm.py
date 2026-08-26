@@ -13,7 +13,7 @@ from scenario.geometry import buffered_obstacle_space
 class DRM:
 
     def __init__(self, rng, occupancy, access_points, io_points, bounds, max_dist, max_neighbors, agv_radius, buffer_segments, recorder=None):
-        
+
         self.rng = rng
         self.occupancy = np.asarray(occupancy, dtype=np.uint8).copy()
         self.height, self.width = self.occupancy.shape
@@ -35,7 +35,7 @@ class DRM:
         self.vertex_active = [] # bool (indexed by vertex index)
         self.edge_active = {} # (edge_tuple, bool)
         self.adjacency = defaultdict(set) # (vertex_index, set(neighbour_indices))
-        
+
         self.kdtree = None
  
         # tracks which roadmap vertices and edges are on which occupancy cells
@@ -43,8 +43,11 @@ class DRM:
         self.phi_a = defaultdict(set) # (cell, set(edge_tuples))
 
         self.special_vertices = {} # (point, vertex_index)
+        
         self.access_points = access_points
         self.io_points = io_points
+        
+        self.wall_vertices = {} # (row, col) -> vertex_index
 
     def _refresh_free_and_obstacle_space(self):
         self.obstacle_space = buffered_obstacle_space(self.occupancy, self.agv_radius, self.buffer_segments)
@@ -53,13 +56,13 @@ class DRM:
     def _update_kdtree(self):
         self.kdtree = KDTree(np.asarray(self.vertices)) if self.vertices else None
 
-    def _add_vertex(self, config):
+    def _add_vertex(self, config, *, connect=True, update_kdtree=True):
         """Add one vertex and connect it to nearby vertices in the empty workspace."""
         config = np.asarray(config, dtype=np.float64)
         neighbours = []
 
         # find nearest neighbours of the new vertex
-        if self.kdtree is not None: # on the first vertex, there is no kdtree yet, so skip this step
+        if connect and self.kdtree is not None: # on the first vertex, there is no kdtree yet, so skip this step
             count = min(self.max_neighbors, len(self.vertices)) # limit the number of neighbours to consider
             # get the indices of the nearest neighbours within max_dist
             distances, indices = self.kdtree.query(config, k=count, distance_upper_bound=self.max_dist)
@@ -71,7 +74,7 @@ class DRM:
             if not neighbours:
                 neighbours = [int(self.kdtree.query(config, k=1)[1])]
 
-        # add the new vertex to the roadmap and initialize 
+        # add the new vertex to the roadmap and initialize
         index = len(self.vertices)
         self.vertices.append(config.copy())
         self.vertex_active.append(False)
@@ -80,93 +83,226 @@ class DRM:
         # connect the new vertex to its neighbours if the connecting edge is in free space
         for neighbour in neighbours:
             line = LineString([config, self.vertices[neighbour]])
-            if not self.empty_space.covers(line):
-                continue
-            edge = tuple(sorted((index, neighbour)))
-            self.edges.append(edge)
-            self.adjacency[index].add(neighbour)
-            self.adjacency[neighbour].add(index)
-            self.edge_active[edge] = False # initialize edge as inactive, will be updated later
+            if self.empty_space.covers(line):
+                self._add_edge(index, neighbour)
 
-        self._update_kdtree()
+        if update_kdtree:
+            self._update_kdtree()
         return index
 
-    def _construction_step(self, num_vertices):
-        """Sample the permanent roadmap in the obstacle-free workspace."""
+    def _add_edge(self, left, right):
+        """Add one roadmap edge unless it already exists."""
+        edge = tuple(sorted((left, right)))
+        # if edge in self.edge_active:
+            # return None
+
+        self.edges.append(edge)
+        self.adjacency[left].add(right)
+        self.adjacency[right].add(left)
+        self.edge_active[edge] = False
+        return edge
+
+    def _num_active_components(self):
+        """Return the number of connected components in the active roadmap."""
+        return nx.number_connected_components(self.build_graph())
+
+
+    def _repair_active_connectivity(self):
+        """Add roadmap vertices until the active roadmap has one component."""
+        progress = GenerationProgress("DRM", "Connecting active roadmap", self.iteration)
+        progress.start()
         
-        progress = GenerationProgress("DRM", "Generating empty-space roadmap", self.iteration)
-        progress.start(f"target: {num_vertices} vertices")
         min_x, min_y, max_x, max_y = self.bounds
-        for number in range(1, num_vertices + 1):
+        num_components = self._num_active_components()
+        added_vertices = set()
+        added_edges = set()
+        while num_components != 1:
             config = np.array([self.rng.uniform(min_x, max_x), self.rng.uniform(min_y, max_y)], dtype=np.float64)
-            self._add_vertex(config)
-            if number % 100 == 0 or number == num_vertices:
-                progress.update(number, num_vertices, f"vertices: {len(self.vertices)} | edges: {len(self.edges)}")
-        progress.finish(True, f"generated {len(self.vertices)} vertices and {len(self.edges)} edges")
+            index = self._add_vertex(config)
+            incident_edges = { tuple(sorted((index, neighbour))) for neighbour in self.adjacency[index] }
+            self._refresh_active_status({index}, incident_edges)
+            num_components = self._num_active_components()
+            added_vertices.add(index)
+            added_edges.update(incident_edges)
+            if len(added_vertices) % 100 == 0:
+                progress.update(len(added_vertices), details=(f"components: {num_components} | vertices: {len(self.vertices)} | "
+                                                              f"edges: {len(self.edges)}"))
+        progress.finish(True, (f"added vertices: {len(added_vertices)} | vertices: {len(self.vertices)} | "
+                               f"edges: {len(self.edges)} | components: {num_components}"))
+        return added_vertices, added_edges
 
-    def _remove_special_vertices(self, points):
-        """Remove special-point vertices and their incident edges from the roadmap."""
-        
-        # determine the indices of the special vertices to be removed and remove them from special_vertices
-        removed_indices = {self.special_vertices.pop(point) for point in points}
-        if not removed_indices: # no special vertices have been removed, skip the rest of the function
-            return
+    def _build_wall_graph(self):
+        """
+        Add the free, wall-adjacent cell centres as an 8-connected graph.
 
-        # determine kept vertex indices and create a mapping from old indices to new indices
+        Similar to: "A Randomized Roadmap Method for Path and Manipulation Planning", Amato & Wu (1996) 
+        """
+
+        wall_cells = []
+        # for all cells
+        for row in range(self.height):
+            for col in range(self.width):
+                if self.occupancy[row, col] == 0: # if cell is free
+                    has_occupied_neighbour = False
+                    for row_offset in (-1, 0, 1):
+                        for col_offset in (-1, 0, 1):
+                            if row_offset != 0 or col_offset != 0: # if neighbour cell is not the current cell
+                                neighbour_row = row + row_offset
+                                neighbour_col = col + col_offset
+                                if (0 <= neighbour_row < self.height and # if neighbour cell is in bounds
+                                    0 <= neighbour_col < self.width and
+                                    self.occupancy[neighbour_row, neighbour_col] != 0): # if neighbour cell is occupied
+                                    has_occupied_neighbour = True # wall-adjacent cell found
+                                    break # leave inner loop
+                        if has_occupied_neighbour: # leave outer loop
+                            break
+                
+                    # add the free, wall-adjacent cell to the wall graph
+                    if has_occupied_neighbour:
+                        wall_cells.append((row, col))
+
+        # keep a permanent copy of the roadmap vertices for connecting the new wall vertices to the existing roadmap
+        permanent_indices = np.arange(len(self.vertices), dtype=int)
+        permanent_tree = (KDTree(np.asarray(self.vertices, dtype=np.float64)) if self.vertices else None)
+
+        # add the wall vertices
+        new_vertices = set()
+        for row, col in wall_cells:
+            index = self._add_vertex(np.array([col + 0.5, row + 0.5], dtype=np.float64), connect=False, update_kdtree=False)
+            self.wall_vertices[(row, col)] = index
+            new_vertices.add(index)
+        self._update_kdtree()
+
+        # add the King's Graph edges between the wall vertices
+        new_edges = set()
+        king_moves = (
+            (-1, -1), (-1, 0), (-1, 1),
+             (0, -1),           (0, 1),
+             (1, -1),  (1, 0),  (1, 1),
+        )
+        for (row, col), index in self.wall_vertices.items(): # for all wall vertices
+            for row_offset, col_offset in king_moves: # for all neighbors
+                neighbour_row = row + row_offset
+                neighbour_col = col + col_offset
+                neighbour_cell = (neighbour_row, neighbour_col)
+                neighbour_index = self.wall_vertices.get(neighbour_cell)
+                if neighbour_index is not None and neighbour_index > index: # if neighbour is a wall vertex and not already processed
+                    if (abs(row_offset) + abs(col_offset) == 2 # if neighbour is diagonal
+                        # and would need to cut a corner to pass through one or two adjacent obstacle cells
+                        and (self.occupancy[row, neighbour_col] != 0 or self.occupancy[neighbour_row, col] != 0)):
+                            continue # ignore
+
+                    # the local path must also respect the buffered obstacle space
+                    path = LineString([self.vertices[index], self.vertices[neighbour_index]])
+                    if not self.free_space.covers(path):
+                        continue
+
+                    edge = self._add_edge(index, neighbour_index)
+                    # if edge is not None: # if the edge is not a duplicate
+                    new_edges.add(edge)
+
+        # connect the new wall vertices to the permanent roadmap
+        candidate_count = min(self.max_neighbors, len(permanent_indices))
+        for index in new_vertices:
+            if permanent_tree is not None:
+                distances, positions = permanent_tree.query(self.vertices[index], k=candidate_count, distance_upper_bound=self.max_dist)
+                distances = np.atleast_1d(distances)
+                positions = np.atleast_1d(positions)
+                candidate_indices = []
+                for distance, position in zip(distances, positions):
+                    if np.isfinite(distance):
+                        candidate_indices.append(int(permanent_indices[int(position)]))
+                # if not candidate_indices: # if no candidates are found within max_dist, connect to single closest
+                #     _, position = permanent_tree.query(self.vertices[index], k=1)
+                #     candidate_indices = [int(permanent_indices[int(position)])]
+
+                # connect to the first candidate that is in free space, then stop
+                for candidate_index in candidate_indices:
+                    path = LineString([self.vertices[index], self.vertices[candidate_index]])
+                    if self.free_space.covers(path):
+                        edge = self._add_edge(index, candidate_index)
+                        # if edge is not None:
+                        new_edges.add(edge)
+                        break
+                
+        # map the new wall vertices and edges to their occupancy cells
+        for index in new_vertices:
+            self._map_vertex_to_occupancy_cell(index)
+        for edge in new_edges:
+            self._map_edge_to_occupancy_cells(edge)
+        self._refresh_active_status(new_vertices, new_edges)
+        return new_vertices, new_edges
+
+
+    def _remove_vertices(self, removed_indices):
+        """Remove vertices and reindex the remaining roadmap."""
+        removed_indices = set(removed_indices)
+
+        # get indices of vertices to keep and create a mapping from old to new indices
         kept_indices = [index for index in range(len(self.vertices)) if index not in removed_indices]
-        new_kept_indices = {old_index: new_index for new_index, old_index in enumerate(kept_indices)}
-        
-        # update vertices and vertex_active status of remaining vertices according to the new indices
+        index_map = {old_index: new_index for new_index, old_index in enumerate(kept_indices)}
+
+        # reindex vertices
         self.vertices = [self.vertices[index] for index in kept_indices]
         self.vertex_active = [self.vertex_active[index] for index in kept_indices]
 
-        # update adjacency of remaining vertices according to the new indices
+        # reindex adjacency list
         old_adjacency = self.adjacency
         self.adjacency = defaultdict(set)
-        for old_index in kept_indices: # for each remaining vertex
-            index = new_kept_indices[old_index]
-            for neighbour in old_adjacency[old_index]: # for each neighbour of the remaining vertex
-                if neighbour in new_kept_indices: # if the neighbour is also a remaining vertex
-                    self.adjacency[index].add(new_kept_indices[neighbour]) # register the neighbour as adjacent to the remaining vertex
+        for old_index in kept_indices:
+            new_index = index_map[old_index]
+            for neighbour in old_adjacency[old_index]:
+                if neighbour in index_map:
+                    self.adjacency[new_index].add(index_map[neighbour])
 
-        # update edges and edge_active status of remaining edges according to the new indices
+        # reindex edges and their active status
         old_edges = self.edges
         old_edge_active = self.edge_active
         self.edges = []
-        for left, right in old_edges:
-            if left in new_kept_indices and right in new_kept_indices:
-                self.edges.append(tuple(sorted((new_kept_indices[left], new_kept_indices[right]))))
         self.edge_active = {}
         for left, right in old_edges:
-            if left in new_kept_indices and right in new_kept_indices:
-                edge_key = tuple(sorted((new_kept_indices[left], new_kept_indices[right])))
-                self.edge_active[edge_key] = old_edge_active[(left, right)]
+            if left in index_map and right in index_map:
+                edge = tuple(sorted((index_map[left], index_map[right])))
+                self.edges.append(edge)
+                self.edge_active[edge] = old_edge_active.get((left, right), False)
 
-        # update phi_n and phi_a according to the new indices        
+        # reindex the occupancy-cell mappings for vertices and edges
         remapped_phi_n = defaultdict(set)
         for cell, indices in self.phi_n.items():
-            for index in indices:
-                if index in new_kept_indices:
-                    remapped_phi_n[cell].add(new_kept_indices[index])
+            remapped_phi_n[cell] = {index_map[index] for index in indices if index in index_map}
         self.phi_n = remapped_phi_n
         remapped_phi_a = defaultdict(set)
         for cell, edges in self.phi_a.items():
             for left, right in edges:
-                if left in new_kept_indices and right in new_kept_indices:
-                    edge = tuple(sorted((new_kept_indices[left], new_kept_indices[right])))
-                    remapped_phi_a[cell].add(edge)
+                if left in index_map and right in index_map:
+                    remapped_phi_a[cell].add(tuple(sorted((index_map[left], index_map[right]))))
         self.phi_a = remapped_phi_a
 
-        # update special_vertices
-        remapped_special_vertices = {}
+        # reindex special vertices
+        special_vertices_remapped = {}
         for point, index in self.special_vertices.items():
-            remapped_special_vertices[point] = new_kept_indices[index]
-        self.special_vertices = remapped_special_vertices
-        
+            if index in index_map:
+                special_vertices_remapped[point] = index_map[index]
+        self.special_vertices = special_vertices_remapped
+
+        # reindex wall vertices
+        wall_vertices_remapped = {}
+        for cell, index in self.wall_vertices.items():
+            if index in index_map:
+                wall_vertices_remapped[cell] = index_map[index]
+        self.wall_vertices = wall_vertices_remapped
         self._update_kdtree()
 
+    def _remove_special_vertices(self, points):
+        """Remove special-point vertices and their incident edges from the roadmap."""
+        removed_indices = set()
+        for point in points:
+            if point in self.special_vertices:
+                removed_indices.add(self.special_vertices[point])
+        self._remove_vertices(removed_indices)
+
     def _update_special_points(self, access_points, io_points):
-        """Synchronize special-point terminals and return their vertices and edges."""
+        """Update the roadmap's special points after layout updates and return their vertex indices and edges."""
         self.access_points = list(access_points)
         self.io_points = list(io_points)
         current_points = list(dict.fromkeys(self.access_points + self.io_points))
@@ -186,6 +322,7 @@ class DRM:
                     self._map_edge_to_occupancy_cells(tuple(sorted((index, neighbour)))) # map the new special point's edges to their occupancy cells
             active_vertices.append(index)
 
+        # determine the edges connected to the active special vertices
         changed_edges = set()
         for index in active_vertices:
             for neighbour in self.adjacency[index]:
@@ -245,12 +382,21 @@ class DRM:
             self._map_edge_to_occupancy_cells(edge)
 
         self._refresh_active_status(range(len(self.vertices)), self.edges)
-        # self.record_graph(phase="preprocessing")
 
-    def preprocessing_step(self, num_vertices):
-        self._construction_step(num_vertices)
+    def preprocessing_step(self):
+        
+        self._build_wall_graph()
+        # self._repair_active_connectivity()
         self._update_special_points(self.access_points, self.io_points)
         self._build_workspace_to_roadmap_mapping()
+
+        repair_vertices, repair_edges = self._repair_active_connectivity()
+        for index in repair_vertices:
+            self._map_vertex_to_occupancy_cell(index)
+        for edge in repair_edges:
+            self._map_edge_to_occupancy_cells(edge)
+
+        self.record_graph(phase="preprocessing")
 
     def _refresh_active_status(self, vertices, edges):
         """Refresh the active/inactive status of the given roadmap vertices and edges."""
@@ -267,6 +413,9 @@ class DRM:
     def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points):
         """Apply changed cells, then refresh only their mapped roadmap items."""
 
+        # remove the wall graph before applying updates, will be rebuilt later
+        self._remove_vertices(set(self.wall_vertices.values())) 
+        
         # update the occupancy grid and collect all changed cells
         changed_cells = set()
         for update in obstacle_updates:
@@ -292,6 +441,9 @@ class DRM:
         # update special points and get their vertices and edges
         special_vertices, special_edges = self._update_special_points(new_access_points, new_io_points)
 
+        # build vertices and edges around the walls
+        wall_vertices, wall_edges = self._build_wall_graph()
+
         # update the active/inactive status of all vertices and edges affected by cell changes
         affected_vertices = set()
         affected_edges = set()
@@ -305,7 +457,17 @@ class DRM:
                 affected_edges.add(tuple(sorted((index, neighbour))))
 
         # refresh the active/inactive status of all affected vertices and edges, including special points
-        self._refresh_active_status(affected_vertices | special_vertices, affected_edges | special_edges)
+        self._refresh_active_status(
+            affected_vertices | special_vertices | wall_vertices,
+            affected_edges | special_edges | wall_edges,
+        )
+
+        # repair the active roadmap connectivity if it has become disconnected
+        repair_vertices, repair_edges = self._repair_active_connectivity()
+        for index in repair_vertices:
+            self._map_vertex_to_occupancy_cell(index) # map the new vertices to their occupancy cells
+        for edge in repair_edges:
+            self._map_edge_to_occupancy_cells(edge) # map the new edges to their occupancy cells
         
         # record the updated graph
         self.iteration += 1
@@ -314,7 +476,7 @@ class DRM:
         self.record_graph(phase="online_update")
 
     def build_graph(self):
-        """Return the roadmap as a NetworkX graph."""
+        """Return the roadmap of active vertices and edges as a NetworkX graph."""
         graph = nx.Graph()
         for index, config in enumerate(self.vertices):
             if self.vertex_active[index]:
