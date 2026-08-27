@@ -11,13 +11,17 @@ from algorithms.gvd import GVD
 from algorithms.prm import PRM
 from algorithms.vgraph import VGraph
 
-def main():
+if __name__ == "__main__":
 
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 20
-    width = 35
+    height = 50
+    width = 70
+    
+    agv_radius = 0.45
+    
+    occupancy_rate = 0.05
 
     io_points = {
         (height * 0.18, 0),
@@ -31,7 +35,7 @@ def main():
         rng=rng,
         height=height,
         width=width,
-        occupancy_rate=0.7,
+        occupancy_rate=occupancy_rate,
         sigma_coarse=3,
         sigma_fine=1,
         noisy_aisles_num=0,
@@ -39,7 +43,7 @@ def main():
         io_points=io_points,
         io_points_radius=3,
         simple_obstacle_rate=0.1,
-        agv_radius=0.42,
+        agv_radius=agv_radius,
         recorder=recorder,
         
         # ordered_aisle_widths = (2, 1),
@@ -83,17 +87,17 @@ def main():
         occupancy=scenario.occupancy,
         access_points=continuous_access_points,
         io_points=continuous_io_points,
-        bounds=bounds,
+        height=height,
+        width=width,
         eps=0.1,
-        max_dist=8,
-        max_neighbors=30,
+        max_dist=4,
+        max_neighbors=10,
         agv_radius=scenario.agv_radius,
         buffer_segments=buffer_segments,
         recorder=recorder,
     )
-    prm.construction_step(num_nodes=500)
+    prm.construction_step(min_num_vertices=1000)
     prm.connect_special_points()
-    prm.expansion_step(bounce_walk_length=5, max_bounces=10)
     prm.record_graph()
     print()
 
@@ -129,6 +133,4 @@ def main():
     gvd.updateDistanceMap()
     gvd.build_graph()
 
-if __name__ == "__main__":
-    main()
         

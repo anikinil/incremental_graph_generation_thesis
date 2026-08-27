@@ -12,12 +12,13 @@ from scenario.geometry import buffered_obstacle_space
 
 class DRM:
 
-    def __init__(self, rng, occupancy, access_points, io_points, bounds, max_dist, max_neighbors, agv_radius, buffer_segments, recorder=None):
+    def __init__(self, rng, occupancy, access_points, io_points, height, width, max_dist, max_neighbors, agv_radius, buffer_segments, recorder=None):
 
         self.rng = rng
         self.occupancy = np.asarray(occupancy, dtype=np.uint8).copy()
         self.height, self.width = self.occupancy.shape
-        self.bounds = tuple(map(float, bounds))
+        self.height = height
+        self.width = width
         self.max_dist = float(max_dist)
         self.max_neighbors = int(max_neighbors)
         self.agv_radius = float(agv_radius)
@@ -25,7 +26,7 @@ class DRM:
         self.recorder = recorder
         self.iteration = 0
 
-        self.empty_space = box(*self.bounds) # the empty workspace, before buffering obstacles
+        self.empty_space = box(0, 0, self.width, self.height) # the empty workspace, before buffering obstacles
         self.obstacle_space = None
         self.free_space = None
         self._refresh_free_and_obstacle_space() # compute the free and obstacle space based on the initial occupancy grid
@@ -140,7 +141,7 @@ class DRM:
         progress = GenerationProgress("DRM", "Connecting active roadmap", self.iteration)
         progress.start()
         
-        min_x, min_y, max_x, max_y = self.bounds
+        min_x, min_y, max_x, max_y = 0, 0, self.width, self.height
         num_components = self._num_active_components()
         added_vertices = set()
         added_vertices_num = 0
@@ -156,56 +157,31 @@ class DRM:
             added_vertices_num += 1
             if added_vertices_num % 100 == 0:
                 progress.update(added_vertices_num, details=(f"components: {num_components} | vertices: {len(self.vertices)} | "
-                                                              f"edges: {len(self.edges)}"))
-        progress.finish(True, (f"added vertices: {len(added_vertices)} | vertices: {len(self.vertices)} | "
+                                                             f"edges: {len(self.edges)}"))
+        progress.finish(True, (f"added vertices: {added_vertices_num} | vertices: {len(self.vertices)} | "
                                f"edges: {len(self.edges)} | components: {num_components}"))
         return added_vertices, added_edges
 
     def _build_wall_graph(self):
         """
-        Add the free, wall-adjacent cell centres as an 8-connected graph.
+        Adds the free, wall-adjacent cell centres as an 8-connected graph.
 
         Similar to: "A Randomized Roadmap Method for Path and Manipulation Planning", Amato & Wu (1996) 
         """
 
-        wall_cells = []
-        # for all cells
+        # collect the wall vertices from the occupancy grid and add them to the roadmap
+        new_vertices = set()
         for row in range(self.height):
             for col in range(self.width):
-                if self.occupancy[row, col] == 0: # if cell is free
-                    has_occupied_neighbour = False
-                    for row_offset in (-1, 0, 1):
-                        for col_offset in (-1, 0, 1):
-                            if row_offset != 0 or col_offset != 0: # if neighbour cell is not the current cell
-                                neighbour_row = row + row_offset
-                                neighbour_col = col + col_offset
-                                if (0 <= neighbour_row < self.height and # if neighbour cell is in bounds
-                                    0 <= neighbour_col < self.width and
-                                    self.occupancy[neighbour_row, neighbour_col] != 0): # if neighbour cell is occupied
-                                    has_occupied_neighbour = True # wall-adjacent cell found
-                                    break # leave inner loop
-                        if has_occupied_neighbour: # leave outer loop
-                            break
-                
-                    # add the free, wall-adjacent cell to the wall graph
-                    if has_occupied_neighbour:
-                        wall_cells.append((row, col))
+                if self._is_wall_cell((row, col)):
+                    index = self._add_vertex(np.array([col + 0.5, row + 0.5], dtype=np.float64), connect=False, update_kdtree=False)
+                    self.wall_vertices[(row, col)] = index
+                    new_vertices.add(index)
 
-        # keep a permanent copy of the roadmap vertices for connecting the new wall vertices to the existing roadmap
-        permanent_indices = np.arange(len(self.vertices), dtype=int)
-        permanent_tree = (KDTree(np.asarray(self.vertices, dtype=np.float64)) if self.vertices else None)
-
-        # add the wall vertices
-        new_vertices = set()
-        for row, col in wall_cells:
-            index = self._add_vertex(np.array([col + 0.5, row + 0.5], dtype=np.float64), connect=False, update_kdtree=False)
-            self.wall_vertices[(row, col)] = index
-            new_vertices.add(index)
         self._update_kdtree()
 
         # add the King's Graph edges between the wall vertices
         new_edges = set()
-
         for (row, col), index in self.wall_vertices.items(): # for all wall vertices
             for row_offset, col_offset in self.KING_MOVES: # for all neighbors
                 neighbour_row = row + row_offset
@@ -227,30 +203,6 @@ class DRM:
                     # if edge is not None: # if the edge is not a duplicate
                     new_edges.add(edge)
 
-        # connect the new wall vertices to the permanent roadmap
-        candidate_count = min(self.max_neighbors, len(permanent_indices))
-        for index in new_vertices:
-            if permanent_tree is not None:
-                distances, positions = permanent_tree.query(self.vertices[index], k=candidate_count, distance_upper_bound=self.max_dist)
-                distances = np.atleast_1d(distances)
-                positions = np.atleast_1d(positions)
-                candidate_indices = []
-                for distance, position in zip(distances, positions):
-                    if np.isfinite(distance):
-                        candidate_indices.append(int(permanent_indices[int(position)]))
-                # if not candidate_indices: # if no candidates are found within max_dist, connect to single closest
-                #     _, position = permanent_tree.query(self.vertices[index], k=1)
-                #     candidate_indices = [int(permanent_indices[int(position)])]
-
-                # connect to the first candidate that is in free space, then stop
-                for candidate_index in candidate_indices:
-                    path = LineString([self.vertices[index], self.vertices[candidate_index]])
-                    if self.free_space.covers(path):
-                        edge = self._add_edge(index, candidate_index)
-                        # if edge is not None:
-                        new_edges.add(edge)
-                        break
-                
         # map the new wall vertices and edges to their occupancy cells
         for index in new_vertices:
             self._map_vertex_to_occupancy_cell(index)
@@ -262,20 +214,19 @@ class DRM:
     def _is_wall_cell(self, cell):
         """Return whether a cell is adjacent to a free cell."""
         row, col = cell
-        if self.occupancy[row, col] != 0: # cell not free -> not a wall cell
-            return False
-        for row_offset in (-1, 0, 1):
-            for col_offset in (-1, 0, 1):
-                if row_offset != 0 and col_offset != 0: # skip the cell itself
-                    neighbour_row = row + row_offset
-                    neighbour_col = col + col_offset
-                    if (0 <= neighbour_row < self.height and # if neighbor in bounds
-                        0 <= neighbour_col < self.width and
-                        self.occupancy[neighbour_row, neighbour_col] != 0): # and occupied
-                        return True # wall cell
-        return False # no occupied neighbour found -> not a wall cell
+        if self.occupancy[row, col] == 0: # cell not free -> not a wall cell
+            for row_offset in (-1, 0, 1):
+                for col_offset in (-1, 0, 1):
+                    if row_offset != 0 or col_offset != 0: # skip the cell itself
+                        neighbour_row = row + row_offset
+                        neighbour_col = col + col_offset
+                        if (0 <= neighbour_row < self.height and # if neighbor in bounds
+                            0 <= neighbour_col < self.width and
+                            self.occupancy[neighbour_row, neighbour_col] != 0): # and occupied
+                            return True # wall cell
+        return False
 
-    def _wall_update_candidate_cells(self, changed_cells):
+    def _get_wall_update_candidate_cells(self, changed_cells):
         """Return the set cells that may be wall cells affected by changes in occupancy."""
         # get the neighborhood of changed cells
         neighbordood_cells = set()
@@ -311,11 +262,8 @@ class DRM:
         """Update the wall graph based on changed occupancy cells."""
         
         # get the set of cells that are considered affected by the changes in occupancy
-        potentially_affected_cells = self._wall_update_candidate_cells(changed_cells)
+        potentially_affected_cells = self._get_wall_update_candidate_cells(changed_cells)
         
-        if not potentially_affected_cells:
-            return set(), set()
-
         # collect all wall vertices that are no longer on wall cells and remove them from the roadmap
         removed_indices = set()
         for cell in potentially_affected_cells:
@@ -390,6 +338,7 @@ class DRM:
                         if self.free_space.covers(path):
                             new_edges.add(self._add_edge(index, candidate_index))
                             break
+                        
         # map the added vertices and edges to occupancy cells
         for index in added_vertices:
             self._map_vertex_to_occupancy_cell(index)
@@ -692,7 +641,8 @@ class DRM:
                 "buffer_segments": self.buffer_segments,
                 "access_points": sorted(self.access_points),
                 "io_points": sorted(self.io_points),
-                "bounds": self.bounds,
+                "height": self.height,
+                "width": self.width,
                 "vertices": vertices,
                 "vertex_active": np.asarray(self.vertex_active, dtype=bool),
                 "edges": sorted(self.edges),

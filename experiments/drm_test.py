@@ -25,7 +25,7 @@ if __name__ == "__main__":
     
     agv_radius = 0.45
     
-    occupancy_rate = 0.05
+    occupancy_rate = 0.5
 
     io_points = {
         (height * 0.15, 0),
@@ -67,7 +67,8 @@ if __name__ == "__main__":
         occupancy=scenario.occupancy,
         access_points=access_points,
         io_points=continuous_io_points,
-        bounds=(0, 0, width, height),
+        height=height,
+        width=width,
         max_dist=4.0,
         max_neighbors=10,
         agv_radius=scenario.agv_radius,
@@ -75,7 +76,7 @@ if __name__ == "__main__":
         recorder=recorder,
     )
     # drm.preprocessing_step()
-    drm.preprocessing_step(min_num_vertices=1000)
+    drm.preprocessing_step(min_num_vertices=500)
     # drm.preprocessing_step(num_vertices=int(width * height * (1-scenario.occupancy_rate) // 2))
 
 

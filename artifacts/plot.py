@@ -29,8 +29,8 @@ INACTIVE_GRAPH_EDGE_COLOR = (0.4, 0.4, 0.4, 0.3)    # semi-transparent grey
 AFFECTED_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 1)   # red
 AFFECTED_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.8)   # red
 
-AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 0.4) # red
-AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.3) # red
+AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 0.2) # red
+AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.1) # red
 
 VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.1)      # blue, semi-transparent for better visibility
 
@@ -573,7 +573,7 @@ class _ContinuousGraphPlotter(BasePlotter):
         return plt.subplots(figsize=(16, 12))
 
     def _context(self, data):
-        required = ("occupancy", "agv_radius", "buffer_segments", "access_points", "io_points", "bounds")
+        required = ("occupancy", "agv_radius", "buffer_segments", "access_points", "io_points", "height", "width")
         missing = [field for field in required if field not in data]
         if missing:
             raise ValueError(f"Continuous graph snapshot missing: {', '.join(missing)}")
@@ -581,7 +581,7 @@ class _ContinuousGraphPlotter(BasePlotter):
 
     def _draw_environment(self, ax, context):
         occupancy = np.asarray(context["occupancy"])
-        min_x, min_y, max_x, max_y = context["bounds"]
+        min_x, min_y, max_x, max_y = 0, 0, context["width"], context["height"]
 
         _draw_continuous_environment(ax, occupancy, bounds=(min_x, min_y, max_x, max_y), agv_radius=context["agv_radius"], buffer_segments=context["buffer_segments"])
 
@@ -599,19 +599,19 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
         context = self._context(data)
         self._draw_environment(ax, context)
 
-        nodes = np.asarray(data["nodes"])
+        vertices = np.asarray(data["vertices"])
         edges = data["edges"]
         if len(edges):
-            ax.add_collection(LineCollection([[nodes[left], nodes[right]] for left, right in edges],
+            ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in edges],
                                              colors=[GRAPH_EDGE_COLOR], linewidths=1.1, alpha=0.55,
                                              capstyle="round", zorder=10, label="Graph edges"))
 
-        adjacency = [set() for _ in range(len(nodes))]
+        adjacency = [set() for _ in range(len(vertices))]
         for left, right in edges:
             adjacency[left].add(right)
             adjacency[right].add(left)
         components = []
-        unseen = set(range(len(nodes)))
+        unseen = set(range(len(vertices)))
         while unseen:
             component = {unseen.pop()}
             frontier = list(component)
@@ -624,7 +624,7 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
             components.append(component)
 
         for component in components:
-            coordinates = nodes[list(component)]
+            coordinates = vertices[list(component)]
             ax.scatter(coordinates[:, 0], coordinates[:, 1], s=5, color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.35, zorder=11, label="Graph vertices")
 
         self._draw_special_points(ax, context)
@@ -729,13 +729,13 @@ class IncrementalKingsGridPlotter(_GVDGridPlotter):
 
         self._draw_obstacles(ax, occupancy, ctx["agv_radius"])
 
-        nodes = data["nodes"]
+        vertices = data["vertices"]
         edges = data["edges"]
         if edges:
-            ax.add_collection(LineCollection([[nodes[left]["pos"], nodes[right]["pos"]] for left, right in edges],
+            ax.add_collection(LineCollection([[vertices[left]["pos"], vertices[right]["pos"]] for left, right in edges],
                                              colors=[GRAPH_EDGE_COLOR], linewidths=0.65, alpha=0.65, capstyle="round", zorder=10, label="King's-grid edges",))
 
-        grid_vertices = [node["pos"] for node in nodes.values() if node["type"] == "grid"]
+        grid_vertices = [vertex["pos"] for vertex in vertices.values() if vertex["type"] == "grid"]
         if grid_vertices:
             vertices = np.asarray(grid_vertices, dtype=float)
             ax.scatter(vertices[:, 0], vertices[:, 1], s=9,
@@ -759,11 +759,11 @@ class VisibilityGraphPlotter(_ContinuousGraphPlotter):
         context = self._context(data)
         self._draw_environment(ax, context)
 
-        nodes = data["nodes"]
+        vertices = data["vertices"]
         edges = data["edges"]
         if edges:
             ax.add_collection(LineCollection(
-                [[nodes[left]["pos"], nodes[right]["pos"]] for left, right in edges],
+                [[vertices[left]["pos"], vertices[right]["pos"]] for left, right in edges],
                 colors=[VISIBILITY_EDGE_COLOR], linewidths=0.45,
                 capstyle="round", zorder=10, label="Visibility edges",
             ))
