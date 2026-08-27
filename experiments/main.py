@@ -83,7 +83,6 @@ if __name__ == "__main__":
     prm = PRM(
         rng=rng,
         free_space=free_space,
-        obstacle_space=obstacle_space,
         occupancy=scenario.occupancy,
         access_points=continuous_access_points,
         io_points=continuous_io_points,
@@ -96,7 +95,7 @@ if __name__ == "__main__":
         buffer_segments=buffer_segments,
         recorder=recorder,
     )
-    prm.construction_step(min_num_vertices=1000)
+    prm.construction_step(min_num_vertices=1000, avoid_cycles=False)
     prm.connect_special_points()
     prm.record_graph()
     print()

@@ -16,9 +16,13 @@ class DRM:
 
         self.rng = rng
         self.occupancy = np.asarray(occupancy, dtype=np.uint8).copy()
-        self.height, self.width = self.occupancy.shape
-        self.height = height
-        self.width = width
+        grid_height, grid_width = self.occupancy.shape
+        if (height, width) != (grid_height, grid_width):
+            raise ValueError(
+                "height and width must match the occupancy grid shape "
+                f"{(grid_height, grid_width)}"
+            )
+        self.height, self.width = grid_height, grid_width
         self.max_dist = float(max_dist)
         self.max_neighbors = int(max_neighbors)
         self.agv_radius = float(agv_radius)
@@ -65,7 +69,7 @@ class DRM:
     def _update_kdtree(self):
         self.kdtree = KDTree(np.asarray(self.vertices)) if self.vertices else None
 
-    def _add_vertex(self, config, *, connect=True, update_kdtree=True):
+    def _add_vertex(self, config, connect=True, update_kdtree=True):
         """Add one vertex and connect it to nearby vertices in the empty workspace."""
         config = np.asarray(config, dtype=np.float64)
         neighbours = []
@@ -100,17 +104,22 @@ class DRM:
         return index
 
     def _add_edge(self, left, right):
-        """Add one roadmap edge unless it already exists."""
+        """Add one roadmap edge."""
         edge = tuple(sorted((left, right)))
-        # if edge in self.edge_active:
-            # return None
-
         self.edges.append(edge)
         self.adjacency[left].add(right)
         self.adjacency[right].add(left)
         self.edge_active[edge] = False
         return edge
 
+    def _get_incident_edges(self, vertices):
+        """Return all roadmap edges incident to the given vertices."""
+        edges = set()
+        for index in vertices:
+            for neighbour in self.adjacency[index]:
+                edges.add(tuple(sorted((index, neighbour))))
+        return edges
+    
     def _remove_edge(self, edge):
         """Remove one roadmap edge and its occupancy-cell mapping."""
 
@@ -149,7 +158,7 @@ class DRM:
         while num_components > 1 or (min_num_vertices is not None and added_vertices_num <= min_num_vertices):
             config = np.array([self.rng.uniform(min_x, max_x), self.rng.uniform(min_y, max_y)], dtype=np.float64)
             index = self._add_vertex(config)
-            incident_edges = { tuple(sorted((index, neighbour))) for neighbour in self.adjacency[index] }
+            incident_edges = self._get_incident_edges({index})
             self._refresh_active_status({index}, incident_edges)
             num_components = self._num_active_components()
             added_vertices.add(index)
@@ -170,18 +179,15 @@ class DRM:
         """
 
         # collect the wall vertices from the occupancy grid and add them to the roadmap
-        new_vertices = set()
         for row in range(self.height):
             for col in range(self.width):
                 if self._is_wall_cell((row, col)):
                     index = self._add_vertex(np.array([col + 0.5, row + 0.5], dtype=np.float64), connect=False, update_kdtree=False)
                     self.wall_vertices[(row, col)] = index
-                    new_vertices.add(index)
 
         self._update_kdtree()
 
         # add the King's Graph edges between the wall vertices
-        new_edges = set()
         for (row, col), index in self.wall_vertices.items(): # for all wall vertices
             for row_offset, col_offset in self.KING_MOVES: # for all neighbors
                 neighbour_row = row + row_offset
@@ -199,17 +205,7 @@ class DRM:
                     if not self.free_space.covers(path):
                         continue
 
-                    edge = self._add_edge(index, neighbour_index)
-                    # if edge is not None: # if the edge is not a duplicate
-                    new_edges.add(edge)
-
-        # map the new wall vertices and edges to their occupancy cells
-        for index in new_vertices:
-            self._map_vertex_to_occupancy_cell(index)
-        for edge in new_edges:
-            self._map_edge_to_occupancy_cells(edge)
-        self._refresh_active_status(new_vertices, new_edges)
-        return new_vertices, new_edges
+                    self._add_edge(index, neighbour_index)
 
     def _is_wall_cell(self, cell):
         """Return whether a cell is adjacent to a free cell."""
@@ -414,8 +410,8 @@ class DRM:
                 removed_indices.add(self.special_vertices[point])
         self._remove_vertices(removed_indices)
 
-    def _update_special_points(self, access_points, io_points):
-        """Update the roadmap's special points after layout updates and return their vertex indices and edges."""
+    def _update_special_points(self, access_points, io_points, map_new=True):
+        """Update special points, optionally mapping newly added elements to occupancy cells."""
         self.access_points = list(access_points)
         self.io_points = list(io_points)
         current_points = list(dict.fromkeys(self.access_points + self.io_points))
@@ -424,25 +420,16 @@ class DRM:
         removed_points = set(self.special_vertices).difference(current_points)
         self._remove_special_vertices(removed_points)
 
-        active_vertices = [] # list of active special vertices
         for point in current_points:
             index = self.special_vertices.get(point)
             if index is None:
                 index = self._add_vertex(point)
                 self.special_vertices[point] = index
-                self._map_vertex_to_occupancy_cell(index) # map the new special point to its occupancy cell
-                for neighbour in self.adjacency[index]:
-                    self._map_edge_to_occupancy_cells(tuple(sorted((index, neighbour)))) # map the new special point's edges to their occupancy cells
-            active_vertices.append(index)
+                if map_new:
+                    self._map_vertex_to_occupancy_cell(index)
+                    for edge in self._get_incident_edges({index}):
+                        self._map_edge_to_occupancy_cells(edge)
 
-        # determine the edges connected to the active special vertices
-        changed_edges = set()
-        for index in active_vertices:
-            for neighbour in self.adjacency[index]:
-                changed_edges.add(tuple(sorted((index, neighbour))))
-        return set(active_vertices), changed_edges
-
-        
     def _get_intersecting_cells(self, geometry):
         """Return the set of occupancy cells that intersect the given geometry."""
 
@@ -502,7 +489,7 @@ class DRM:
         
         self._build_wall_graph()
         # self._repair_active_connectivity()
-        self._update_special_points(self.access_points, self.io_points)
+        self._update_special_points(self.access_points, self.io_points, map_new=False)
         self._build_workspace_to_roadmap_mapping()
 
         repair_vertices, repair_edges = self._repair_active_connectivity(min_num_vertices)
@@ -560,26 +547,21 @@ class DRM:
         # determine which special points are new (for highlighting in plot)
         new_special_points = (set(new_access_points) | set(new_io_points)).difference(self.special_vertices)
 
-        # update special points and get their vertices and edges
+        # update special points and map new elements before the wall update consults cell mappings
         self._update_special_points(new_access_points, new_io_points)
 
         # update only the wall-graph vertices and edges affected by the edits
         wall_vertices, wall_edges = self._update_wall_graph(changed_cells)
 
-        # determine all edges connected to special vertices
         special_vertices = set(self.special_vertices.values())
-        special_edges = set()
-        for index in special_vertices:
-            for neighbour in self.adjacency[index]:
-                special_edges.add(tuple(sorted((index, neighbour))))
-        
-        # track edges affected by new special points (highlighting in plot)
-        changed_special_edges = set()
-        for point in new_special_points:
-            if point in self.special_vertices:
-                for neighbor in self.adjacency[self.special_vertices[point]]:
-                    changed_special_edges.add(tuple(sorted((self.special_vertices[point], neighbor))))
-                    
+        new_special_vertices = {
+            self.special_vertices[point]
+            for point in new_special_points
+            if point in self.special_vertices
+        }
+        changed_special_edges = self._get_incident_edges(new_special_vertices)
+        special_edges = self._get_incident_edges(special_vertices)
+
         # update the active/inactive status of all vertices and edges affected by cell changes
         affected_vertices = set()
         affected_edges = set()
@@ -588,9 +570,7 @@ class DRM:
             affected_edges.update(self.phi_a.get(cell, ()))
 
         # add all edges connected to affected vertices to the affected set
-        for index in affected_vertices:
-            for neighbour in self.adjacency[index]:
-                affected_edges.add(tuple(sorted((index, neighbour))))
+        affected_edges.update(self._get_incident_edges(affected_vertices))
 
         # refresh the active/inactive status of all affected vertices and edges, including special points
         refreshed_vertices = affected_vertices | special_vertices | wall_vertices
@@ -601,15 +581,12 @@ class DRM:
         repair_vertices, repair_edges = self._repair_active_connectivity(min_num_vertices)
         for index in repair_vertices:
             self._map_vertex_to_occupancy_cell(index) # map the new vertices to their occupancy cells
-            self.affected_vertices.add(index) # add new vertices to affected vertices
         for edge in repair_edges:
             self._map_edge_to_occupancy_cells(edge) # map the new edges to their occupancy cells
-            self.affected_edges.add(edge) # add new edges to affected edges
 
         # record the affected vertices and edges for highlighting
         self.affected_vertices = refreshed_vertices | repair_vertices
-        for edge in affected_edges | wall_edges | changed_special_edges:
-            self.affected_edges.add(edge)
+        self.affected_edges = affected_edges | wall_edges | changed_special_edges | repair_edges
         
         # record the updated graph
         self.record_graph(phase="online_update")

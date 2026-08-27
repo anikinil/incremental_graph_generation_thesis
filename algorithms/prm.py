@@ -56,13 +56,12 @@ class PRM:
     Lydia E. Kavraki, Petr Svestka, Jean-Claude Latombe and Mark H. Overmars (1996)
     """
     
-    def __init__(self, rng, free_space, obstacle_space, occupancy, access_points, io_points, height, width,
+    def __init__(self, rng, free_space, occupancy, access_points, io_points, height, width,
                  eps, max_dist, max_neighbors, agv_radius,
                  buffer_segments, recorder=None):
 
         self.rng = rng # random number generator
         self.free_space = free_space # free space (shapely Polygon)
-        self.obstacle_space = obstacle_space # obstacle space (shapely Polygon)
         self.occupancy = occupancy # occupancy grid: 0 = free, 1 = simple obstacle, 2 = unit load
         self.height, self.width = height, width # grid dimensions
         self.access_points = access_points # access points (y, x)
@@ -74,7 +73,6 @@ class PRM:
         self.agv_radius = agv_radius # radius of the AGV for collision costraints
         self.buffer_segments = buffer_segments # segments per rounded-corner quadrant
         self.recorder = recorder
-        self.iteration = 0
         
         # initialize with empty vertices (pre-allocate capacity)
         self.vertices = np.empty((100, 2), dtype=np.float64)
@@ -87,8 +85,8 @@ class PRM:
         self.union_find = UnionFind(100)
         
         # track failures and attempts per vertex
-        self.failure_count = defaultdict(int)
-        self.attempt_count = defaultdict(int)
+        # self.failure_count = defaultdict(int)
+        # self.attempt_count = defaultdict(int)
         
         # save adjacency, to build graph at the end
         self.adjacency = defaultdict(set)
@@ -97,7 +95,6 @@ class PRM:
         self.edge_paths = {}
 
         self.wall_vertices = {} # (row, col) -> vertex_index
-        self.wall_graph_built = False
 
 
     def _generate_random_free_config(self, max_attempts = 1000):
@@ -117,12 +114,12 @@ class PRM:
         """Checks if a straight-line path between two configurations is collision-free."""
         
         # discretize the straight line between config1 and config2
-        delta = config2 - config1
-        distance = np.linalg.norm(delta)
+        distance = self._distance_function(config1, config2)
         num_steps = int(np.ceil(distance / self.eps))
         t_vals = np.linspace(0, 1, num_steps + 1)
         
         # interpolation
+        delta = config2 - config1
         configs = config1[np.newaxis, :] + t_vals[:, np.newaxis] * delta[np.newaxis, :]
 
         # check each discretized configuration
@@ -135,7 +132,7 @@ class PRM:
     
     def _distance_function(self, config1, config2):
         """Returns euclidean distance between configurations."""
-        return float(np.linalg.norm(config2 - config1))
+        return np.linalg.norm(config2 - config1)
 
     def _get_candidate_neighbors(self, config):
         """Returns candidates from current roadmap in increasing distance order."""
@@ -247,17 +244,16 @@ class PRM:
 
         # build the tree after all wall vertices have been added
         self._update_kdtree()
-        self.wall_graph_built = True
 
     def _num_components(self):
         """Returns the number of connected components in the roadmap."""
         return self.union_find.get_num_components(self.num_vertices)
 
-    def construction_step(self, min_num_vertices):
+    def construction_step(self, min_num_vertices, avoid_cycles):
         """Builds initial roadmap without special points."""
         
         # progress tracking
-        progress = GenerationProgress("PRM", "Generating initial roadmap", self.iteration)
+        progress = GenerationProgress("PRM", "Generating initial roadmap")
         progress.start(f"target: {min_num_vertices} sampling attempts after wall graph")
 
         # build wall graph
@@ -280,19 +276,19 @@ class PRM:
             # try to connect in order of increasing distance
             for n_idx in candidate_indices:
                 # if not already in same component (avoids cycles)
-                if not self.union_find.find(c_idx) == self.union_find.find(n_idx):
-                    # track attempts
-                    self.attempt_count[c_idx] += 1
-                    self.attempt_count[n_idx] += 1
+                if not avoid_cycles or self.union_find.find(c_idx) != self.union_find.find(n_idx):
+                    # # track attempts
+                    # self.attempt_count[c_idx] += 1
+                    # self.attempt_count[n_idx] += 1
 
                     # check if can be connected via local planner (\delta(c, n) = True)
                     if self._local_planner(self.vertices[c_idx], self.vertices[n_idx]):
                         # if yes, connect new vertex to neighbor and update component status
                         self._connect_vertices(c_idx, n_idx)
-                    else:
-                        # else, mark failure and continue
-                        self.failure_count[c_idx] += 1
-                        self.failure_count[n_idx] += 1
+                    # else:
+                    #     # else, mark failure and continue
+                    #     self.failure_count[c_idx] += 1
+                    #     self.failure_count[n_idx] += 1
 
             # update KDTree after added vertices
             self._update_kdtree()
@@ -361,7 +357,7 @@ class PRM:
 
         # progress tracking
         total_special_points = len(self.special_points)
-        progress = GenerationProgress("PRM", "Connecting special points", self.iteration)
+        progress = GenerationProgress("PRM", "Connecting special points")
         progress.start(f"target: {total_special_points} special points")
 
         # for each special point
@@ -377,17 +373,17 @@ class PRM:
                 # skip if already in same component
                 if not self.union_find.find(vertex_idx) == self.union_find.find(neighbor_idx):
 
-                    # check if can be connected via local planner
-                    self.attempt_count[vertex_idx] += 1
-                    self.attempt_count[neighbor_idx] += 1
+                    # # check if can be connected via local planner
+                    # self.attempt_count[vertex_idx] += 1
+                    # self.attempt_count[neighbor_idx] += 1
 
                     if self._local_planner(self.vertices[vertex_idx], self.vertices[neighbor_idx]):
                         # if yes, connect new vertex to neighbor
                         self._connect_vertices(vertex_idx, neighbor_idx)
-                    else:
-                        # else, mark failure and continue
-                        self.failure_count[vertex_idx] += 1
-                        self.failure_count[neighbor_idx] += 1
+                    # else:
+                    #     # else, mark failure and continue
+                    #     self.failure_count[vertex_idx] += 1
+                    #     self.failure_count[neighbor_idx] += 1
 
             self._update_kdtree()
 
