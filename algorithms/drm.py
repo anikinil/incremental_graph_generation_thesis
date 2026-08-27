@@ -96,8 +96,8 @@ class DRM:
         # connect the new vertex to its neighbours if the connecting edge is in free space
         for neighbour in neighbours:
             line = LineString([config, self.vertices[neighbour]])
-            if self.empty_space.covers(line):
-                self._add_edge(index, neighbour)
+            # if self.empty_space.covers(line):
+            self._add_edge(index, neighbour)
 
         if update_kdtree:
             self._update_kdtree()
@@ -140,7 +140,16 @@ class DRM:
         """Return the number of connected components in the active roadmap."""
         return nx.number_connected_components(self.build_graph())
 
-
+    def _generate_random_free_config(self, max_attempts = 1000):
+            """Generates a random configuration in the free space using rejection sampling."""
+            for _ in range(max_attempts):
+                x = self.rng.uniform(0, self.width)
+                y = self.rng.uniform(0, self.height)
+                point = Point(x, y)
+                if self.free_space.covers(point):
+                    return np.array([x, y], dtype=np.float64)
+            raise RuntimeError(f"Failed to generate a random free configuration after {max_attempts} attempts.")
+    
     def _repair_active_connectivity(self, min_num_vertices):
         """
         Add roadmap vertices until the active roadmap has one component.
@@ -150,13 +159,12 @@ class DRM:
         progress = GenerationProgress("DRM", "Connecting active roadmap", self.iteration)
         progress.start()
         
-        min_x, min_y, max_x, max_y = 0, 0, self.width, self.height
         num_components = self._num_active_components()
         added_vertices = set()
         added_vertices_num = 0
         added_edges = set()
         while num_components > 1 or (min_num_vertices is not None and added_vertices_num <= min_num_vertices):
-            config = np.array([self.rng.uniform(min_x, max_x), self.rng.uniform(min_y, max_y)], dtype=np.float64)
+            config = self._generate_random_free_config()            
             index = self._add_vertex(config)
             incident_edges = self._get_incident_edges({index})
             self._refresh_active_status({index}, incident_edges)
