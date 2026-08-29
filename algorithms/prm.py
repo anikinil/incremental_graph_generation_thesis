@@ -8,6 +8,7 @@ import numpy as np
 from scipy.spatial import KDTree
 from collections import defaultdict
 from artifacts.progress import GenerationProgress
+from scenario.geometry import navigation_space
 
 
 class UnionFind:
@@ -56,14 +57,14 @@ class PRM:
     Lydia E. Kavraki, Petr Svestka, Jean-Claude Latombe and Mark H. Overmars (1996)
     """
     
-    def __init__(self, rng, free_space, occupancy, access_points, io_points, height, width,
+    def __init__(self, rng, occupancy, access_points, io_points, height, width,
                  eps, max_dist, max_neighbors, agv_radius,
                  buffer_segments, recorder=None):
 
         self.rng = rng # random number generator
-        self.free_space = free_space # free space (shapely Polygon)
         self.occupancy = occupancy # occupancy grid: 0 = free, 1 = simple obstacle, 2 = unit load
         self.height, self.width = height, width # grid dimensions
+        self.free_space = None
         self.access_points = access_points # access points (y, x)
         self.io_points = io_points # io points (y, x)
         self.special_points = np.array(np.concatenate([io_points, access_points])) # access points ++ io points
@@ -256,6 +257,9 @@ class PRM:
         progress = GenerationProgress("PRM", "Generating initial roadmap")
         progress.start(f"target: {min_num_vertices} sampling attempts after wall graph")
 
+        # get free space as shapely Polygon for sampling and local planner checks
+        self.free_space, _ = navigation_space(self.occupancy, self.agv_radius, self.buffer_segments)
+        
         # build wall graph
         self._build_wall_graph()
         

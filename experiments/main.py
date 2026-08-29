@@ -3,7 +3,7 @@ import sys
 
 import numpy as np
 
-from scenario.geometry import continuous_special_points, navigation_space
+from scenario.geometry import continuous_special_points
 from scenario.scenario_generation import Scenario
 from artifacts.record import ExperimentRecorder
 
@@ -16,12 +16,12 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 500
-    width = 1000
+    height = 50
+    width = 100
     
     agv_radius = 0.45
     
-    occupancy_rate = 0.05
+    occupancy_rate = 0.5
 
     io_points = {
         (height * 0.18, 0),
@@ -60,10 +60,8 @@ if __name__ == "__main__":
 
     recorder.set_algorithm("prm", use_iterations=False)
     buffer_segments = 2  # PRM may use a different buffered-corner approximation
-    free_space, obstacle_space = navigation_space(scenario.occupancy, scenario.agv_radius, buffer_segments)
     prm = PRM(
         rng=rng,
-        free_space=free_space,
         occupancy=scenario.occupancy,
         access_points=continuous_access_points,
         io_points=continuous_io_points,

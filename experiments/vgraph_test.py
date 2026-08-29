@@ -4,7 +4,7 @@ from scenario.scenario_generation import Scenario
 from algorithms.vgraph import VGraph
 from artifacts.record import ExperimentRecorder
 
-from scenario.geometry import continuous_special_points, navigation_space
+from scenario.geometry import continuous_special_points
 
 
 
@@ -60,12 +60,9 @@ if __name__ == "__main__":
 
     recorder.set_algorithm("vgraph", use_iterations=False)
     buffer_segments = 0
-    free_space, obstacle_space = navigation_space(scenario.occupancy, scenario.agv_radius, buffer_segments)
     vgraph = VGraph(
         width=width,
         height=height,
-        free_space=free_space,
-        obstacle_space=obstacle_space,
         occupancy=scenario.occupancy,
         agv_radius=scenario.agv_radius,
         access_points=continuous_access_points,

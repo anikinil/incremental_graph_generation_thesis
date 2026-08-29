@@ -1,5 +1,5 @@
 
-
+from scenario.geometry import navigation_space
 
 
 class DynamicVGraph:
@@ -20,11 +20,18 @@ class DynamicVGraph:
         
     def preprocessing(self):
 
+        
+        free_space, obstacle_space = navigation_space(self.occupancy, self.agv_radius, buffer_segments=0)
 
-        # group obstacle cells into continuos shapes
+
+        
+
         
         # extract convex vertices from each shape
         
-        # for each vertex pair determine which cells the edge between them cross
+        # for each vertex pair determine which cells the edge between them crosses
+        
+        # create graph with vertices and edges, store mappings between cells and edges
+        
         
         

@@ -5,7 +5,7 @@ from itertools import combinations
 import networkx as nx
 import geopandas as gpd
 from artifacts.progress import GenerationProgress
-from scenario.geometry import buffered_obstacle_space, continuous_special_points
+from scenario.geometry import navigation_space
 
 
 class VGraph:
@@ -16,12 +16,10 @@ class VGraph:
     https://lis.csail.mit.edu/pubs/tlp/collision-free-planning-cacm.pdf
     """
     
-    def __init__(self, width, height, free_space, obstacle_space, occupancy, agv_radius,
+    def __init__(self, width, height, occupancy, agv_radius,
                  access_points, io_points, buffer_segments, recorder=None):
         self.width = width
         self.height = height
-        self.free_space = free_space
-        self.obstacle_space = obstacle_space
         self.occupancy = occupancy
         self.agv_radius = agv_radius
         self.buffer_segments = buffer_segments
@@ -57,13 +55,15 @@ class VGraph:
         vertex_progress = GenerationProgress("Visibility graph", "Collecting vertices", self.iteration)
         vertex_progress.start()
 
+        free_space, obstacle_space = navigation_space(self.occupancy, self.agv_radius, self.buffer_segments)
+
         # check if obstacle_space is a MultiPolygon, else no .geoms attribute
-        if self.obstacle_space.is_empty:
+        if obstacle_space.is_empty:
             obstacle_polygons = []
-        elif self.obstacle_space.geom_type == 'MultiPolygon':
-            obstacle_polygons = list(self.obstacle_space.geoms)
+        elif obstacle_space.geom_type == 'MultiPolygon':
+            obstacle_polygons = list(obstacle_space.geoms)
         else:
-            obstacle_polygons = [self.obstacle_space]
+            obstacle_polygons = [obstacle_space]
             
         # collect all convex boundary vertices of the obstacle polygons
         vertices = []
@@ -102,13 +102,10 @@ class VGraph:
             line = LineString([a, b])
     
             # if line inside free space, add edge with weight equal length to graph
-            if self.free_space.covers(line):
-                self.G.add_edge(i, j, weight=line.length)
+            if free_space.covers(line):
+                self.G.add_edge(i, j)
 
-        visibility_progress.finish(
-            True,
-            f"generated {self.G.number_of_nodes()} vertices and {self.G.number_of_edges()} edges",
-        )
+        visibility_progress.finish(True, f"generated {self.G.number_of_nodes()} vertices and {self.G.number_of_edges()} edges")
 
     def record_graph(self):
         """Record the visibility graph using via recorder if available."""

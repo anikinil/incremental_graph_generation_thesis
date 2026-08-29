@@ -51,9 +51,9 @@ def continuous_special_points(access_points, io_points, agv_radius,
     return continuous_access_points, continuous_io_points
 
 def navigation_space(occupancy, agv_radius, num_buffer_segments):
-        """
-        Return the free space and obstacle space as Shapely geometries, with obstacles buffered for AGV radius.
-        """
-        world = box(0, 0, occupancy.shape[1], occupancy.shape[0])
-        obstacle_space = buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments)
-        return world.difference(obstacle_space), obstacle_space # free_space, obstacle_space
+    """
+    Return the free space and obstacle space as Shapely geometries, with obstacles buffered for AGV radius.
+    """
+    world = box(0, 0, occupancy.shape[1], occupancy.shape[0])
+    obstacle_space = buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments)
+    return world.difference(obstacle_space), obstacle_space # free_space, obstacle_space
