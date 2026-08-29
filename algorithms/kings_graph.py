@@ -206,7 +206,7 @@ class IncrementalKingsGraph:
                 "access_points": self.access_points,
                 "io_points": self.io_points,
                 "bounds": self.bounds,
-                "nodes": {
+                "vertices": {
                     node: {
                         "pos": tuple(attributes.get("pos", (node[1] + 0.5, node[0] + 0.5))),
                         "type": attributes.get("type", "grid"),

@@ -31,8 +31,8 @@ class VGraph:
         self.iteration = 0
 
         self.G = nx.Graph()
-        
-        self.number_of_nodes = self.G.number_of_nodes
+
+        self.number_of_vertices = self.G.number_of_nodes
         self.number_of_edges = self.G.number_of_edges
 
 
@@ -51,10 +51,6 @@ class VGraph:
                 convex_vertices.append(curr_vertex)
         return convex_vertices
 
-
-    def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points):
-        pass
-        # TODO is naive incremental update of visibility graph reasonable? Or the same time complexity as recomputing the whole graph?
 
     def create_visibility_graph(self):
 
@@ -76,32 +72,30 @@ class VGraph:
             convex_vertices = self._get_convex_vertices(poly)
             vertices.extend(convex_vertices)
         
-        # add obstacle vertices as nodes
+        # add obstacle vertices as vertices
         for i, v in enumerate(vertices):
             self.G.add_node(i, pos=v, type="obstacle")
         
-        # add IO points as nodes
+        # add IO points as vertices
         for i, (x, y) in enumerate(self.io_points, start=len(vertices)):
             self.G.add_node(i, pos=(x, y), type="io")
     
-        # add access points as nodes
+        # add access points as vertices
         for i, (x, y) in enumerate(self.access_points, start=len(vertices) + len(self.io_points)):
             self.G.add_node(i, pos=(x, y), type="access")
             # print(f"Added access point node {i} at position {(x, y)}")
     
-        num_nodes_total = len(vertices) + len(self.io_points) + len(self.access_points)
-        vertex_progress.finish(
-            True,
-            f"collected {len(vertices)} obstacle vertices | total nodes: {num_nodes_total}",
-        )
+        num_vertices_total = len(vertices) + len(self.io_points) + len(self.access_points)
+        vertex_progress.finish(True,
+            f"collected {len(vertices)} obstacle vertices | total vertices: {num_vertices_total}")
         
-        total_pairs = num_nodes_total * (num_nodes_total - 1) // 2
+        total_pairs = num_vertices_total * (num_vertices_total - 1) // 2
         visibility_progress = GenerationProgress("Visibility graph", "Checking visibility", self.iteration)
         visibility_progress.start(f"target: {total_pairs} node pairs")
         # check visibility
-        for pair_number, (i, j) in enumerate(combinations(range(num_nodes_total), 2), start=1):
+        for pair_number, (i, j) in enumerate(combinations(range(num_vertices_total), 2), start=1):
             if pair_number % 100 == 0 or pair_number == total_pairs:
-                visibility_progress.update(pair_number, total_pairs, f"checking nodes {i} and {j}")
+                visibility_progress.update(pair_number, total_pairs, f"checking vertices {i} and {j}")
             
             a = Point(self.G.nodes[i]["pos"])
             b = Point(self.G.nodes[j]["pos"])
@@ -113,7 +107,7 @@ class VGraph:
 
         visibility_progress.finish(
             True,
-            f"generated {self.G.number_of_nodes()} nodes and {self.G.number_of_edges()} edges",
+            f"generated {self.G.number_of_nodes()} vertices and {self.G.number_of_edges()} edges",
         )
 
     def record_graph(self):
@@ -124,46 +118,20 @@ class VGraph:
         return self.recorder.save(
             data_type="vgraph",
             data={
+                "height": self.height,
+                "width": self.width,
                 "occupancy": self.occupancy,
                 "agv_radius": self.agv_radius,
                 "buffer_segments": self.buffer_segments,
                 "access_points": self.access_points,
                 "io_points": self.io_points,
                 "bounds": (0, 0, self.width, self.height),
-                "nodes": {
-                    node: {"pos": tuple(attributes["pos"]), "type": attributes["type"]}
-                    for node, attributes in self.G.nodes(data=True)
+                "vertices": {
+                    vertex: {"pos": tuple(attributes["pos"]), "type": attributes["type"]}
+                    for vertex, attributes in self.G.nodes(data=True)
                 },
                 "edges": sorted(tuple(sorted(edge)) for edge in self.G.edges),
             },
             plot=True,
         )
                 
-# def main():
-    
-#     from model.store import load_scenario_as_shapely
-#     scenario = load_scenario_as_shapely()
-    
-#     access_points = [(point[1], point[0]) for point in scenario["access_points"]] # direction not required, swap ccords for shapely
-#     io_points = [(point[1], point[0]) for point in scenario["io_points"]]
-    
-#     vgraph = VGraph(
-#         width=scenario["width"],
-#         height=scenario["height"],
-#         free_space=scenario["free_space"],
-#         obstacle_space=scenario["obstacle_space"],
-#         occupancy=scenario["occupancy"],
-#         agv_radius=scenario["agv_radius"],
-#         access_points=access_points,
-#         io_points=io_points
-#     )
-#     vgraph.create_visibility_graph()
-    
-#     print("Nodes:", vgraph.number_of_nodes())
-#     print("Edges:", vgraph.number_of_edges())
-    
-#     vgraph.visualize()
-
-
-# if __name__ == "__main__":
-#     main()

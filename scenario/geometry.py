@@ -6,12 +6,17 @@ SPECIAL_POINT_CLEARANCE_MARGIN = 0
 # SPECIAL_POINT_CLEARANCE_MARGIN = 1e-6
 
 
-def buffered_obstacle_space(occupancy, agv_radius, buffer_segments):
+def buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments):
     """Return the union of occupied cells, inflated by the AGV radius."""
     
     occupied_cells = [box(c, r, c + 1, r + 1) for r, c in zip(*occupancy.nonzero())]
-    return unary_union(occupied_cells).buffer(agv_radius, quad_segs=buffer_segments, join_style="round")
-
+    
+    if num_buffer_segments == 0: # 0 = 90°
+        union = unary_union(occupied_cells).buffer(agv_radius, cap_style=2, join_style=2)
+    else:
+        union = unary_union(occupied_cells).buffer(agv_radius, quad_segs=num_buffer_segments, join_style="round")
+        
+    return union
 
 def offset_access_points(access_points, agv_radius, margin=SPECIAL_POINT_CLEARANCE_MARGIN):
     """Offset access points away from obstacles by the AGV radius plus a margin, to account for obstacle buffer."""
@@ -44,3 +49,11 @@ def continuous_special_points(access_points, io_points, agv_radius,
     continuous_access_points = [(column, row) for row, column, _ in offset_access]
     continuous_io_points = [(column, row) for row, column in centered_io_points(io_points)]
     return continuous_access_points, continuous_io_points
+
+def navigation_space(occupancy, agv_radius, num_buffer_segments):
+        """
+        Return the free space and obstacle space as Shapely geometries, with obstacles buffered for AGV radius.
+        """
+        world = box(0, 0, occupancy.shape[1], occupancy.shape[0])
+        obstacle_space = buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments)
+        return world.difference(obstacle_space), obstacle_space # free_space, obstacle_space

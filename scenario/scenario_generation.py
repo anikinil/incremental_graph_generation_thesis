@@ -355,15 +355,6 @@ class Scenario:
         self.updates = []
         return updates
 
-    def navigation_space(self, buffer_segments):
-        """
-        Return the free space and obstacle space as Shapely geometries, with obstacles buffered for AGV radius.
-        Used in prm and vgraph generation.
-        """
-        world = box(0, 0, self.width, self.height)
-        obstacle_space = buffered_obstacle_space(self.occupancy, self.agv_radius, buffer_segments)
-        return world.difference(obstacle_space), obstacle_space
-
     def _add_obstacle(self, cell, type):
         """Add an obstacle of the specified type at the given cell if it does not disconnect the free space."""
         self.occupancy[cell] = type  # 1 for simple obstacle, 2 for unit-load obstacle
