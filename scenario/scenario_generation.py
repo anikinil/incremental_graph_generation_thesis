@@ -142,7 +142,10 @@ class Scenario:
     # returns a randomly selected free cell
     def get_random_cell(self, free):
         # free=True: select a free cell, free=False: select an occupied cell
-        free_cells = np.argwhere(self.occupancy != free)
+        if free:
+            free_cells = np.argwhere(self.occupancy == 0)
+        else:
+            free_cells = np.argwhere(self.occupancy != 0)
         if len(free_cells) == 0:
             print(f"[Scenario {self.iteration}] Selecting obstacle location: failed — no free cells available")
             return None

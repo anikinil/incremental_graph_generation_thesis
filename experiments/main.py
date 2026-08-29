@@ -17,11 +17,11 @@ if __name__ == "__main__":
     rng = np.random.default_rng(seed)
 
     height = 50
-    width = 70
+    width = 100
     
     agv_radius = 0.45
     
-    occupancy_rate = 0.05
+    occupancy_rate = 0.5
 
     io_points = {
         (height * 0.18, 0),
