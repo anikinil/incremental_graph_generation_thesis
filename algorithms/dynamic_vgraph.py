@@ -242,6 +242,7 @@ class DynamicVGraph:
         self.access_points = new_access_points
         self.io_points = new_io_points
 
+        # TODO make incremental, only look at relebvant parts instead of recomputing whole obstacle space
         # get all vertices of the updated obstacle space and special points
         _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
         new_vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.io_points) + list(self.access_points)))
