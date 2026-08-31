@@ -6,6 +6,14 @@ from scenario.geometry import navigation_space
 
 
 class DynamicVGraph:
+    """
+    Dynamic Visibility Graph, with the method of activating/deactivating edges affected by dynamic obstacles, partially based on:
+    
+    "FAR Planner: Fast, Attemptable Route Planner using Dynamic Visibility Update"
+    Yang, Cao, Zhu, Oh, and Zhang (2022)
+    """
+    
+    
     def __init__(self, height, width, occupancy, agv_radius, access_points, io_points,
                  recorder=None, edge_clearance_epsilon=1e-6):
         
