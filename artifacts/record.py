@@ -19,6 +19,7 @@ class ExperimentRecorder:
         metadata=None, # additional metadata to save in the experiment folder
         experiment_name="", # if empty, will be generated based on timestamp, else gets a specified name
         enabled=True, # false to disable saving and plotting
+        plot_buffer_segments=None, # visual buffer resolution for dynamic-vgraph plots only
     ):
 
         self.root = Path("artifacts/results")
@@ -53,7 +54,7 @@ class ExperimentRecorder:
 
         self._save_metadata()
 
-        self.plot_manager = PlotManager()
+        self.plot_manager = PlotManager(dynamic_vgraph_plot_buffer_segments=plot_buffer_segments)
 
     def set_algorithm(self, algorithm, use_iterations=True):
         """

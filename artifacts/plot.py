@@ -569,11 +569,15 @@ class GraphPlotter(_GVDGridPlotter):
 class _ContinuousGraphPlotter(BasePlotter):
     """Shared rendering for PRM and visibility-graph snapshots."""
 
+    requires_buffer_segments = True
+
     def setup_figure(self):
         return plt.subplots(figsize=(16, 12))
 
     def _context(self, data):
-        required = ("occupancy", "agv_radius", "num_buffer_segments", "access_points", "io_points", "height", "width")
+        required = ("occupancy", "agv_radius", "access_points", "io_points", "height", "width")
+        if self.requires_buffer_segments:
+            required += ("num_buffer_segments",)
         missing = [field for field in required if field not in data]
         if missing:
             raise ValueError(f"Continuous graph snapshot missing: {', '.join(missing)}")
@@ -775,6 +779,21 @@ class VisibilityGraphPlotter(_ContinuousGraphPlotter):
 class DynamicVisibilityGraphPlotter(_ContinuousGraphPlotter):
     """Plot a dynamic visibility graph with active and inactive candidates."""
 
+    requires_buffer_segments = False
+
+    def __init__(self, plot_buffer_segments=None):
+        self.plot_buffer_segments = plot_buffer_segments
+
+    def _draw_environment(self, ax, context):
+        """Draw the buffer with an optional visualization-only resolution."""
+        plot_context = context.copy()
+        # DynamicVGraph uses square buffer corners, so preserve that appearance
+        # when no plotting-only override was configured.
+        plot_context["num_buffer_segments"] = (
+            0 if self.plot_buffer_segments is None else self.plot_buffer_segments
+        )
+        return super()._draw_environment(ax, plot_context)
+
     def draw(self, ax, data):
         context = self._context(data)
         self._draw_environment(ax, context)
@@ -816,7 +835,7 @@ class DynamicVisibilityGraphPlotter(_ContinuousGraphPlotter):
 class PlotManager:
     """Dispatches recorder.save(...) calls to the plotter registered for that data_type."""
 
-    def __init__(self, scenario=None):
+    def __init__(self, scenario=None, dynamic_vgraph_plot_buffer_segments=None):
         self.scenario = scenario
 
         self.plotters = {
@@ -829,7 +848,9 @@ class PlotManager:
             "drm_graph": DRMGraphPlotter(),
             "incremental_kings_grid": IncrementalKingsGridPlotter(),
             "vgraph": VisibilityGraphPlotter(),
-            "dynamic_vgraph": DynamicVisibilityGraphPlotter(),
+            "dynamic_vgraph": DynamicVisibilityGraphPlotter(
+                plot_buffer_segments=dynamic_vgraph_plot_buffer_segments,
+            ),
         }
 
     def plot(self, data_type, data, path, title_info=None):

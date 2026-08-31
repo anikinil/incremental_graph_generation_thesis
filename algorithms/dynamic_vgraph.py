@@ -6,12 +6,14 @@ from scenario.geometry import navigation_space
 
 
 class DynamicVGraph:
-    def __init__(self, height, width, occupancy, agv_radius, access_points, io_points, recorder=None):
+    def __init__(self, height, width, occupancy, agv_radius, access_points, io_points,
+                 recorder=None, edge_clearance_epsilon=1e-6):
         
         self.height = height
         self.width = width
         self.occupancy = occupancy.copy()
         self.agv_radius = agv_radius
+        self.edge_clearance_epsilon = float(edge_clearance_epsilon)
         self.num_buffer_segments = 0 # always 0, since it's the only way to avoid collisions (temporary)
         self.access_points = access_points
         self.io_points = io_points
@@ -73,7 +75,7 @@ class DynamicVGraph:
         x2, y2 = vertex2
         edge_vector = np.array([x2 - x1, y2 - y1])
         edge_normal = np.array([-edge_vector[1], edge_vector[0]]) / np.linalg.norm(edge_vector)  # normalized edge normal
-        offset_vector = edge_normal * self.agv_radius
+        offset_vector = edge_normal * (self.agv_radius - self.edge_clearance_epsilon) # subtract a small epsilon to avoid floating-point precision issues
         start1 = (x1 + offset_vector[0], y1 + offset_vector[1])
         start2 = (x1 - offset_vector[0], y1 - offset_vector[1])
         end1 = (x2 + offset_vector[0], y2 + offset_vector[1])
@@ -296,6 +298,11 @@ class DynamicVGraph:
         """Record all visibility candidates and their current active status."""
         if self.recorder is None:
             return None
+        
+        # print progress message
+        self.progress = GenerationProgress("Dynamic visibility graph", f"Recording graph ({phase})", self.iteration)
+        self.progress.start(f"target: {len(self.edge_to_cells)} edges")
+        self.progress.update(f"processed: {len(self.edge_to_cells)} edges")
 
         edges = sorted(self.edge_to_cells)
         return self.recorder.save(
@@ -303,6 +310,7 @@ class DynamicVGraph:
             data={
                 "occupancy": self.occupancy.copy(),
                 "agv_radius": self.agv_radius,
+                "edge_clearance_epsilon": self.edge_clearance_epsilon,
                 "access_points": sorted(self.access_points),
                 "io_points": sorted(self.io_points),
                 "height": self.height,

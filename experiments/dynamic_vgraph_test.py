@@ -19,19 +19,19 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 20
-    width = 30
+    height = 50
+    width = 100
     
     agv_radius = 0.45
     
-    occupancy_rate = 0.05
+    occupancy_rate = 0.03
 
     io_points = {
         (height * 0.15, 0),
         (height - 1.5, width * 0.75),
     }
 
-    recorder = ExperimentRecorder(seed=seed, experiment_name="dynamic_vgraph_test")
+    recorder = ExperimentRecorder(seed=seed, experiment_name="dynamic_vgraph_test", plot_buffer_segments=5)
 
     recorder.set_algorithm("scenario", use_iterations=False)
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         noisy_aisle_sigma=1,
         io_points=io_points,
         io_points_radius=3,
-        simple_obstacle_rate=0.1,
+        simple_obstacle_rate=0.05,
         agv_radius=agv_radius,
         recorder=recorder,
     )
@@ -69,6 +69,7 @@ if __name__ == "__main__":
         access_points=access_points,
         io_points=continuous_io_points,
         recorder=recorder,
+        edge_clearance_epsilon=1e-6,
     )
 
     vgraph.preprocessing()
