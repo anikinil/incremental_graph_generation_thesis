@@ -735,8 +735,23 @@ class GVD:
             f"vertices: {len(vertex_id_to_cell_coords)} | edges: {len(edges)} | "
             f"special points connected: {connected_special_points}/{len(self.access_points) + len(self.io_points)}",
         )
-        self._record("graph", graph=self.graph, voro=self.voro,
-                     bridges=self.special_point_bridges)
+        if self.recorder is not None:
+            save_progress = GenerationProgress("GVD", "Saving graph to disk", self.iteration)
+            save_progress.start()
+            try:
+                saved_artifacts = self._record(
+                    "graph",
+                    graph=self.graph,
+                    voro=self.voro,
+                    bridges=self.special_point_bridges,
+                )
+            except Exception as error:
+                save_progress.finish(False, f"could not save graph: {error}")
+                raise
+            if saved_artifacts is None:
+                save_progress.finish(True, "skipped; recorder returned no artifact")
+            else:
+                save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
         print()
         return graph_connected
     

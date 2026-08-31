@@ -617,27 +617,40 @@ class DRM:
             return None
 
         vertices = (np.asarray(self.vertices, dtype=np.float64) if self.vertices else np.empty((0, 2), dtype=np.float64))
-        
-        return self.recorder.save(
-            data_type="drm_graph",
-            data={
-                "occupancy": self.occupancy.copy(),
-                "agv_radius": self.agv_radius,
-                "num_buffer_segments": self.num_buffer_segments,
-                "access_points": sorted(self.access_points),
-                "io_points": sorted(self.io_points),
-                "height": self.height,
-                "width": self.width,
-                "vertices": vertices,
-                "vertex_active": np.asarray(self.vertex_active, dtype=bool),
-                "edges": sorted(self.edges),
-                "edge_active": {edge: self.edge_active[edge] for edge in sorted(self.edges)},
-                "affected_vertices": sorted(self.affected_vertices),
-                "affected_edges": sorted(self.affected_edges),
-                "mapped_vertex_cells": sum(len(vertices) for vertices in self.phi_n.values()),
-                "mapped_arc_cells": sum(len(edges) for edges in self.phi_a.values()),
-                "phase": phase,
-            },
-            plot=True,
-            iteration=self.iteration,
-        )
+
+        save_progress = GenerationProgress("DRM", f"Saving graph to disk ({phase})", self.iteration)
+        save_progress.start()
+        try:
+            saved_artifacts = self.recorder.save(
+                data_type="drm_graph",
+                data={
+                    "occupancy": self.occupancy.copy(),
+                    "agv_radius": self.agv_radius,
+                    "num_buffer_segments": self.num_buffer_segments,
+                    "access_points": sorted(self.access_points),
+                    "io_points": sorted(self.io_points),
+                    "height": self.height,
+                    "width": self.width,
+                    "vertices": vertices,
+                    "vertex_active": np.asarray(self.vertex_active, dtype=bool),
+                    "edges": sorted(self.edges),
+                    "edge_active": {edge: self.edge_active[edge] for edge in sorted(self.edges)},
+                    "affected_vertices": sorted(self.affected_vertices),
+                    "affected_edges": sorted(self.affected_edges),
+                    "mapped_vertex_cells": sum(len(vertices) for vertices in self.phi_n.values()),
+                    "mapped_arc_cells": sum(len(edges) for edges in self.phi_a.values()),
+                    "phase": phase,
+                },
+                plot=True,
+                iteration=self.iteration,
+            )
+        except Exception as error:
+            save_progress.finish(False, f"could not save graph: {error}")
+            raise
+
+        if saved_artifacts is None:
+            save_progress.finish(True, "skipped; recorder returned no artifact")
+            return None
+
+        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        return saved_artifacts

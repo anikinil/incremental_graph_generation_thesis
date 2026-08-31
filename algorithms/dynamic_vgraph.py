@@ -298,33 +298,44 @@ class DynamicVGraph:
         """Record all visibility candidates and their current active status."""
         if self.recorder is None:
             return None
-        
-        # print progress message
-        self.progress = GenerationProgress("Dynamic visibility graph", f"Recording graph ({phase})", self.iteration)
-        self.progress.start(f"target: {len(self.edge_to_cells)} edges")
-        self.progress.update(f"processed: {len(self.edge_to_cells)} edges")
 
         edges = sorted(self.edge_to_cells)
-        return self.recorder.save(
-            data_type="dynamic_vgraph",
-            data={
-                "occupancy": self.occupancy.copy(),
-                "agv_radius": self.agv_radius,
-                "edge_clearance_epsilon": self.edge_clearance_epsilon,
-                "access_points": sorted(self.access_points),
-                "io_points": sorted(self.io_points),
-                "height": self.height,
-                "width": self.width,
-                "vertices": sorted({tuple(vertex) for vertex in self.vertices}),
-                "edges": edges,
-                "edge_active": {
-                    edge: bool(self.edge_active_status[edge])
-                    for edge in edges
-                },
-                "mapped_arc_cells": sum(len(edge_set) for edge_set in self.cell_to_edge.values()),
-                "phase": phase,
-            },
-            plot=True,
+        save_progress = GenerationProgress(
+            "Dynamic visibility graph", f"Saving graph to disk ({phase})", self.iteration
         )
+        save_progress.start(f"edges: {len(edges)}")
+        try:
+            saved_artifacts = self.recorder.save(
+                data_type="dynamic_vgraph",
+                data={
+                    "occupancy": self.occupancy.copy(),
+                    "agv_radius": self.agv_radius,
+                    "edge_clearance_epsilon": self.edge_clearance_epsilon,
+                    "access_points": sorted(self.access_points),
+                    "io_points": sorted(self.io_points),
+                    "height": self.height,
+                    "width": self.width,
+                    "vertices": sorted({tuple(vertex) for vertex in self.vertices}),
+                    "edges": edges,
+                    "edge_active": {
+                        edge: bool(self.edge_active_status[edge])
+                        for edge in edges
+                    },
+                    "mapped_arc_cells": sum(len(edge_set) for edge_set in self.cell_to_edge.values()),
+                    "phase": phase,
+                },
+                # plot=True,
+                plot=False,
+            )
+        except Exception as error:
+            save_progress.finish(False, f"could not save graph: {error}")
+            raise
+
+        if saved_artifacts is None:
+            save_progress.finish(True, "skipped; recorder returned no artifact")
+            return None
+
+        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        return saved_artifacts
 
         

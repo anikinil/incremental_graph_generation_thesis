@@ -112,23 +112,35 @@ class VGraph:
         if self.recorder is None:
             return None
 
-        return self.recorder.save(
-            data_type="vgraph",
-            data={
-                "height": self.height,
-                "width": self.width,
-                "occupancy": self.occupancy,
-                "agv_radius": self.agv_radius,
-                "num_buffer_segments": self.num_buffer_segments,
-                "access_points": self.access_points,
-                "io_points": self.io_points,
-                "bounds": (0, 0, self.width, self.height),
-                "vertices": {
-                    vertex: {"pos": tuple(attributes["pos"]), "type": attributes["type"]}
-                    for vertex, attributes in self.G.nodes(data=True)
+        save_progress = GenerationProgress("Visibility graph", "Saving graph to disk", self.iteration)
+        save_progress.start()
+        try:
+            saved_artifacts = self.recorder.save(
+                data_type="vgraph",
+                data={
+                    "height": self.height,
+                    "width": self.width,
+                    "occupancy": self.occupancy,
+                    "agv_radius": self.agv_radius,
+                    "num_buffer_segments": self.num_buffer_segments,
+                    "access_points": self.access_points,
+                    "io_points": self.io_points,
+                    "bounds": (0, 0, self.width, self.height),
+                    "vertices": {
+                        vertex: {"pos": tuple(attributes["pos"]), "type": attributes["type"]}
+                        for vertex, attributes in self.G.nodes(data=True)
+                    },
+                    "edges": sorted(tuple(sorted(edge)) for edge in self.G.edges),
                 },
-                "edges": sorted(tuple(sorted(edge)) for edge in self.G.edges),
-            },
-            plot=True,
-        )
-                
+                plot=True,
+            )
+        except Exception as error:
+            save_progress.finish(False, f"could not save graph: {error}")
+            raise
+
+        if saved_artifacts is None:
+            save_progress.finish(True, "skipped; recorder returned no artifact")
+            return None
+
+        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        return saved_artifacts

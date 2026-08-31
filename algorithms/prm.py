@@ -467,19 +467,32 @@ class PRM:
             return None
 
         vertices, edges = self._expanded_graph_snapshot()
-        return self.recorder.save(
-            data_type="prm_graph",
-            data={
-                "occupancy": self.occupancy,
-                "agv_radius": self.agv_radius,
-                "num_buffer_segments": self.num_buffer_segments,
-                "access_points": self.access_points,
-                "io_points": self.io_points,
-                "height": self.height,
-                "width": self.width,
-                "vertices": vertices,
-                "edges": edges,
-                "num_vertices": self.num_vertices,
-            },
-            plot=True,
-        )
+        save_progress = GenerationProgress("PRM", "Saving graph to disk")
+        save_progress.start()
+        try:
+            saved_artifacts = self.recorder.save(
+                data_type="prm_graph",
+                data={
+                    "occupancy": self.occupancy,
+                    "agv_radius": self.agv_radius,
+                    "num_buffer_segments": self.num_buffer_segments,
+                    "access_points": self.access_points,
+                    "io_points": self.io_points,
+                    "height": self.height,
+                    "width": self.width,
+                    "vertices": vertices,
+                    "edges": edges,
+                    "num_vertices": self.num_vertices,
+                },
+                plot=True,
+            )
+        except Exception as error:
+            save_progress.finish(False, f"could not save graph: {error}")
+            raise
+
+        if saved_artifacts is None:
+            save_progress.finish(True, "skipped; recorder returned no artifact")
+            return None
+
+        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        return saved_artifacts

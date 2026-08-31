@@ -249,7 +249,9 @@ class Scenario:
             "height": self.height,
             "width": self.width,
             "agv_radius": self.agv_radius,
-        }, plot=True, iteration=self.iteration)
+        # }, plot=True, 
+        }, plot=False, 
+        iteration=self.iteration)
 
 
     # check if the free sapce is connected, by checking that the occupancy contains not more than one free component

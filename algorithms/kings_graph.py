@@ -198,22 +198,35 @@ class IncrementalKingsGraph:
         if self.G is None:
             self.build_graph()
 
-        return self.recorder.save(
-            data_type="incremental_kings_grid",
-            data={
-                "occupancy": self.occupancy,
-                "agv_radius": self.agv_radius,
-                "access_points": self.access_points,
-                "io_points": self.io_points,
-                "bounds": self.bounds,
-                "vertices": {
-                    node: {
-                        "pos": tuple(attributes.get("pos", (node[1] + 0.5, node[0] + 0.5))),
-                        "type": attributes.get("type", "grid"),
-                    }
-                    for node, attributes in self.G.nodes(data=True)
+        save_progress = GenerationProgress("Incremental King's grid", "Saving graph to disk", self.iteration)
+        save_progress.start()
+        try:
+            saved_artifacts = self.recorder.save(
+                data_type="incremental_kings_grid",
+                data={
+                    "occupancy": self.occupancy,
+                    "agv_radius": self.agv_radius,
+                    "access_points": self.access_points,
+                    "io_points": self.io_points,
+                    "bounds": self.bounds,
+                    "vertices": {
+                        node: {
+                            "pos": tuple(attributes.get("pos", (node[1] + 0.5, node[0] + 0.5))),
+                            "type": attributes.get("type", "grid"),
+                        }
+                        for node, attributes in self.G.nodes(data=True)
+                    },
+                    "edges": sorted(tuple(sorted(edge)) for edge in self.G.edges),
                 },
-                "edges": sorted(tuple(sorted(edge)) for edge in self.G.edges),
-            },
-            plot=True,
-        )
+                plot=True,
+            )
+        except Exception as error:
+            save_progress.finish(False, f"could not save graph: {error}")
+            raise
+
+        if saved_artifacts is None:
+            save_progress.finish(True, "skipped; recorder returned no artifact")
+            return None
+
+        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        return saved_artifacts
