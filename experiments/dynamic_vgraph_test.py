@@ -12,19 +12,19 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 50
-    width = 70
+    height = 20
+    width = 30
     
     agv_radius = 0.45
     
-    occupancy_rate = 0.5
+    occupancy_rate = 0.05
 
     io_points = {
         (height * 0.15, 0),
         (height - 1.5, width * 0.75),
     }
 
-    recorder = ExperimentRecorder(seed=seed, experiment_name="drm_test")
+    recorder = ExperimentRecorder(seed=seed, experiment_name="dynamic_vgraph_test")
 
     recorder.set_algorithm("scenario", use_iterations=False)
 
@@ -52,17 +52,17 @@ if __name__ == "__main__":
         scenario.agv_radius,
     )
 
-    recorder.set_algorithm("drm", use_iterations=True)
+    recorder.set_algorithm("dynamic_vgraph", use_iterations=False)
 
     vgraph = DynamicVGraph(
         height=height,
         width=width,
         occupancy=scenario.occupancy,
-        agv_radius=0,
-        buffer_segments=0,
+        agv_radius=agv_radius,
         access_points=access_points,
-        io_points=io_points,
+        io_points=continuous_io_points,
+        recorder=recorder,
     )
 
     vgraph.preprocessing()
-    vgraph.record_graph()
+    vgraph.record_graph(phase="preprocessing")

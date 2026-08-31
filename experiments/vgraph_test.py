@@ -59,7 +59,7 @@ if __name__ == "__main__":
 
 
     recorder.set_algorithm("vgraph", use_iterations=False)
-    buffer_segments = 0
+    num_buffer_segments = 0
     vgraph = VGraph(
         width=width,
         height=height,
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         agv_radius=scenario.agv_radius,
         access_points=continuous_access_points,
         io_points=continuous_io_points,
-        buffer_segments=buffer_segments,
+        num_buffer_segments=num_buffer_segments,
         recorder=recorder,
     )
     vgraph.create_visibility_graph()

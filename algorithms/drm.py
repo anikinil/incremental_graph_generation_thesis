@@ -12,7 +12,7 @@ from scenario.geometry import buffered_obstacle_space
 
 class DRM:
 
-    def __init__(self, rng, occupancy, access_points, io_points, height, width, max_dist, max_neighbors, agv_radius, buffer_segments, recorder=None):
+    def __init__(self, rng, occupancy, access_points, io_points, height, width, max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None):
 
         self.rng = rng
         self.occupancy = np.asarray(occupancy, dtype=np.uint8).copy()
@@ -26,7 +26,7 @@ class DRM:
         self.max_dist = float(max_dist)
         self.max_neighbors = int(max_neighbors)
         self.agv_radius = float(agv_radius)
-        self.buffer_segments = int(buffer_segments)
+        self.num_buffer_segments = int(num_buffer_segments)
         self.recorder = recorder
         self.iteration = 0
 
@@ -63,7 +63,7 @@ class DRM:
         )
 
     def _refresh_free_and_obstacle_space(self):
-        self.obstacle_space = buffered_obstacle_space(self.occupancy, self.agv_radius, self.buffer_segments)
+        self.obstacle_space = buffered_obstacle_space(self.occupancy, self.agv_radius, self.num_buffer_segments)
         self.free_space = self.empty_space.difference(self.obstacle_space)
 
     def _update_kdtree(self):
@@ -458,13 +458,13 @@ class DRM:
     def _get_vertex_footprint_cells(self, index):
         """Return the set of occupancy cells that intersect the given roadmap vertex's footprint."""
         footprint = Point(self.vertices[index])
-        footprint = footprint.buffer(self.agv_radius, quad_segs=self.buffer_segments)
+        footprint = footprint.buffer(self.agv_radius, quad_segs=self.num_buffer_segments)
         return self._get_intersecting_cells(footprint)
 
     def _get_edge_footprint_cells(self, edge):
         """Return the set of occupancy cells that intersect the given roadmap edge's footprint."""
         path = LineString([self.vertices[edge[0]], self.vertices[edge[1]]])
-        path = path.buffer(self.agv_radius, quad_segs=self.buffer_segments)
+        path = path.buffer(self.agv_radius, quad_segs=self.num_buffer_segments)
         cells = self._get_intersecting_cells(path)
         cells.difference_update(self._get_vertex_footprint_cells(edge[0]))
         cells.difference_update(self._get_vertex_footprint_cells(edge[1]))
@@ -623,7 +623,7 @@ class DRM:
             data={
                 "occupancy": self.occupancy.copy(),
                 "agv_radius": self.agv_radius,
-                "buffer_segments": self.buffer_segments,
+                "num_buffer_segments": self.num_buffer_segments,
                 "access_points": sorted(self.access_points),
                 "io_points": sorted(self.io_points),
                 "height": self.height,

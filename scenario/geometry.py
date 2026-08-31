@@ -16,7 +16,9 @@ def buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments):
     else:
         union = unary_union(occupied_cells).buffer(agv_radius, quad_segs=num_buffer_segments, join_style="round")
         
-    return union
+    height, width = occupancy.shape
+    world = box(0, 0, width, height)
+    return union.intersection(world) # clip to world bounds
 
 def offset_access_points(access_points, agv_radius, margin=SPECIAL_POINT_CLEARANCE_MARGIN):
     """Offset access points away from obstacles by the AGV radius plus a margin, to account for obstacle buffer."""

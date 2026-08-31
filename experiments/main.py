@@ -59,7 +59,7 @@ if __name__ == "__main__":
 
 
     recorder.set_algorithm("prm", use_iterations=False)
-    buffer_segments = 2  # PRM may use a different buffered-corner approximation
+    num_buffer_segments = 2  # PRM may use a different buffered-corner approximation
     prm = PRM(
         rng=rng,
         occupancy=scenario.occupancy,
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         max_dist=4,
         max_neighbors=10,
         agv_radius=scenario.agv_radius,
-        buffer_segments=buffer_segments,
+        num_buffer_segments=num_buffer_segments,
         recorder=recorder,
     )
     prm.construction_step(min_num_vertices=1000, avoid_cycles=False)

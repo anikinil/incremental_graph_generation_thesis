@@ -63,12 +63,12 @@ def _mask_from_cells(cells, height, width):
     return mask
 
 
-def _build_buffer_patch(occupancy, agv_radius, buffer_segments):
+def _build_buffer_patch(occupancy, agv_radius, num_buffer_segments):
     """
     Builds vector patches for polygonal obstacle buffer used by PRM and VGraph.
     """
     # get approximation of buffered obstacle space as a Shapely geometry
-    buffer_space = buffered_obstacle_space(occupancy, agv_radius, buffer_segments)
+    buffer_space = buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments)
 
     # convert to matplotlib PatchCollection for plotting
     polygons = ([buffer_space] if buffer_space.geom_type == "Polygon" else list(buffer_space.geoms))
@@ -154,13 +154,13 @@ def _setup_continuous_axes(ax, bounds):
     ax.margins(0)
 
 
-def _draw_continuous_environment(ax, occupancy, bounds, *, agv_radius=None, buffer_segments=None):
+def _draw_continuous_environment(ax, occupancy, bounds, *, agv_radius=None, num_buffer_segments=None):
     """Draws the occupancy grid and optional obstacle buffer on a continuous plot."""
 
     min_x, min_y, max_x, max_y = bounds
 
-    if buffer_segments is not None:
-        buffer = _build_buffer_patch(occupancy, agv_radius, buffer_segments)
+    if num_buffer_segments is not None:
+        buffer = _build_buffer_patch(occupancy, agv_radius, num_buffer_segments)
         if buffer is not None:
             ax.add_collection(buffer)
 
@@ -573,7 +573,7 @@ class _ContinuousGraphPlotter(BasePlotter):
         return plt.subplots(figsize=(16, 12))
 
     def _context(self, data):
-        required = ("occupancy", "agv_radius", "buffer_segments", "access_points", "io_points", "height", "width")
+        required = ("occupancy", "agv_radius", "num_buffer_segments", "access_points", "io_points", "height", "width")
         missing = [field for field in required if field not in data]
         if missing:
             raise ValueError(f"Continuous graph snapshot missing: {', '.join(missing)}")
@@ -583,7 +583,7 @@ class _ContinuousGraphPlotter(BasePlotter):
         occupancy = np.asarray(context["occupancy"])
         min_x, min_y, max_x, max_y = 0, 0, context["width"], context["height"]
 
-        _draw_continuous_environment(ax, occupancy, bounds=(min_x, min_y, max_x, max_y), agv_radius=context["agv_radius"], buffer_segments=context["buffer_segments"])
+        _draw_continuous_environment(ax, occupancy, bounds=(min_x, min_y, max_x, max_y), agv_radius=context["agv_radius"], num_buffer_segments=context["num_buffer_segments"])
 
     def _draw_special_points(self, ax, context):
         _draw_continuous_special_points(ax, context["access_points"], context["io_points"])
@@ -771,6 +771,46 @@ class VisibilityGraphPlotter(_ContinuousGraphPlotter):
         self._draw_special_points(ax, context)
         ax.legend(loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
 
+
+class DynamicVisibilityGraphPlotter(_ContinuousGraphPlotter):
+    """Plot a dynamic visibility graph with active and inactive candidates."""
+
+    def draw(self, ax, data):
+        context = self._context(data)
+        self._draw_environment(ax, context)
+
+        edges = data["edges"]
+        edge_active = data["edge_active"]
+        active_edges = [edge for edge in edges if edge_active.get(edge, False)]
+        inactive_edges = [edge for edge in edges if not edge_active.get(edge, False)]
+
+        if inactive_edges:
+            ax.add_collection(LineCollection(
+                [[left, right] for left, right in inactive_edges],
+                colors=[INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.55,
+                capstyle="round", zorder=8, label="Inactive visibility edges",
+            ))
+        if active_edges:
+            ax.add_collection(LineCollection(
+                [[left, right] for left, right in active_edges],
+                colors=[GRAPH_EDGE_COLOR], linewidths=0.9,
+                capstyle="round", zorder=10, label="Active visibility edges",
+            ))
+
+        vertices = np.asarray(data["vertices"], dtype=float)
+        if vertices.size:
+            vertices = vertices.reshape(-1, 2)
+            ax.scatter(vertices[:, 0], vertices[:, 1], s=15,
+                       color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR,
+                       linewidths=0.35, zorder=11, label="Visibility vertices")
+
+        self._draw_special_points(ax, context)
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            unique_handles = dict(zip(labels, handles))
+            ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right",
+                      fontsize="small", frameon=True, framealpha=0.92)
+
 # -----------------------------------------------
 
 class PlotManager:
@@ -789,6 +829,7 @@ class PlotManager:
             "drm_graph": DRMGraphPlotter(),
             "incremental_kings_grid": IncrementalKingsGridPlotter(),
             "vgraph": VisibilityGraphPlotter(),
+            "dynamic_vgraph": DynamicVisibilityGraphPlotter(),
         }
 
     def plot(self, data_type, data, path, title_info=None):
@@ -805,6 +846,7 @@ class PlotManager:
             "drm": "Dynamic Roadmap",
             "incremental_kings_grid": "Incremental King's grid",
             "vgraph": "Visibility graph",
+            "dynamic_vgraph": "Dynamic visibility graph",
             "scenario": "Scenario",
         }.get(algorithm, algorithm or "Scenario")
         print(f"[{display_name} {iteration}] Plotting {data_type}", flush=True)
