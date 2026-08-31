@@ -6,6 +6,13 @@ from scenario.geometry import continuous_special_points
 from scenario.scenario_generation import Scenario
 
 
+def _apply_scenario_updates(vgraph, scenario):
+
+    access_points, io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
+
+    vgraph.apply_layout_updates(scenario.consume_updates(), new_access_points=access_points, new_io_points=io_points)
+
+
 if __name__ == "__main__":
     
 
@@ -52,7 +59,7 @@ if __name__ == "__main__":
         scenario.agv_radius,
     )
 
-    recorder.set_algorithm("dynamic_vgraph", use_iterations=False)
+    recorder.set_algorithm("dynamic_vgraph", use_iterations=True)
 
     vgraph = DynamicVGraph(
         height=height,
@@ -66,3 +73,15 @@ if __name__ == "__main__":
 
     vgraph.preprocessing()
     vgraph.record_graph(phase="preprocessing")
+
+    scenario.make_updates(number_of_updates=30)
+    _apply_scenario_updates(vgraph, scenario)
+
+    scenario.remove_region(top_left=(int(height * 0.15), int(width * 0.25)), bottom_right=(int(height * 0.55), int(width * 0.65)))
+    _apply_scenario_updates(vgraph, scenario)
+
+    scenario.add_region(top_left=(int(height * 0.25), int(width * 0.35)), bottom_right=(int(height * 0.45), int(width * 0.55)))
+    _apply_scenario_updates(vgraph, scenario)
+
+    scenario.add_region(top_left=(0, 0), bottom_right=(1, 1))
+    _apply_scenario_updates(vgraph, scenario)

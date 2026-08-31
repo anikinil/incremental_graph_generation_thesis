@@ -10,7 +10,7 @@ class DynamicVGraph:
         
         self.height = height
         self.width = width
-        self.occupancy = occupancy
+        self.occupancy = occupancy.copy()
         self.agv_radius = agv_radius
         self.num_buffer_segments = 0 # always 0, since it's the only way to avoid collisions (temporary)
         self.access_points = access_points
@@ -25,6 +25,8 @@ class DynamicVGraph:
         self.edge_to_cells = {}
         
         self.edge_active_status = {}  # dictionary to track the active status of edges
+
+        self.iteration = 0
         
     
     def _extract_convex_vertices(self, obstacle_space):
@@ -143,7 +145,7 @@ class DynamicVGraph:
         cells1 = _amanatides_woo(start1, end1)
         cells2 = _amanatides_woo(start2, end2)
         
-        return list(set(cells1 + cells2))  # return unique cells crossed by the buffered edge
+        return list(set(cell for cell in cells1 + cells2 if 0 <= cell[0] < self.height and 0 <= cell[1] < self.width))  # return unique cells crossed by the buffered edge
 
 
     def _deactivate_edges_in_obstacle_cells(self):
@@ -164,7 +166,7 @@ class DynamicVGraph:
         vertex_progress.start()
 
         # get all convex vertices of the obstacle polygons
-        free_space, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
+        _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
         vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.io_points) + list(self.access_points)))
 
         vertex_progress.finish(True, f"collected {len(vertices)} visibility vertices")
@@ -205,7 +207,90 @@ class DynamicVGraph:
         edge_progress.finish(True, f"mapped {len(self.edge_to_cells)} candidate edges | active: {len(self.edges)}")
 
     def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points):
-        pass
+        """Apply layout updates and update the visibility graph."""
+
+        # update the occupancy grid and collect added and removed obstacle cells
+        added_cells = set()
+        removed_cells = set()
+        for update in obstacle_updates:
+            action = update["action"]
+            if action == "add":
+                cell, value = update["cell"], update["obstacle_type"]
+                self.occupancy[cell] = value
+                added_cells.add(cell)
+            elif action == "remove":
+                cell = update["cell"]
+                self.occupancy[cell] = 0
+                removed_cells.add(cell)
+            elif action == "move":
+                cell_from, cell_to = update["from_cell"], update["to_cell"]
+                value = self.occupancy[cell_from]
+                self.occupancy[cell_from] = 0
+                self.occupancy[cell_to] = value
+                removed_cells.add(cell_from)
+                added_cells.add(cell_to)
+
+        # activate edges affected by removed obstacle cells, if no remaining obstacle blocks them
+        for cell in removed_cells:
+            if cell in self.cell_to_edge:
+                for edge in self.cell_to_edge[cell]:
+                    if all(self.occupancy[edge_cell] == 0 for edge_cell in self.edge_to_cells[edge]):
+                        self.edge_active_status[edge] = True
+
+        self.access_points = new_access_points
+        self.io_points = new_io_points
+
+        # get all vertices of the updated obstacle space and special points
+        _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
+        new_vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.io_points) + list(self.access_points)))
+
+        # remove vertices that are no longer part of the obstacle space or special points
+        removed_vertices = [vertex for vertex in self.vertices if vertex not in new_vertices]
+        for vertex in removed_vertices:
+            for edge in list(self.edge_to_cells):
+                if vertex in edge:
+                    cells = self.edge_to_cells.pop(edge)
+                    self.edge_active_status.pop(edge)
+                    for cell in cells:
+                        self.cell_to_edge[cell].remove(edge)
+                        if not self.cell_to_edge[cell]:
+                            del self.cell_to_edge[cell]
+            self.vertices.remove(vertex)
+
+        # add new obstacle and special point vertices with edges to all existing vertices
+        added_vertices = [vertex for vertex in new_vertices if vertex not in self.vertices]
+        added_edges = set()
+        for vertex in added_vertices:
+            for other_vertex in self.vertices:
+                edge = (other_vertex, vertex)
+                cells = self._determine_edge_cells(edge[0], edge[1])
+                self.edge_to_cells[edge] = cells
+                self.edge_active_status[edge] = True
+                added_edges.add(edge)
+                for cell in cells:
+                    if cell not in self.cell_to_edge:
+                        self.cell_to_edge[cell] = []
+                    self.cell_to_edge[cell].append(edge)
+            self.vertices.append(vertex)
+
+        # deactivate new edges that cross an existing obstacle cell
+        for edge in added_edges:
+            if any(self.occupancy[cell] != 0 for cell in self.edge_to_cells[edge]):
+                self.edge_active_status[edge] = False
+
+        # deactivate all edges affected by added obstacle cells
+        for cell in added_cells:
+            if cell in self.cell_to_edge:
+                for edge in self.cell_to_edge[cell]:
+                    self.edge_active_status[edge] = False
+
+        self.edges = [edge for edge in self.edge_to_cells if self.edge_active_status[edge]]
+
+        self.iteration += 1
+        if self.recorder is not None:
+            self.recorder.new_iteration(self.iteration)
+
+        self.record_graph(phase="online_update")
     
     def record_graph(self, phase="manual"):
         """Record all visibility candidates and their current active status."""
@@ -218,7 +303,6 @@ class DynamicVGraph:
             data={
                 "occupancy": self.occupancy.copy(),
                 "agv_radius": self.agv_radius,
-                "num_buffer_segments": self.num_buffer_segments,
                 "access_points": sorted(self.access_points),
                 "io_points": sorted(self.io_points),
                 "height": self.height,
