@@ -32,7 +32,7 @@ AFFECTED_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.8)   # red
 AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 0.2) # red
 AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.1) # red
 
-VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.1)      # blue, semi-transparent for better visibility
+VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.3)      # blue, semi-transparent for better visibility
 
 IO_POINT_COLOR = (0.1, 0.5, 0.3)                  # green
 ACCESS_POINT_COLOR = (0.9, 0.5, 0.1)              # orange

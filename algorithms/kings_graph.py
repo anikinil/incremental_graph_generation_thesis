@@ -5,6 +5,14 @@ from scenario.geometry import centered_io_points, offset_access_points
 
 
 class IncrementalKingsGraph:
+    """
+    "Continuous-Space Roadmap Generation for Mobile Robot Fleets with Distance Constraints and Geometry-Aware Discretization"
+    Rüdt, Enke and Furmans (2026)
+    
+    maybe:
+    "Complete Decentralized Method for On-Line Multi-Robot Trajectory Planning in Well-Formed Infrastructures"
+    Cáp, Vokrínek and Kleiner (2015)
+    """
 
     def __init__(self, bounds, agv_radius, occupancy, access_points, io_points, recorder):
         self.bounds = bounds

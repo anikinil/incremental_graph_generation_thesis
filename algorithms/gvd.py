@@ -171,6 +171,14 @@ class GVD:
         self.io_points = [(y + 1, x + 1) for (y, x) in self.io_points]
         
     
+    def _addImaginaryObstacles():
+        """
+        TODO maybe experiment with that:
+        
+        "Redundant Voronoi roadmap graph using imaginary obstacles for multi-robot path planning", Aryadi et. al (2023)
+        """
+        pass
+    
     def distance(self, p1, p2):
         dy = p1[0] - p2[0]
         dx = p1[1] - p2[1]
@@ -730,11 +738,9 @@ class GVD:
     
         # check that graph is connected
         graph_connected = self._is_graph_connected()
-        progress.finish(
-            graph_connected,
-            f"vertices: {len(vertex_id_to_cell_coords)} | edges: {len(edges)} | "
-            f"special points connected: {connected_special_points}/{len(self.access_points) + len(self.io_points)}",
-        )
+        progress.finish(graph_connected, f"vertices: {len(vertex_id_to_cell_coords)} | edges: {len(edges)} | "
+            f"special points connected: {connected_special_points}/{len(self.access_points) + len(self.io_points)}")
+        
         if self.recorder is not None:
             save_progress = GenerationProgress("GVD", "Saving graph to disk", self.iteration)
             save_progress.start()
