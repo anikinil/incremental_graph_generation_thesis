@@ -32,6 +32,9 @@ AFFECTED_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.8)   # red
 AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 0.2) # red
 AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.1) # red
 
+# outline of affected region on the GVD distance map
+AFFECTED_OUTLINE_COLOR = (0.9, 0.2, 0.2, 1)       # red
+
 VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.3)      # blue, semi-transparent for better visibility
 
 IO_POINT_COLOR = (0.1, 0.5, 0.3)                  # green
@@ -248,17 +251,16 @@ def _setup_grid_axes(ax, height, width, scale_factor):
 def _draw_affected_outline(ax, affected_cells, height, width):
     """Draw an outline along the boundaries of affected cells (GVD)."""
     LINE_WIDTH = 2
-    COLOR = (0.1, 0.1, 0.1, 1)
     affected = _mask_from_cells(affected_cells, height, width)
     for row, col in zip(*np.where(affected)):
         if col == 0 or not affected[row, col - 1]:
-            ax.plot([col, col], [row, row + 1], color=COLOR, linewidth=LINE_WIDTH, zorder=50)
+            ax.plot([col, col], [row, row + 1], color=AFFECTED_OUTLINE_COLOR, linewidth=LINE_WIDTH, zorder=50)
         if col == width - 1 or not affected[row, col + 1]:
-            ax.plot([col + 1, col + 1], [row, row + 1], color=COLOR, linewidth=LINE_WIDTH, zorder=50)
+            ax.plot([col + 1, col + 1], [row, row + 1], color=AFFECTED_OUTLINE_COLOR, linewidth=LINE_WIDTH, zorder=50)
         if row == 0 or not affected[row - 1, col]:
-            ax.plot([col, col + 1], [row, row], color=COLOR, linewidth=LINE_WIDTH, zorder=50)
+            ax.plot([col, col + 1], [row, row], color=AFFECTED_OUTLINE_COLOR, linewidth=LINE_WIDTH, zorder=50)
         if row == height - 1 or not affected[row + 1, col]:
-            ax.plot([col, col + 1], [row + 1, row + 1], color=COLOR, linewidth=LINE_WIDTH, zorder=50)
+            ax.plot([col, col + 1], [row + 1, row + 1], color=AFFECTED_OUTLINE_COLOR, linewidth=LINE_WIDTH, zorder=50)
 
 
 class BasePlotter:
