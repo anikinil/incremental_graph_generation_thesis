@@ -12,6 +12,10 @@ from artifacts.progress import GenerationProgress
 
 
 class BucketPriorityQueue:
+    """
+    "Fast Euclidean Distance Transformation by Propagation Using Multiple Neighborhoods",
+    O. Cuisenaire and B. Macq (1999)
+    """
     
     def __init__(self, max_distance):
 
