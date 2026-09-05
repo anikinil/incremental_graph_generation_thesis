@@ -35,7 +35,7 @@ class UnionFind:
         if root_x == root_y:
             return False
         
-        # union by rank
+        # union by rank: attach the smaller tree under the larger one
         if self.rank[root_x] < self.rank[root_y]:
             self.parent[root_x] = root_y
         elif self.rank[root_x] > self.rank[root_y]:

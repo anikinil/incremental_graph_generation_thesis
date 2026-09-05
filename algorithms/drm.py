@@ -11,6 +11,13 @@ from scenario.geometry import buffered_obstacle_space
 
 
 class DRM:
+    """
+    Based on:
+    
+    "A Framework for Real-time Path Planning in Changing Environments",
+    Peter Leven, Seth Hutchinson (2002)
+    """
+    
 
     def __init__(self, rng, occupancy, access_points, io_points, height, width, max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None):
 
