@@ -10,7 +10,8 @@ from scenario.geometry import buffered_obstacle_space
 
 # color palette
 
-BUFFER_COLOR = (0.8, 0.8, 0.8, 1)                 # light grey
+AGV_RADIUS_BUFFER_COLOR = (0.8, 0.8, 0.8, 1)      # light grey
+EPSILON_BUFFER_COLOR = (0.9, 0.9, 0.9, 1)         # lighter grey
 
 SIMPLE_OBSTACLE_COLOR = (0.3, 0.3, 0.3, 1)        # dark grey
 UNIT_LOAD_COLOR = (0.5, 0.5, 0.5, 1)              # grey
@@ -66,7 +67,8 @@ def _mask_from_cells(cells, height, width):
     return mask
 
 
-def _build_buffer_patch(occupancy, agv_radius, num_buffer_segments):
+
+def _build_buffer_patch(occupancy, agv_radius, num_buffer_segments, *, color=AGV_RADIUS_BUFFER_COLOR):
     """
     Builds vector patches for polygonal obstacle buffer used by PRM and VGraph.
     """
@@ -84,7 +86,7 @@ def _build_buffer_patch(occupancy, agv_radius, num_buffer_segments):
             codes.extend([Path.MOVETO] + [Path.LINETO] * (len(coordinates) - 2) + [Path.CLOSEPOLY])
         return Path(vertices, codes)
     patches = [PathPatch(_polygon_path(polygon)) for polygon in polygons]
-    return PatchCollection(patches, facecolor=BUFFER_COLOR, edgecolor="none", zorder=0)
+    return PatchCollection(patches, facecolor=color, edgecolor="none", zorder=0)
 
 
 def _build_smooth_buffer_patch(occupancy, agv_radius):
@@ -97,7 +99,7 @@ def _build_smooth_buffer_patch(occupancy, agv_radius):
                        boxstyle=f"round,pad=0,rounding_size={agv_radius}")
         for row, column in zip(rows, columns)
     ]
-    return PatchCollection(patches, facecolor=BUFFER_COLOR, edgecolor="none", zorder=0)
+    return PatchCollection(patches, facecolor=AGV_RADIUS_BUFFER_COLOR, edgecolor="none", zorder=0)
 
 
 def _occupancy_cell_image(occupancy):
@@ -157,12 +159,20 @@ def _setup_continuous_axes(ax, bounds):
     ax.margins(0)
 
 
-def _draw_continuous_environment(ax, occupancy, bounds, *, agv_radius=None, num_buffer_segments=None):
-    """Draws the occupancy grid and optional obstacle buffer on a continuous plot."""
+def _draw_continuous_environment(ax, occupancy, bounds, *, agv_radius=None,
+                                 num_buffer_segments=None, eps=None):
+    """Draw the occupancy grid plus optional AGV-radius and epsilon obstacle buffers."""
 
     min_x, min_y, max_x, max_y = bounds
 
     if num_buffer_segments is not None:
+        if eps is not None and eps > 0:
+            epsilon_buffer = _build_buffer_patch(
+                occupancy, agv_radius + eps, num_buffer_segments,
+                color=EPSILON_BUFFER_COLOR,
+            )
+            if epsilon_buffer is not None:
+                ax.add_collection(epsilon_buffer)
         buffer = _build_buffer_patch(occupancy, agv_radius, num_buffer_segments)
         if buffer is not None:
             ax.add_collection(buffer)
@@ -589,7 +599,14 @@ class _ContinuousGraphPlotter(BasePlotter):
         occupancy = np.asarray(context["occupancy"])
         min_x, min_y, max_x, max_y = 0, 0, context["width"], context["height"]
 
-        _draw_continuous_environment(ax, occupancy, bounds=(min_x, min_y, max_x, max_y), agv_radius=context["agv_radius"], num_buffer_segments=context["num_buffer_segments"])
+        _draw_continuous_environment(
+            ax,
+            occupancy,
+            bounds=(min_x, min_y, max_x, max_y),
+            agv_radius=context["agv_radius"],
+            num_buffer_segments=context["num_buffer_segments"],
+            eps=context.get("eps"),
+        )
 
     def _draw_special_points(self, ax, context):
         _draw_continuous_special_points(ax, context["access_points"], context["io_points"])
