@@ -72,6 +72,9 @@ class PRM:
         self.max_dist = max_dist # maximum distance to consider for neighbors
         self.max_neighbors = max_neighbors # maximum number of neighbors to consider for connection
         self.agv_radius = agv_radius # radius of the AGV for collision costraints
+        if self.agv_radius + self.eps >= 0.5:
+            raise ValueError(f"AGV radius {self.agv_radius} + epsilon {self.eps} is too large for the occupancy grid (max 0.5).")
+        self.buffer = agv_radius + eps # radius of the AGV for collision costraints + epsilon buffer
         self.num_buffer_segments = num_buffer_segments # segments per rounded-corner quadrant
         self.recorder = recorder
         
@@ -258,7 +261,7 @@ class PRM:
         progress.start(f"target: {min_num_vertices} sampling attempts after wall graph")
 
         # get free space as shapely Polygon for sampling and local planner checks
-        self.free_space, _ = navigation_space(self.occupancy, self.agv_radius, self.num_buffer_segments)
+        self.free_space, _ = navigation_space(self.occupancy, self.buffer, self.num_buffer_segments)
         
         # build wall graph
         self._build_wall_graph()
@@ -475,6 +478,7 @@ class PRM:
                 data={
                     "occupancy": self.occupancy,
                     "agv_radius": self.agv_radius,
+                    "eps": self.eps,
                     "num_buffer_segments": self.num_buffer_segments,
                     "access_points": self.access_points,
                     "io_points": self.io_points,

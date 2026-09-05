@@ -19,8 +19,9 @@ if __name__ == "__main__":
     height = 50
     width = 100
     
-    agv_radius = 0.45
-    
+    agv_radius = 0.42
+    eps = 0.05
+
     occupancy_rate = 0.5
 
     io_points = {
@@ -67,7 +68,7 @@ if __name__ == "__main__":
         io_points=continuous_io_points,
         height=height,
         width=width,
-        eps=0.1,
+        eps=eps,
         max_dist=4,
         max_neighbors=10,
         agv_radius=scenario.agv_radius,
