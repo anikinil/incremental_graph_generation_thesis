@@ -5,9 +5,9 @@ import networkx as nx
 import numpy as np
 from scipy.spatial import KDTree
 from shapely.geometry import LineString, Point, box
+from shapely.ops import unary_union
 
 from artifacts.progress import GenerationProgress
-from scenario.geometry import buffered_obstacle_space
 
 
 class DRM:
@@ -23,13 +23,8 @@ class DRM:
 
         self.rng = rng
         self.occupancy = np.asarray(occupancy, dtype=np.uint8).copy()
-        grid_height, grid_width = self.occupancy.shape
-        if (height, width) != (grid_height, grid_width):
-            raise ValueError(
-                "height and width must match the occupancy grid shape "
-                f"{(grid_height, grid_width)}"
-            )
-        self.height, self.width = grid_height, grid_width
+        self.height = height
+        self.width = width
         self.max_dist = float(max_dist)
         self.max_neighbors = int(max_neighbors)
         self.agv_radius = float(agv_radius)
@@ -37,10 +32,10 @@ class DRM:
         self.recorder = recorder
         self.iteration = 0
 
-        self.empty_space = box(0, 0, self.width, self.height) # the empty workspace, before buffering obstacles
+        self.empty_space = box(0, 0, self.width, self.height)
         self.obstacle_space = None
         self.free_space = None
-        self._refresh_free_and_obstacle_space() # compute the free and obstacle space based on the initial occupancy grid
+        self._refresh_free_and_obstacle_space()
 
         self.vertices = []
         self.edges = []
@@ -70,8 +65,48 @@ class DRM:
         )
 
     def _refresh_free_and_obstacle_space(self):
-        self.obstacle_space = buffered_obstacle_space(self.occupancy, self.agv_radius, self.num_buffer_segments)
+        """Rebuild the unbuffered workspace obstacle geometry."""
+        occupied_cells = []
+        for row in range(self.height):
+            for col in range(self.width):
+                cell = self.occupancy[row, col]
+                if cell != 0:
+                    occupied_cells.append(box(col, row, col + 1, row + 1)) # swap row and col to get x and y
+        self.obstacle_space = unary_union(occupied_cells)
         self.free_space = self.empty_space.difference(self.obstacle_space)
+
+    def _point_footprint(self, config):
+        """Return a conservative polygonal envelope of the robot footprint at config."""
+        point = Point(config)
+        buffered_point = point.buffer(self._mapping_buffer_radius(), self.num_buffer_segments)
+        return buffered_point
+
+    def _path_footprint(self, start, end):
+        """Return a conservative polygonal envelope of the robot's swept footprint."""
+        path = LineString([start, end])
+        return path.buffer(self._mapping_buffer_radius(), quad_segs=self.num_buffer_segments)
+
+    def _mapping_buffer_radius(self):
+        """Return a radius whose polygonal Shapely buffer contains the true circular footprint."""
+        segments = self.num_buffer_segments
+        return self.agv_radius / np.cos(np.pi / (4 * segments))
+
+    def _is_config_collision_free(self, config):
+        """Return whether the robot can occupy config without hitting an obstacle."""
+        point = Point(config)
+        if self.agv_radius == 0: # if the robot is a point, check if it is in free space
+            return point.disjoint(self.obstacle_space)
+        else: # else check if the distance from the robot's center to the nearest obstacle is at least the robot's radius
+            return point.distance(self.obstacle_space) >= self.agv_radius
+
+    def _is_path_collision_free(self, start, end):
+        """Return whether the robot can traverse the path from start to end collision-free."""
+        path = LineString([start, end])
+        if not self.empty_space.covers(path):
+            return False
+        if self.agv_radius == 0:
+            return path.disjoint(self.obstacle_space)
+        return path.distance(self.obstacle_space) >= self.agv_radius
 
     def _update_kdtree(self):
         self.kdtree = KDTree(np.asarray(self.vertices)) if self.vertices else None
@@ -148,14 +183,14 @@ class DRM:
         return nx.number_connected_components(self.build_graph())
 
     def _generate_random_free_config(self, max_attempts = 1000):
-            """Generates a random configuration in the free space using rejection sampling."""
-            for _ in range(max_attempts):
-                x = self.rng.uniform(0, self.width)
-                y = self.rng.uniform(0, self.height)
-                point = Point(x, y)
-                if self.free_space.covers(point):
-                    return np.array([x, y], dtype=np.float64)
-            raise RuntimeError(f"Failed to generate a random free configuration after {max_attempts} attempts.")
+        """Generates a random configuration in the free space using rejection sampling."""
+        for _ in range(max_attempts):
+            x = self.rng.uniform(0, self.width)
+            y = self.rng.uniform(0, self.height)
+            config = np.array([x, y], dtype=np.float64)
+            if self._is_config_collision_free(config):
+                return config
+        raise RuntimeError(f"Failed to generate a random free configuration after {max_attempts} attempts.")
     
     def _repair_active_connectivity(self, min_num_vertices):
         """
@@ -215,9 +250,7 @@ class DRM:
                         and (self.occupancy[row, neighbour_col] != 0 or self.occupancy[neighbour_row, col] != 0)):
                             continue # ignore
 
-                    # the local path must also respect the buffered obstacle space
-                    path = LineString([self.vertices[index], self.vertices[neighbour_index]])
-                    if not self.free_space.covers(path):
+                    if not self._is_path_collision_free(self.vertices[index], self.vertices[neighbour_index]):
                         continue
 
                     self._add_edge(index, neighbour_index)
@@ -344,9 +377,8 @@ class DRM:
                 for distance, position in zip(np.atleast_1d(distances), np.atleast_1d(positions)):
                     if np.isfinite(distance): # if the candidate is within max_dist
                         candidate_index = int(permanent_indices[int(position)])
-                        path = LineString([self.vertices[index], self.vertices[candidate_index]])
-                        # if the edge is in free space, add it to the roadmap and go to the next affected wall vertex
-                        if self.free_space.covers(path):
+                        # if the robot's swept footprint is obstacle-free, add the edge and move to the next wall vertex.
+                        if self._is_path_collision_free(self.vertices[index], self.vertices[candidate_index]):
                             new_edges.add(self._add_edge(index, candidate_index))
                             break
                         
@@ -446,7 +478,7 @@ class DRM:
                         self._map_edge_to_occupancy_cells(edge)
 
     def _get_intersecting_cells(self, geometry):
-        """Return the set of occupancy cells that intersect the given geometry."""
+        """Return the set of cells that intersect the given geometry."""
 
         min_x, min_y, max_x, max_y = geometry.bounds
         first_row = max(0, int(np.floor(min_y)))
@@ -463,16 +495,13 @@ class DRM:
         return intersecting_cells
 
     def _get_vertex_footprint_cells(self, index):
-        """Return the set of occupancy cells that intersect the given roadmap vertex's footprint."""
-        footprint = Point(self.vertices[index])
-        footprint = footprint.buffer(self.agv_radius, quad_segs=self.num_buffer_segments)
-        return self._get_intersecting_cells(footprint)
+        """Return the set of cells that intersect the given roadmap vertex's footprint."""
+        return self._get_intersecting_cells(self._point_footprint(self.vertices[index]))
 
     def _get_edge_footprint_cells(self, edge):
-        """Return the set of occupancy cells that intersect the given roadmap edge's footprint."""
-        path = LineString([self.vertices[edge[0]], self.vertices[edge[1]]])
-        path = path.buffer(self.agv_radius, quad_segs=self.num_buffer_segments)
-        cells = self._get_intersecting_cells(path)
+        """Return the set of cells that intersect the given roadmap edge's footprint."""
+        footprint = self._path_footprint(self.vertices[edge[0]], self.vertices[edge[1]])
+        cells = self._get_intersecting_cells(footprint)
         cells.difference_update(self._get_vertex_footprint_cells(edge[0]))
         cells.difference_update(self._get_vertex_footprint_cells(edge[1]))
         return cells
@@ -516,16 +545,15 @@ class DRM:
         self.record_graph(phase="preprocessing")
 
     def _refresh_active_status(self, vertices, edges):
-        """Refresh the active/inactive status of the given roadmap vertices and edges."""
+        """Refresh roadmap status using the circular robot footprint against raw obstacles."""
         
         for vertex_index in vertices:
-            self.vertex_active[vertex_index] = self.free_space.covers(Point(self.vertices[vertex_index]))
+            self.vertex_active[vertex_index] = self._is_config_collision_free(self.vertices[vertex_index])
 
         for edge in edges:
-            edge_is_in_free_space = self.free_space.covers(LineString([self.vertices[edge[0]], self.vertices[edge[1]]]))
+            edge_is_collision_free = self._is_path_collision_free(self.vertices[edge[0]], self.vertices[edge[1]])
             both_vertices_are_active = (self.vertex_active[edge[0]] and self.vertex_active[edge[1]])
-
-            self.edge_active[edge] = (both_vertices_are_active and edge_is_in_free_space)
+            self.edge_active[edge] = (both_vertices_are_active and edge_is_collision_free)
 
     def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points, min_num_vertices=None):
         """Apply changed cells and update only the affected roadmap regions."""
@@ -595,9 +623,9 @@ class DRM:
         # repair the active roadmap connectivity if it has become disconnected
         repair_vertices, repair_edges = self._repair_active_connectivity(min_num_vertices)
         for index in repair_vertices:
-            self._map_vertex_to_occupancy_cell(index) # map the new vertices to their occupancy cells
+            self._map_vertex_to_occupancy_cell(index) # map the new vertices to their cells
         for edge in repair_edges:
-            self._map_edge_to_occupancy_cells(edge) # map the new edges to their occupancy cells
+            self._map_edge_to_occupancy_cells(edge) # map the new edges to their cells
 
         # record the affected vertices and edges for highlighting
         self.affected_vertices = refreshed_vertices | repair_vertices

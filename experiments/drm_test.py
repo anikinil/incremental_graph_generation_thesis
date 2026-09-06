@@ -72,7 +72,7 @@ if __name__ == "__main__":
         max_dist=4.0,
         max_neighbors=10,
         agv_radius=scenario.agv_radius,
-        buffer_segments=2,
+        num_buffer_segments=2,
         recorder=recorder,
     )
     # drm.preprocessing_step()
