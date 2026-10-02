@@ -11,6 +11,8 @@ if __name__ == "__main__":
 
     height = 25
     width = 30
+    
+    agv_radius = 0
 
     io_points = {
         (height * 0.13, 0),
@@ -18,7 +20,7 @@ if __name__ == "__main__":
     }
 
     recorder = ExperimentRecorder(seed=seed)
-    recorder.set_algorithm("scenario", use_iterations=False)
+    recorder.set_algorithm("scenario", use_iterations=False, plot=True)
     
     scenario = Scenario(
         rng=rng,
@@ -32,7 +34,7 @@ if __name__ == "__main__":
         io_points=io_points,
         io_points_radius=3,
         simple_obstacle_rate=0.1,
-        agv_radius=0.1,
+        agv_radius=agv_radius,
         recorder=recorder,
         
         # ordered_aisle_widths = (2, 1),
@@ -44,7 +46,7 @@ if __name__ == "__main__":
     scenario.generate()
     print()
 
-    recorder.set_algorithm("incremental_kings_grid", use_iterations=True)
+    recorder.set_algorithm("incremental_kings_grid", use_iterations=True, plot=True)
 
     kings_grid = IncrementalKingsGraph(
         occupancy=scenario.occupancy,

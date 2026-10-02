@@ -16,8 +16,8 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 20
-    width = 20
+    height = 250
+    width = 300
     
     agv_radius = 0.45
     
@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
     recorder = ExperimentRecorder(seed=seed)
 
-    recorder.set_algorithm("scenario", use_iterations=False)
+    recorder.set_algorithm("scenario", use_iterations=False, plot=True)
     scenario = Scenario(
         rng=rng,
         height=height,
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     bounds = (0, 0, width, height)
 
 
-    recorder.set_algorithm("vgraph", use_iterations=False)
+    recorder.set_algorithm("vgraph", use_iterations=False, plot=True)
     num_buffer_segments = 0
     vgraph = VGraph(
         width=width,

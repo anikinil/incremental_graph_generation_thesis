@@ -19,12 +19,12 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 50
-    width = 100
+    height = 60
+    width = 60
     
-    agv_radius = 0.45
+    agv_radius = 0
     
-    occupancy_rate = 0.03
+    occupancy_rate = 0.1
 
     io_points = {
         (height * 0.15, 0),
@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
     recorder = ExperimentRecorder(seed=seed, experiment_name="dynamic_vgraph_test", plot_buffer_segments=5)
 
-    recorder.set_algorithm("scenario", use_iterations=False)
+    recorder.set_algorithm("scenario", use_iterations=False, plot=True)
 
     scenario = Scenario(
         rng=rng,
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         scenario.agv_radius,
     )
 
-    recorder.set_algorithm("dynamic_vgraph", use_iterations=True)
+    recorder.set_algorithm("dynamic_vgraph", use_iterations=True, plot=False)
 
     vgraph = DynamicVGraph(
         height=height,

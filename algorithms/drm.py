@@ -18,6 +18,8 @@ class DRM:
     Peter Leven, Seth Hutchinson (2002)
     """
     
+    # TODO use agv_radius + eps for collision checking, like in PRM
+    
 
     def __init__(self, rng, occupancy, access_points, io_points, height, width, max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None):
 
@@ -28,14 +30,14 @@ class DRM:
         self.max_dist = float(max_dist)
         self.max_neighbors = int(max_neighbors)
         self.agv_radius = float(agv_radius)
+        self.edge_clearance_epsilon = 1e-6 # small epsilon to avoid floating-point precision issues when checking if the robot's swept footprint is collision-free
         self.num_buffer_segments = int(num_buffer_segments)
         self.recorder = recorder
         self.iteration = 0
 
         self.empty_space = box(0, 0, self.width, self.height)
         self.obstacle_space = None
-        self.free_space = None
-        self._refresh_free_and_obstacle_space()
+        self._refresh_obstacle_space()
 
         self.vertices = []
         self.edges = []
@@ -64,7 +66,7 @@ class DRM:
              (1, -1),  (1, 0),  (1, 1),
         )
 
-    def _refresh_free_and_obstacle_space(self):
+    def _refresh_obstacle_space(self):
         """Rebuild the unbuffered workspace obstacle geometry."""
         occupied_cells = []
         for row in range(self.height):
@@ -73,7 +75,6 @@ class DRM:
                 if cell != 0:
                     occupied_cells.append(box(col, row, col + 1, row + 1)) # swap row and col to get x and y
         self.obstacle_space = unary_union(occupied_cells)
-        self.free_space = self.empty_space.difference(self.obstacle_space)
 
     def _point_footprint(self, config):
         """Return a conservative polygonal envelope of the robot footprint at config."""
@@ -81,10 +82,10 @@ class DRM:
         buffered_point = point.buffer(self._mapping_buffer_radius(), self.num_buffer_segments)
         return buffered_point
 
-    def _path_footprint(self, start, end):
-        """Return a conservative polygonal envelope of the robot's swept footprint."""
-        path = LineString([start, end])
-        return path.buffer(self._mapping_buffer_radius(), quad_segs=self.num_buffer_segments)
+    # def _path_footprint(self, start, end):
+    #     """Return a conservative polygonal envelope of the robot's swept footprint."""
+    #     path = LineString([start, end])
+    #     return path.buffer(self._mapping_buffer_radius(), quad_segs=self.num_buffer_segments)
 
     def _mapping_buffer_radius(self):
         """Return a radius whose polygonal Shapely buffer contains the true circular footprint."""
@@ -205,8 +206,9 @@ class DRM:
         added_vertices = set()
         added_vertices_num = 0
         added_edges = set()
-        while num_components > 1 or (min_num_vertices is not None and added_vertices_num <= min_num_vertices):
+        while num_components > 1 or (min_num_vertices is not None and added_vertices_num < min_num_vertices):
             config = self._generate_random_free_config()            
+            # index = self._add_vertex(config, update_kdtree=False)
             index = self._add_vertex(config)
             incident_edges = self._get_incident_edges({index})
             self._refresh_active_status({index}, incident_edges)
@@ -393,7 +395,11 @@ class DRM:
     def _remove_vertices(self, removed_indices):
         """Remove vertices and reindex the remaining roadmap."""
         removed_indices = set(removed_indices)
-
+        print("Removing vertices")
+        if not removed_indices:
+            print("No vertices to remove.")
+            return
+        print(f"Removing {len(removed_indices)} vertices from the roadmap.")
         # get indices of vertices to keep and create a mapping from old to new indices
         kept_indices = [index for index in range(len(self.vertices)) if index not in removed_indices]
         index_map = {old_index: new_index for new_index, old_index in enumerate(kept_indices)}
@@ -448,6 +454,7 @@ class DRM:
                 wall_vertices_remapped[cell] = index_map[index]
         self.wall_vertices = wall_vertices_remapped
         self._update_kdtree()
+        print(f"Removed {len(removed_indices)} vertices. Remaining vertices: {len(self.vertices)}. Remaining edges: {len(self.edges)}.")
 
     def _remove_special_vertices(self, points):
         """Remove special-point vertices and their incident edges from the roadmap."""
@@ -458,7 +465,7 @@ class DRM:
         self._remove_vertices(removed_indices)
 
     def _update_special_points(self, access_points, io_points, map_new=True):
-        """Update special points, optionally mapping newly added elements to occupancy cells."""
+        """Update the special points in the roadmap, optionally mapping newly added elements to occupancy cells."""
         self.access_points = list(access_points)
         self.io_points = list(io_points)
         current_points = list(dict.fromkeys(self.access_points + self.io_points))
@@ -467,11 +474,16 @@ class DRM:
         removed_points = set(self.special_vertices).difference(current_points)
         self._remove_special_vertices(removed_points)
 
+        # add new special points to the roadmap and map them to occupancy cells (if requested)
+        count = 0
+        total = len(current_points)
         for point in current_points:
             index = self.special_vertices.get(point)
             if index is None:
+                print(f"Adding special points to roadmap: {count + 1}/{total} ({(count + 1) / total * 100:.2f}%) ({point})", end="\r", flush=True)
                 index = self._add_vertex(point)
                 self.special_vertices[point] = index
+                count += 1
                 if map_new:
                     self._map_vertex_to_occupancy_cell(index)
                     for edge in self._get_incident_edges({index}):
@@ -493,6 +505,89 @@ class DRM:
                 if geometry.intersects(cell):
                     intersecting_cells.add((row, col))
         return intersecting_cells
+    
+    def _determine_edge_cells(self, vertex1, vertex2):
+        """Returns grid cells crossed by the buffered edge between two vertices."""
+            
+        # offset the vertices in the positive and negativ directions of the edge normal by the AGV radius to get the buffered edge
+        x1, y1 = vertex1
+        x2, y2 = vertex2
+        edge_vector = np.array([x2 - x1, y2 - y1])
+        edge_normal = np.array([-edge_vector[1], edge_vector[0]]) / np.linalg.norm(edge_vector)  # normalized edge normal
+        offset_vector = edge_normal * (self.agv_radius - self.edge_clearance_epsilon) # subtract a small epsilon to avoid floating-point precision issues
+        start1 = (x1 + offset_vector[0], y1 + offset_vector[1])
+        start2 = (x1 - offset_vector[0], y1 - offset_vector[1])
+        end1 = (x2 + offset_vector[0], y2 + offset_vector[1])
+        end2 = (x2 - offset_vector[0], y2 - offset_vector[1])
+        
+        def _amanatides_woo(start, end):
+            """Returns cells crossed by a 2D Amanatides-Woo traversal.
+            
+            "A Fast Voxel Traversal Algorithm for Ray Tracing", John Amanatides and Andrew Woo (1987)
+            
+            https://m4xc.dev/articles/amanatides-and-woo/
+            https://gitlab.com/athilenius/fast-voxel-traversal-rs/-/blob/main/src/raycast_2d.rs?ref_type=heads
+            """
+
+            x0, y0 = start # starting point of the ray
+            x1, y1 = end # ending point of the ray
+            dx = x1 - x0 # total change in x
+            dy = y1 - y0 # total change in y
+
+            current_x = int(x0) # current cell x-coordinate
+            current_y = int(y0) # current cell y-coordinate
+            end_x = int(x1) # end cell x-coordinate
+            end_y = int(y1) # end cell y-coordinateof
+
+            # set x-varibales
+            if dx > 0:
+                step_x = 1 # step of one cell in the positive x direction
+                t_delta_x = 1 / dx # how far along the ray we must move for the x-coordinate to change by 1
+                t_max_x = (current_x + 1 - x0) / dx # how far along the ray we must move for the first x-boundary to be crossed
+            elif dx < 0:
+                step_x = -1
+                t_delta_x = 1 / -dx
+                t_max_x = (current_x - x0) / dx
+            else: # dx == 0: the ray is vertical, x-boundaries will never be crossed
+                step_x = 0
+                t_delta_x = float("inf")
+                t_max_x = float("inf")
+
+            # set y-variables
+            if dy > 0:
+                step_y = 1
+                t_delta_y = 1 / dy
+                t_max_y = (current_y + 1 - y0) / dy
+            elif dy < 0:
+                step_y = -1
+                t_delta_y = 1 / -dy
+                t_max_y = (current_y - y0) / dy
+            else: # dy == 0: the ray is horizontal, y-boundaries will never be crossed
+                step_y = 0
+                t_delta_y = float("inf")
+                t_max_y = float("inf")
+
+            cells = [(current_y, current_x)] # (y, x) for row, column indexing
+            remaining_steps = abs(end_x - current_x) + abs(end_y - current_y)
+            for _ in range(remaining_steps):
+                # if the next x-boundary is closer than the next y-boundary or the current cell is in the same column as the end cell
+                if t_max_y < t_max_x or current_x == end_x:
+                    current_y += step_y # step in the y direction
+                    t_max_y += t_delta_y # update the next y-boundary crossing distance
+                # if the next y-boundary is closer than the next x-boundary or the current cell is in the same row as the end cell
+                elif t_max_x < t_max_y or current_y == end_y:
+                    current_x += step_x # step in the x direction
+                    t_max_x += t_delta_x # update the next x-boundary crossing distance
+                cells.append((current_y, current_x)) # add traversed cell ((y, x) for row, column indexing)
+
+            return cells
+        
+        # get the grid cells crossed by the two offset edges using Amanatides-Woo traversal
+        cells1 = _amanatides_woo(start1, end1)
+        cells2 = _amanatides_woo(start2, end2)
+        
+        return list(set(cell for cell in cells1 + cells2 if 0 <= cell[0] < self.height and 0 <= cell[1] < self.width))  # return unique cells crossed by the buffered edge
+    
 
     def _get_vertex_footprint_cells(self, index):
         """Return the set of cells that intersect the given roadmap vertex's footprint."""
@@ -500,8 +595,9 @@ class DRM:
 
     def _get_edge_footprint_cells(self, edge):
         """Return the set of cells that intersect the given roadmap edge's footprint."""
-        footprint = self._path_footprint(self.vertices[edge[0]], self.vertices[edge[1]])
-        cells = self._get_intersecting_cells(footprint)
+        # footprint = self._path_footprint(self.vertices[edge[0]], self.vertices[edge[1]])
+        # cells = self._get_intersecting_cells(footprint)
+        cells = set(self._determine_edge_cells(self.vertices[edge[0]], self.vertices[edge[1]]))
         cells.difference_update(self._get_vertex_footprint_cells(edge[0]))
         cells.difference_update(self._get_vertex_footprint_cells(edge[1]))
         return cells
@@ -518,8 +614,8 @@ class DRM:
 
     def _build_workspace_to_roadmap_mapping(self):
         """Map all roadmap vertices and edges to their footprint's occupancy cells."""
-        self.phi_n.clear()
-        self.phi_a.clear()
+        # self.phi_n.clear()
+        # self.phi_a.clear()
         for index in range(len(self.vertices)):
             self._map_vertex_to_occupancy_cell(index)
         for edge in self.edges:
@@ -528,15 +624,20 @@ class DRM:
         self._refresh_active_status(range(len(self.vertices)), self.edges)
 
     def preprocessing_step(self, min_num_vertices=None):
+        """Build the initial roadmap and map all vertices and edges to their occupancy cells."""
         self.affected_vertices.clear()
         self.affected_edges.clear()
         
         self._build_wall_graph()
+        print("WALL GRAPH BUILT")
         # self._repair_active_connectivity()
         self._update_special_points(self.access_points, self.io_points, map_new=False)
+        print("SPECIAL POINTS ADDED", flush=True)
         self._build_workspace_to_roadmap_mapping()
+        print("WORKSPACE MAPPED TO ROADMAP", flush=True)
 
         repair_vertices, repair_edges = self._repair_active_connectivity(min_num_vertices)
+        print(f"REPAIRED CONNECTIVITY")
         for index in repair_vertices:
             self._map_vertex_to_occupancy_cell(index)
         for edge in repair_edges:
@@ -584,8 +685,8 @@ class DRM:
                 self.occupancy[source] = 0
                 changed_cells.update((source, target))
                 
-        # update the free space
-        self._refresh_free_and_obstacle_space()
+        # update the obstacle space
+        self._refresh_obstacle_space()
         
         # determine which special points are new (for highlighting in plot)
         new_special_points = (set(new_access_points) | set(new_io_points)).difference(self.special_vertices)
@@ -593,9 +694,10 @@ class DRM:
         # update special points and map new elements before the wall update consults cell mappings
         self._update_special_points(new_access_points, new_io_points)
 
-        # update only the wall-graph vertices and edges affected by the edits
-        wall_vertices, wall_edges = self._update_wall_graph(changed_cells)
+        # update the wall-graph vertices and edges affected by the edits
+        affected_wall_vertices, new_wall_edges = self._update_wall_graph(changed_cells)
 
+        # determine which special vertices and edges are affected by the edits
         special_vertices = set(self.special_vertices.values())
         new_special_vertices = {
             self.special_vertices[point]
@@ -616,8 +718,8 @@ class DRM:
         affected_edges.update(self._get_incident_edges(affected_vertices))
 
         # refresh the active/inactive status of all affected vertices and edges, including special points
-        refreshed_vertices = affected_vertices | special_vertices | wall_vertices
-        refreshed_edges = affected_edges | special_edges | wall_edges
+        refreshed_vertices = affected_vertices | special_vertices | affected_wall_vertices
+        refreshed_edges = affected_edges | special_edges | new_wall_edges
         self._refresh_active_status(refreshed_vertices, refreshed_edges)
 
         # repair the active roadmap connectivity if it has become disconnected
@@ -629,7 +731,7 @@ class DRM:
 
         # record the affected vertices and edges for highlighting
         self.affected_vertices = refreshed_vertices | repair_vertices
-        self.affected_edges = affected_edges | wall_edges | changed_special_edges | repair_edges
+        self.affected_edges = affected_edges | new_wall_edges | changed_special_edges | repair_edges
         
         # record the updated graph
         self.record_graph(phase="online_update")

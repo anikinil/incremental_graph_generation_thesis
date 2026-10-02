@@ -18,8 +18,27 @@ class UnionFind:
     """
     
     def __init__(self, n):
+        """
+        Initializes the Union-Find structure with n elements (0 to n-1).
+        Instead of using make
+        """
         self.parent = np.arange(n) # each vertex is its own parent initially
         self.rank = np.zeros(n, dtype=int) # rank for union by rank optimization
+
+    def ensure_capacity(self, size):
+        """Expands storage so element indices below size are valid."""
+        old_size = len(self.parent)
+        if size <= old_size:
+            return
+
+        new_size = max(size, old_size + 100)
+        new_parent = np.arange(new_size)
+        new_parent[:old_size] = self.parent
+        self.parent = new_parent
+
+        new_rank = np.zeros(new_size, dtype=int)
+        new_rank[:old_size] = self.rank
+        self.rank = new_rank
         
     def find(self, x):
         """Finds the root of the set containing x with path compression."""
@@ -48,7 +67,10 @@ class UnionFind:
     
     def get_num_components(self, num_vertices):
         """Gets the number of connected components among the first num_vertices vertices."""
-        return len(set(self.find(i) for i in range(num_vertices)))
+        roots = set()
+        for i in range(num_vertices):
+            roots.add(self.find(i))
+        return len(roots)
 
 
 class PRM:
@@ -100,6 +122,11 @@ class PRM:
 
         self.wall_vertices = {} # (row, col) -> vertex_index
 
+        self.KING_MOVES = (
+            (-1, -1), (-1, 0), (-1, 1),
+             (0, -1),           (0, 1),
+             (1, -1),  (1, 0),  (1, 1),
+        )
 
     def _generate_random_free_config(self, max_attempts = 1000):
         """Generates a random configuration in the free space using rejection sampling."""
@@ -177,36 +204,24 @@ class PRM:
         
         self.vertices[new_idx] = config
         self.num_vertices += 1
-        
-        # expand union-find if needed
-        if new_idx >= len(self.union_find.parent):
-            old_size = len(self.union_find.parent)
-            new_size = old_size + 100
-            
-            new_parent = np.arange(new_size)
-            new_parent[:old_size] = self.union_find.parent
-            self.union_find.parent = new_parent
-            
-            new_rank = np.zeros(new_size, dtype=int)
-            new_rank[:old_size] = self.union_find.rank
-            self.union_find.rank = new_rank
+
+        self.union_find.ensure_capacity(self.num_vertices)
         
         return new_idx
 
-    def _is_wall_cell(self, cell):
-            """Return whether a cell is adjacent to a free cell."""
-            row, col = cell
-            if self.occupancy[row, col] == 0: # cell not free -> not a wall cell
-                for row_offset in (-1, 0, 1):
-                    for col_offset in (-1, 0, 1):
-                        if row_offset != 0 and col_offset != 0: # skip the cell itself
-                            neighbour_row = row + row_offset
-                            neighbour_col = col + col_offset
-                            if (0 <= neighbour_row < self.height and # if neighbor in bounds
-                                0 <= neighbour_col < self.width and
-                                self.occupancy[neighbour_row, neighbour_col] != 0): # and occupied
-                                return True # wall cell
-            return False # no occupied neighbour found -> not a wall cell
+    def _is_adjacent_to_wall(self, cell):
+        """Return whether a cell is adjacent to a free cell."""
+
+        row, col = cell
+        if self.occupancy[row, col] == 0: # cell not free -> not a wall cell
+            for row_offset, col_offset in self.KING_MOVES:
+                neighbour_row = row + row_offset
+                neighbour_col = col + col_offset
+                if (0 <= neighbour_row < self.height and # if neighbor in bounds
+                    0 <= neighbour_col < self.width and
+                    self.occupancy[neighbour_row, neighbour_col] != 0): # and occupied
+                    return True # wall cell
+        return False # no occupied neighbour found -> not a wall cell
 
     def _build_wall_graph(self):
         """
@@ -214,23 +229,17 @@ class PRM:
 
         Similar to: "A Randomized Roadmap Method for Path and Manipulation Planning", Amato & Wu (1996) 
         """
-        
-        KING_MOVES = (
-            (-1, -1), (-1, 0), (-1, 1),
-             (0, -1),           (0, 1),
-             (1, -1),  (1, 0),  (1, 1),
-        )
 
         # add the free, wall-adjacent cell centres to the roadmap
         for row in range(self.height):
             for col in range(self.width):
-                if self._is_wall_cell((row, col)):
+                if self._is_adjacent_to_wall((row, col)):
                     config = np.array([col + 0.5, row + 0.5], dtype=np.float64)
                     self.wall_vertices[(row, col)] = self._add_vertex(config)
 
         # add the King's Graph edges between the wall vertices
         for (row, col), vertex_idx in self.wall_vertices.items(): # for all wall vertices
-            for row_offset, col_offset in KING_MOVES: # for all neighbours
+            for row_offset, col_offset in self.KING_MOVES: # for all neighbours
                 neighbour_row = row + row_offset
                 neighbour_col = col + col_offset
                 neighbour_idx = self.wall_vertices.get((neighbour_row, neighbour_col))
@@ -242,9 +251,8 @@ class PRM:
 
                     # the local path must also respect the buffered obstacle space
                     path = LineString([self.vertices[vertex_idx], self.vertices[neighbour_idx]])
-                    if not self.free_space.covers(path):
-                        continue
-                    self._connect_vertices(vertex_idx, neighbour_idx)
+                    if self.free_space.covers(path): # line between the two vertices is collision-free
+                        self._connect_vertices(vertex_idx, neighbour_idx)
 
         # build the tree after all wall vertices have been added
         self._update_kdtree()
@@ -268,7 +276,7 @@ class PRM:
         
         added_vertices_num = 0
         num_components = self._num_components()
-        while num_components > 1 or (min_num_vertices is not None and added_vertices_num <= min_num_vertices):
+        while num_components > 1 or (min_num_vertices is not None and added_vertices_num < min_num_vertices):
             
             # generate random free configuration
             c = self._generate_random_free_config()

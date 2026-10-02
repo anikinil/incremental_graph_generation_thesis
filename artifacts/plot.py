@@ -38,7 +38,7 @@ AFFECTED_OUTLINE_COLOR = (0.9, 0.2, 0.2, 1)       # red
 
 VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.3)      # blue, semi-transparent for better visibility
 
-IO_POINT_COLOR = (0.1, 0.5, 0.3)                  # green
+IO_POINT_COLOR = (0.2, 0.6, 0.4)                  # green
 ACCESS_POINT_COLOR = (0.9, 0.5, 0.1)              # orange
 SPECIAL_POINT_EDGE_COLOR = (0.1, 0.1, 0.1, 1)     # dark grey
 
@@ -200,26 +200,23 @@ def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordi
 
 
 def _draw_scenario_access_points(ax, access_points):
-    """Draw scenario access points as arrows toward their accessible free space."""
-    direction_vectors = {
-        "n": (0, -1),
-        "s": (0, 1),
-        "w": (-1, 0),
-        "e": (1, 0),
-    }
+    """Draw scenario access points as circles at their shared cell-edge midpoints."""
+    if not access_points:
+        return None
 
-    for row, column, direction in access_points:
-        dx, dy = direction_vectors[direction]
-        x, y = column, row
-        ax.add_patch(FancyArrowPatch(
-            (x - 0.5 * dx, y - 0.5 * dy),
-            (x, y),
-            arrowstyle="-|>",
-            mutation_scale=5,
-            linewidth=0,
-            facecolor=ACCESS_POINT_COLOR,
-            zorder=20,
-        ))
+    # Scenario.update_access_points() stores access points as (row, column,
+    # direction), where row and column already identify the edge midpoint.
+    points = np.asarray([(column, row) for row, column, _ in access_points], dtype=float)
+    return ax.scatter(
+        points[:, 0],
+        points[:, 1],
+        s=42,
+        color=ACCESS_POINT_COLOR,
+        edgecolors=SPECIAL_POINT_EDGE_COLOR,
+        linewidths=0.7,
+        zorder=GRID_ZORDER + 2,
+        label="Access points",
+    )
 
 
 def _draw_grid_special_points(ax, access_points, io_points):

@@ -36,6 +36,9 @@ class ExperimentRecorder:
         self.experiment_dir.mkdir(parents=True, exist_ok=True)
 
         self.algorithm = None
+        # ``None`` preserves a caller's per-save plotting choice.  An explicit
+        # boolean set through ``set_algorithm`` overrides it for that algorithm.
+        self.algorithm_plot = None
 
         self.use_iterations = True
 
@@ -56,12 +59,17 @@ class ExperimentRecorder:
 
         self.plot_manager = PlotManager(dynamic_vgraph_plot_buffer_segments=plot_buffer_segments)
 
-    def set_algorithm(self, algorithm, use_iterations=True):
+    def set_algorithm(self, algorithm, use_iterations=True, plot=None):
         """
         Switches the active bucket that subsequent save() calls write into.
+
+        Pass ``plot=True`` or ``plot=False`` to override the plotting choice of
+        every artifact subsequently saved for this algorithm.  Leave it as
+        ``None`` to retain each save call's existing plotting choice.
         """
         self.algorithm = algorithm
         self.use_iterations = use_iterations
+        self.algorithm_plot = plot
 
     def set_scenario(self, scenario, plot=False, iteration=None):
         """
@@ -86,6 +94,14 @@ class ExperimentRecorder:
         if not record_algorithm:
             raise RuntimeError("An algorithm must be selected before saving artifacts.")
 
+        # A per-algorithm setting controls artifacts saved for the active
+        # algorithm, including the scenario artifact.
+        should_plot = (
+            self.algorithm_plot
+            if record_algorithm == self.algorithm and self.algorithm_plot is not None
+            else plot
+        )
+
         base_dir = self.scenario_dir / record_algorithm
 
         data_dir = base_dir / "data"
@@ -93,7 +109,7 @@ class ExperimentRecorder:
 
         data_dir.mkdir(parents=True, exist_ok=True)
         
-        if plot:
+        if should_plot:
             plot_dir.mkdir(parents=True, exist_ok=True)
 
         filename = data_type
@@ -120,7 +136,7 @@ class ExperimentRecorder:
         with open(pkl_path, "wb") as f:
             pickle.dump(record, f, protocol=pickle.HIGHEST_PROTOCOL)
 
-        if plot:
+        if should_plot:
             self.plot_manager.plot(
                 data_type=data_type,
                 data=data_snapshot,
@@ -134,7 +150,7 @@ class ExperimentRecorder:
 
         return {
             "pkl": pkl_path,
-            "pdf": pdf_path if plot else None,
+            "pdf": pdf_path if should_plot else None,
         }
 
     def new_iteration(self, iteration=None):

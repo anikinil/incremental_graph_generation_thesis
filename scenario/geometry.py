@@ -37,19 +37,13 @@ def offset_access_points(access_points, agv_radius, margin=SPECIAL_POINT_CLEARAN
     return offset_points
 
 
-def centered_io_points(io_points):
-    """Represent grid-cell IO points by their continuous cell centres."""
-    return [(row, column) for row, column in io_points]
-    # return [(row + 0.5, column + 0.5) for row, column in io_points]
-
-
 def continuous_special_points(access_points, io_points, agv_radius,
                               margin=SPECIAL_POINT_CLEARANCE_MARGIN):
     """Convert grid special points to collision-free configurations via offsetting by the AGV radius."""
     offset_access = offset_access_points(access_points, agv_radius, margin)
     # swap row and column for shapely coordinates (x, y)
     continuous_access_points = [(column, row) for row, column, _ in offset_access]
-    continuous_io_points = [(column, row) for row, column in centered_io_points(io_points)]
+    continuous_io_points = [(column, row) for row, column in io_points]
     return continuous_access_points, continuous_io_points
 
 def navigation_space(occupancy, agv_radius, num_buffer_segments):

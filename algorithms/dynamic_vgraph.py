@@ -30,9 +30,10 @@ class DynamicVGraph:
         self.vertices = []
         self.edges = []
         
-        # mappings between grid cells and graph edges
+        # mappings between grid cells, graph edges, and vertices
         self.cell_to_edge = {}
         self.edge_to_cells = {}
+        self.vertex_to_edges = {}
         
         self.edge_active_status = {}  # dictionary to track the active status of edges
 
@@ -193,11 +194,15 @@ class DynamicVGraph:
                 edge = (vertices[i], vertices[j])
                 cells = self._determine_edge_cells(edge[0], edge[1])
                 self.edge_to_cells[edge] = cells
+                for vertex in edge:
+                    if vertex not in self.vertex_to_edges:
+                        self.vertex_to_edges[vertex] = set()
+                    self.vertex_to_edges[vertex].add(edge)
                 for cell in cells:
                     if cell not in self.cell_to_edge:
-                        self.cell_to_edge[cell] = []
-                    self.cell_to_edge[cell].append(edge)
-                    self.edge_active_status[edge] = True # initialize edge as active
+                        self.cell_to_edge[cell] = set()
+                    self.cell_to_edge[cell].add(edge)
+                self.edge_active_status[edge] = True # initialize edge as active
 
                 # update progress
                 pair_number += 1
@@ -239,6 +244,8 @@ class DynamicVGraph:
                 self.occupancy[cell_to] = value
                 removed_cells.add(cell_from)
                 added_cells.add(cell_to)
+                
+        print("APPLIED LAYOUT UPDATES")
 
         # activate edges affected by removed obstacle cells, if no remaining obstacle blocks them
         for cell in removed_cells:
@@ -250,26 +257,40 @@ class DynamicVGraph:
         self.access_points = new_access_points
         self.io_points = new_io_points
 
+        print("UPDATED SPECIAL POINTS")
+
         # TODO make incremental, only look at relebvant parts instead of recomputing whole obstacle space
         # get all vertices of the updated obstacle space and special points
         _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
         new_vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.io_points) + list(self.access_points)))
 
         # remove vertices that are no longer part of the obstacle space or special points
-        removed_vertices = [vertex for vertex in self.vertices if vertex not in new_vertices]
+        new_vertex_set = set(new_vertices)
+        removed_vertices = set(self.vertices) - new_vertex_set
+        print(f"REMOVING {len(removed_vertices)} VERTICES")
+        removed_edges = set()
         for vertex in removed_vertices:
-            for edge in list(self.edge_to_cells):
-                if vertex in edge:
-                    cells = self.edge_to_cells.pop(edge)
-                    self.edge_active_status.pop(edge)
-                    for cell in cells:
-                        self.cell_to_edge[cell].remove(edge)
-                        if not self.cell_to_edge[cell]:
-                            del self.cell_to_edge[cell]
-            self.vertices.remove(vertex)
+            removed_edges.update(self.vertex_to_edges.get(vertex, set()))
+
+        for edge in removed_edges:
+            cells = self.edge_to_cells.pop(edge)
+            self.edge_active_status.pop(edge)
+            for edge_vertex in edge:
+                self.vertex_to_edges[edge_vertex].remove(edge)
+                if not self.vertex_to_edges[edge_vertex]:
+                    del self.vertex_to_edges[edge_vertex]
+            for cell in cells:
+                self.cell_to_edge[cell].remove(edge)
+                if not self.cell_to_edge[cell]:
+                    del self.cell_to_edge[cell]
+
+        self.vertices = [vertex for vertex in self.vertices if vertex not in removed_vertices]
+
+        print("REMOVED VERTICES")
 
         # add new obstacle and special point vertices with edges to all existing vertices
-        added_vertices = [vertex for vertex in new_vertices if vertex not in self.vertices]
+        current_vertex_set = set(self.vertices)
+        added_vertices = [vertex for vertex in new_vertices if vertex not in current_vertex_set]
         added_edges = set()
         for vertex in added_vertices:
             for other_vertex in self.vertices:
@@ -278,11 +299,17 @@ class DynamicVGraph:
                 self.edge_to_cells[edge] = cells
                 self.edge_active_status[edge] = True
                 added_edges.add(edge)
+                for edge_vertex in edge:
+                    if edge_vertex not in self.vertex_to_edges:
+                        self.vertex_to_edges[edge_vertex] = set()
+                    self.vertex_to_edges[edge_vertex].add(edge)
                 for cell in cells:
                     if cell not in self.cell_to_edge:
-                        self.cell_to_edge[cell] = []
-                    self.cell_to_edge[cell].append(edge)
+                        self.cell_to_edge[cell] = set()
+                    self.cell_to_edge[cell].add(edge)
             self.vertices.append(vertex)
+            
+        print("ADDED VERTICES AND EDGES")
 
         # deactivate new edges that cross an existing obstacle cell
         for edge in added_edges:
@@ -296,6 +323,8 @@ class DynamicVGraph:
                     self.edge_active_status[edge] = False
 
         self.edges = [edge for edge in self.edge_to_cells if self.edge_active_status[edge]]
+
+        print("UPDATED EDGE STATUS")
 
         self.iteration += 1
         if self.recorder is not None:

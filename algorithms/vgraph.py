@@ -9,12 +9,13 @@ from scenario.geometry import navigation_space
 
 
 class VGraph:
-    
     """
     "An Algorithm for Planning Collision-Free Paths Among Polyhedral Obstacles", Thomas Lozano-Perez (1983)
     
     https://lis.csail.mit.edu/pubs/tlp/collision-free-planning-cacm.pdf
     """
+    
+    # TODO use the same corner translation method as in the paper
     
     def __init__(self, width, height, occupancy, agv_radius,
                  access_points, io_points, num_buffer_segments, recorder=None):
@@ -38,6 +39,7 @@ class VGraph:
         """Get all convex vertices of a polygon."""
         convex_vertices = []
         coords = list(polygon.exterior.coords)[:-1]  # remove duplicate closing point
+        # direction of the polygon is counter-clockwise, so a clockwise turn indicates a convex vertex
         for i in range(len(coords)):
             prev_vertex = coords[i - 1]
             curr_vertex = coords[i]

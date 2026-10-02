@@ -23,7 +23,7 @@ class Scenario:
         self.io_points = set(io_points) # input/output points that should remain free of obstacles (y, x)
         self.access_points = set() # (y, x, direction)
         self.io_points_radius = io_points_radius
-        self.simple_obstacle_rate = simple_obstacle_rate # how many of the obstacles are regular (non-unit-load) obstacles
+        self.simple_obstacle_rate = simple_obstacle_rate # how many of the obstacles are simple (non-unit-load) obstacles
         
         self.agv_radius = agv_radius
 
@@ -49,30 +49,35 @@ class Scenario:
         
         self.recorder = recorder
     
-    def _generate_noise_field(self):
+    def _generate_priority_field(self):
         
-        # generate initial gaussian noise field
+        # generate random noise sampled from a normal distribution
         noise = self.rng.normal(size=(self.height, self.width))
+        
+        # smooth the noise with gaussian filters
         coarse_noise = gaussian_filter(noise, sigma=self.sigma_coarse)
         fine_noise = gaussian_filter(noise, sigma=self.sigma_fine)
+        
         field = coarse_noise + fine_noise
         
         # normalize field
         field = (field - field.min()) / (field.max() - field.min())
         
-        # create a grid containing the row coordinate of every cell
+        # create a grid containing the row and column indices of each cell
         rr, cc = np.meshgrid(np.arange(self.height), np.arange(self.width), indexing="ij")
 
         # create an obstacle penalty around all I/O points
         io_penalty = np.zeros_like(field)
         for r, c in self.io_points:
             distance = (rr - r) ** 2 + (cc - c) ** 2
+            # calculate penalty, using a radial basis function kernel with sigma equal to the I/O points radius
+            # https://en.wikipedia.org/wiki/Radial_basis_function_kernel
             io_penalty += np.exp(-distance / (2 * self.io_points_radius ** 2))
             
-        # reduce obstacle probability around I/O points
+        # apply the obstacle penalty around I/O points
         field -= io_penalty
         
-        # normalize again
+        # normalize again, since the penalty may have changed the range of values
         field = (field - field.min()) / (field.max() - field.min())
         
         # create binary mask where cells that must reliably remain free of obstacles are marked 0
@@ -118,7 +123,7 @@ class Scenario:
             # scale the noisy aisle influence to values between zero and one
             noisy_aisle_field /= noisy_aisle_field.max()
             
-            # reduce the obstacle probability near noisy aisles
+            # apply the noisy aisle influence to the obstacle probability field
             field -= noisy_aisle_field
             
             # normalize again
@@ -156,82 +161,72 @@ class Scenario:
         # determine the number of obstacles to place
         unit_loads_num = int(self.height * self.width * self.occupancy_rate * (1-self.simple_obstacle_rate))
         simple_obstacles_num = int(self.height * self.width * self.occupancy_rate) - unit_loads_num
-        self.obstacle_count = unit_loads_num + simple_obstacles_num
+        target_obstacle_count = unit_loads_num + simple_obstacles_num
         progress = GenerationProgress("Scenario", "Generating obstacle layout", self.iteration)
-        progress.start(f"target: {self.obstacle_count} obstacles")
+        progress.start(f"target: {target_obstacle_count} obstacles")
 
-        # generate the noise field
-        self._generate_noise_field()
+        # generate the object placement priority field
+        self._generate_priority_field()
         selection_field = self.probability_field.copy()
 
-        obstacles = np.concatenate([
-            np.zeros(simple_obstacles_num, dtype=bool), # False: simple obstacles
-            np.ones(unit_loads_num, dtype=bool)         # True: unit-load obstacles
-        ])
-        
-        # shuffle the obstacles to randomize their type when placing
-        self.rng.shuffle(obstacles)
+        # create a shuffled list of obstacle types to place
+        # 1: simple obstacles, 2: unit-load obstacles        
+        obstacles_to_place = [1] * simple_obstacles_num + [2] * unit_loads_num        
+        self.rng.shuffle(obstacles_to_place)
         
         unit_loads_placed = 0
         simple_obstacles_placed = 0
         placed_obstacles = 0
-        processed_cells = 0
-        max_free_cells = np.sum(selection_field > 0) # maximum number of free cells not forbidden by probability field
-        while obstacles.size > 0:
+        attempted_placements = 0
+        unforbidden_cells = np.sum(selection_field > 0) # number of cells not forbidden by the probability field 
+        # attempt to place obstacles until all are placed or no more valid placements are possible
+        while len(obstacles_to_place) > 0 and attempted_placements < unforbidden_cells:
 
             # highest remaining obstacle probability
             idx = np.argmax(selection_field)
             r, c = np.unravel_index(idx, selection_field.shape)
 
-            # mark as processed so the same cell is not selected again
+            # mark as attempted so the same cell is not selected again
             selection_field[r, c] = -np.inf
+            attempted_placements += 1
 
-            # skip if it is an IO point and should remain free
-            if (r, c) in self.io_points:
-                continue
-            
-            if obstacles[0]: # if it is a unit-load obstacle: 2
-                self.occupancy[r, c] = 2
-            else: # if it is a simple obstacle: 1
-                self.occupancy[r, c] = 1
+            self.occupancy[r, c] = obstacles_to_place[0] # place the next obstacle in the list
 
             # if the placement does not disconnect the free space, keep it
             if self.connected():
                 placed_obstacles += 1
                 # track how many of each type of obstacle has been placed
-                if obstacles[0]:
+                if obstacles_to_place[0] == 2:
                     unit_loads_placed += 1
                 else:
                     simple_obstacles_placed += 1
                 # print progress
                 if placed_obstacles % 100 == 0:
-                    progress.update(
-                        placed_obstacles,
-                        self.obstacle_count,
-                        f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
-                    )
-                obstacles = obstacles[1:] # remove the placed obstacle from the list
+                    progress.update(placed_obstacles, target_obstacle_count, f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}")
+                obstacles_to_place = obstacles_to_place[1:] # remove the placed obstacle from the list
             else:
                 # else: undo placement
-                self.occupancy[r, c] = 0
-                
-            processed_cells += 1
-            if processed_cells >= max_free_cells:
-                break
+                self.occupancy[r, c] = 0 
 
         # determine access points for placed obstacles
         self.update_access_points()
-        success = placed_obstacles == self.obstacle_count
+        self.obstacle_count = placed_obstacles
+        
+        if len(obstacles_to_place) > 0:
+            print("Scenario generation failed: not all obstacles could be placed.")
+        
+        # if not all obstacles could be placed, the scenario generation failed
+        success = len(obstacles_to_place) == 0
         if success:
             progress.finish(
                 True,
-                f"placed {placed_obstacles}/{self.obstacle_count} obstacles | "
+                f"placed {placed_obstacles}/{target_obstacle_count} obstacles | "
                 f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
             )
         else:
             progress.finish(
                 False,
-                f"not enough free cells; stopped prematurely after {placed_obstacles}/{self.obstacle_count} obstacles | "
+                f"not enough occupiable cells; stopped prematurely after {placed_obstacles}/{target_obstacle_count} obstacles | "
                 f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
             )
         
@@ -287,19 +282,19 @@ class Scenario:
             locations = cells
 
         for r, c in locations: # for each cell
-            for dr, dc, direction in directions: #  for each direction
+            for dr, dc, direction in directions: # for each direction
                 nr, nc = r + dr, c + dc # get neighbor coordinates
 
-                # skip if neighbor is out of bounds
-                if not (0 <= nr < self.height and 0 <= nc < self.width):
-                    continue
-                
-                point = (nr + r + 1) / 2, (nc + c + 1) / 2, direction
+                # if neighbor is not out of bounds
+                if 0 <= nr < self.height and 0 <= nc < self.width:
+                    
+                    # the access point is the midpoint between the obstacle cell and the free neighbor cell, with direction towards the free neighbor
+                    point = (nr + r + 1) / 2, (nc + c + 1) / 2, direction
 
-                if self.occupancy[r, c] == 2 and self.occupancy[nr, nc] == 0:
-                    self.access_points.add(point)
-                else:
-                    self.access_points.discard(point)
+                    if self.occupancy[r, c] == 2 and self.occupancy[nr, nc] == 0:
+                        self.access_points.add(point)
+                    else:
+                        self.access_points.discard(point)
 
     def make_updates(self, respect_probab_field=True, number_of_updates=100):
         """Make random updates to the scenario by adding, moving, or removing obstacles."""

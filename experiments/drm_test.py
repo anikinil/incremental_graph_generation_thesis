@@ -17,15 +17,16 @@ def _apply_scenario_updates(drm, scenario, min_num_vertices=None):
 
 if __name__ == "__main__":
 
-    seed = 42
+    seed = 41
     rng = np.random.default_rng(seed)
 
-    height = 50
-    width = 70
+    
+    height = 160
+    width = 160
     
     agv_radius = 0.45
     
-    occupancy_rate = 0.5
+    occupancy_rate = 0.4
 
     io_points = {
         (height * 0.15, 0),
@@ -34,7 +35,7 @@ if __name__ == "__main__":
 
     recorder = ExperimentRecorder(seed=seed, experiment_name="drm_test")
 
-    recorder.set_algorithm("scenario", use_iterations=False)
+    recorder.set_algorithm("scenario", use_iterations=False, plot=True)
 
     scenario = Scenario(
         rng=rng,
@@ -60,7 +61,7 @@ if __name__ == "__main__":
         scenario.agv_radius,
     )
 
-    recorder.set_algorithm("drm", use_iterations=True)
+    recorder.set_algorithm("drm", use_iterations=True, plot=True)
 
     drm = DRM(
         rng=rng,
@@ -69,14 +70,15 @@ if __name__ == "__main__":
         io_points=continuous_io_points,
         height=height,
         width=width,
-        max_dist=4.0,
+        max_dist=5,
         max_neighbors=10,
         agv_radius=scenario.agv_radius,
         num_buffer_segments=2,
         recorder=recorder,
     )
+    
     # drm.preprocessing_step()
-    drm.preprocessing_step(min_num_vertices=500)
+    drm.preprocessing_step(min_num_vertices=(width * height) // 2)
     # drm.preprocessing_step(num_vertices=int(width * height * (1-scenario.occupancy_rate) // 2))
 
 

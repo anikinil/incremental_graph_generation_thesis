@@ -22,7 +22,10 @@ if __name__ == "__main__":
     agv_radius = 0.42
     eps = 0.05
 
-    occupancy_rate = 0.5
+    sigma_coarse = 3
+    sigma_fine = 1
+
+    occupancy_rate = 0.7
 
     io_points = {
         (height * 0.18, 0),
@@ -31,7 +34,7 @@ if __name__ == "__main__":
 
     recorder = ExperimentRecorder(seed=seed)
 
-    recorder.set_algorithm("scenario", use_iterations=False)
+    recorder.set_algorithm("scenario", use_iterations=False, plot=True)
     scenario = Scenario(
         rng=rng,
         height=height,
@@ -59,7 +62,7 @@ if __name__ == "__main__":
     bounds = (0, 0, width, height)
 
 
-    recorder.set_algorithm("prm", use_iterations=False)
+    recorder.set_algorithm("prm", use_iterations=False, plot=True)
     num_buffer_segments = 2  # PRM may use a different buffered-corner approximation
     prm = PRM(
         rng=rng,
@@ -81,7 +84,7 @@ if __name__ == "__main__":
     print()
 
     scale_factor = 3
-    recorder.set_algorithm("gvd", use_iterations=True)
+    recorder.set_algorithm("gvd", use_iterations=True, plot=True)
     gvd = GVD(
         rng=rng,
         occupancy_grid=scenario.occupancy,
