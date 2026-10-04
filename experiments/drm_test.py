@@ -4,7 +4,7 @@ import numpy as np
 
 from artifacts.record import ExperimentRecorder
 from algorithms.drm import DRM
-from scenario.geometry import continuous_special_points
+from algorithms.geometry import continuous_special_points
 from scenario.scenario_generation import Scenario
 
 
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     )
     
     # drm.preprocessing_step()
-    drm.preprocessing_step(min_num_vertices=(width * height) // 2)
+    drm.preprocessing_step(min_num_vertices=1000)
     # drm.preprocessing_step(num_vertices=int(width * height * (1-scenario.occupancy_rate) // 2))
 
 

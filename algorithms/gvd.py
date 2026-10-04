@@ -7,7 +7,7 @@ Lau, Sprunk, Burgard
 import numpy as np
 from collections import defaultdict, deque
 
-from scenario.geometry import offset_access_points
+from algorithms.geometry import offset_access_points
 from artifacts.progress import GenerationProgress
 
 
@@ -61,12 +61,13 @@ class GVD:
         self.occupancy_grid = occupancy_grid.copy()
         self.height, self.width = occupancy_grid.shape
         
-        self.scale_factor = scale_factor
         
         self.access_points = access_points
         self.io_points = io_points
         
         self.agv_radius = agv_radius
+        
+        self.scale_factor = 1
 
         self.recorder = recorder
         
@@ -96,9 +97,12 @@ class GVD:
         
         self.graph = None # { "vertices": [vid_1: (y, x), vid_2: (y, x), ...], "edges": [(vid_1, vid_2), ...] }
         
-        # save voronoi cells added to connect special points to Voronoi skeleton, to recalculate if affected by dynamic updates
-        # {sp_1: [(y, x), (y, x), ...], sp_2: [...], ...}
-        self.special_point_bridges = np.zeros((self.height, self.width), dtype=bool)
+        # retained for compatibility; special points connect directly to Voronoi cells
+        self.special_point_connections = np.zeros((self.height, self.width), dtype=bool)
+
+        # maps special point indices to their Voronoi connection cells
+        self.access_point_connection_cells = []
+        self.io_point_connection_cells = []
     
         self.iteration = 0 # increased after every layout update
 
@@ -191,6 +195,7 @@ class GVD:
     def Adj(self, s):
         y, x = s
         neighbors = []
+        
         if y > 0:
             neighbors.append((y-1, x))  # up
         if y < self.height-1:
@@ -200,7 +205,6 @@ class GVD:
         if x < self.width-1:
             neighbors.append((y, x+1))  # right
         return neighbors
-        
         # """Get 8-connected neighbors (including diagonals)."""
         # neighbors = []
         # for dy in [-1, 0, 1]:
@@ -360,12 +364,12 @@ class GVD:
     
     def checkVoro(self, s, n, threshold):
         
-        # threshold = threshold ** 2 # all distances are compared squared
+        threshold = threshold ** 2 # all distances are compared squared
         
         obst_s = self.obst[s[0], s[1]]
         obst_n = self.obst[n[0], n[1]]
         
-        threshold = 1
+        # threshold = 1
 
         if (self.D[s[0], s[1]] > threshold or self.D[n[0], n[1]] > threshold) \
             and obst_n != (-1, -1) \
@@ -445,17 +449,18 @@ class GVD:
         ]
         self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for y, x in new_io_points]
 
-        self.special_point_bridges.fill(False)  # clear special bridges, as they need to be recalculated now
+        self.special_point_connections.fill(False)
+        self.access_point_connection_cells = []
+        self.io_point_connection_cells = []
         
         self.iteration += 1
         if self.recorder is not None:
             self.recorder.new_iteration(self.iteration)
 
 
-    def _build_special_point_bridges(self):
+    def _find_special_point_connections(self):
         """
-        Connects special points to the Voronoi cells by casting a ray of cells 
-        from the special point in the direction of the dir label to the closest GVD cell.
+        Finds the first Voronoi cell reached by a ray from each special point.
         
         NOTE theory, why that seems to alway work: Access point rays always meet a Voronoi cell before an obstacle.
         There is always a Voronoi cell between two obstacles, so there is always a Voronoi cell between the access point's obstacle
@@ -468,6 +473,9 @@ class GVD:
         progress = GenerationProgress("GVD", "Connecting special points to Voronoi skeleton", self.iteration)
         progress.start(f"target: {total_special_points} special points")
 
+        self.special_point_connections.fill(False) # reset special point connection map
+        self.access_point_connection_cells = [] # reset access point connection cells
+        self.io_point_connection_cells = [] # reset IO point connection cells
         connected = 0
         processed_special_points = 0
         for ap in self.access_points:
@@ -478,101 +486,69 @@ class GVD:
             # while 0 <= int(y) < self.height and 0 <= int(x) < self.width:
             while True:
                 # get current cell
-                on_voro = self.voro[int(y), int(x)]
+                current_cell = (int(y), int(x))
 
-                # if on a Voronoi cell, stop the ray
-                if on_voro:
+                # if on a Voronoi cell, save it as the access point's connection cell
+                if self.voro[current_cell]:
+                    self.access_point_connection_cells.append(current_cell)
                     connected += 1
                     break
-                
-                # else: add the cell to the bridge
-                self.special_point_bridges[int(y), int(x)] = True
                 
                 # move in the direction of the dir label
                 y += dir_vec[0]
                 x += dir_vec[1]
             processed_special_points += 1
             if processed_special_points % 10 == 0 or processed_special_points == total_special_points:
-                progress.update(
-                    processed_special_points,
-                    total_special_points,
-                    f"access points connected: {connected}/{len(self.access_points)}",
-                )
+                progress.update(processed_special_points, total_special_points, f"access points connected: {connected}/{len(self.access_points)}")
         
-        # try to connect similarly to access points, but try each direction and pick the best one:
-        # no obstacles encountered, shortest distance
         connected = 0
-        for i, iop in enumerate(self.io_points):
+        for iop in self.io_points:
             y, x = iop
-            found_connection = False
-            best_bridge_cells = None
-            best_distance = np.inf
-            
-            for dir_vec in dirs.values():
-                curr_x, curr_y = x, y
-                current_bridge_cells = []
-                # while 0 <= int(curr_y) < self.height and 0 <= int(curr_x) < self.width:
-                while True:
-                    on_voro = self.voro[int(curr_y), int(curr_x)]
-                    if on_voro: # if on skeleton, stop the ray
-                        found_connection = True
-                        current_distance = len(current_bridge_cells)
-                        if current_distance < best_distance:
-                            best_distance = current_distance
-                            best_bridge_cells = current_bridge_cells.copy()
+            best_connection_cell = None
+
+            # store the current position for every active ray
+            rays = [(x, y, dir_vec) for dir_vec in dirs.values()]
+
+            # advance every active ray by one cell per iteration
+            while rays and best_connection_cell is None:
+                next_rays = []
+                for curr_x, curr_y, dir_vec in rays:
+                    current_cell = (int(curr_y), int(curr_x))
+                    if self.voro[current_cell]: # if on skeleton, this is one of the shortest connections
+                        best_connection_cell = current_cell
                         break
+
                     # if hit an obstacle, stop searching in this direction
-                    if self.occupancy_grid[int(curr_y), int(curr_x)] > 0:
-                        break
-            
-                    # add the current cell to the bridge cells list
-                    current_bridge_cells.append((int(curr_y), int(curr_x)))
-                    
+                    if self.occupancy_grid[current_cell] > 0:
+                        continue
+
                     # move in the direction of the dir label
-                    curr_y += dir_vec[0]
-                    curr_x += dir_vec[1]
-                    
-            if found_connection:
+                    next_rays.append((curr_x + dir_vec[1], curr_y + dir_vec[0], dir_vec))
+
+                rays = next_rays
+
+            self.io_point_connection_cells.append(best_connection_cell)
+            if best_connection_cell is not None:
                 connected += 1
-                # add the best bridge cells to the Voronoi diagram
-                for cell in best_bridge_cells:
-                    self.special_point_bridges[cell] = True
-            else: 
+            else:
                 progress.warning(f"IO point {iop} does not reach the Voronoi skeleton")
             processed_special_points += 1
+
             if processed_special_points % 10 == 0 or processed_special_points == total_special_points:
-                progress.update(
-                    processed_special_points,
-                    total_special_points,
-                    f"IO points connected: {connected}/{len(self.io_points)}",
-                )
+                progress.update(processed_special_points, total_special_points, f"IO points connected: {connected}/{len(self.io_points)}")
 
-        # 
-        access_connected = np.count_nonzero([
-            self.special_point_bridges[int(y), int(x)] or self.voro[int(y), int(x)]
-            for y, x, _ in self.access_points
-        ])
-        progress.finish(
-            connected == len(self.io_points) and access_connected == len(self.access_points),
-            f"access points: {access_connected}/{len(self.access_points)} | IO points: {connected}/{len(self.io_points)}",
-        )
-
-        self._record("voronoi_skeleton_with_bridges", voro=self.voro,
-                     bridges=self.special_point_bridges)
+        access_connected = len(self.access_point_connection_cells)
+        progress.finish(connected == len(self.io_points) and access_connected == len(self.access_points),
+            f"access points: {access_connected}/{len(self.access_points)} | IO points: {connected}/{len(self.io_points)}")
 
 
-    def clear_bridges(self):
-        self.special_point_bridges.fill(False)
-
-    def _special_point_on_cell(self, cell):
+    def _special_point_connection_on_cell(self, cell):
         """
-        Checks if a special point is located on the given cell (r, c).
+        Checks if a given cell is a connection cell for any special point.
         """
-        for sp in self.access_points + self.io_points:
-            if (int(sp[0]), int(sp[1])) == cell:
-                return True
-        return False
+        return cell in self.access_point_connection_cells or cell in self.io_point_connection_cells
     
+    # for testing and validation only
     def _get_connected_components(self):
         if not self.graph or not self.graph["vertices"]:
             return []
@@ -596,12 +572,32 @@ class GVD:
             components.append(component)
         return components
 
+    # for testing and validation only
     def _is_graph_connected(self):
         components = self._get_connected_components()
         if len(components) == 1:
             return True
         else:
             return False
+    
+    def _diagonal_crosses_blocked_corner(self, start_cell, end_cell, blocked):
+        """
+        Returns True if a one-cell diagonal crosses the corner of a blocked cell.
+        """
+        start_y, start_x = start_cell
+        end_y, end_x = end_cell
+
+        dy = end_y - start_y
+        dx = end_x - start_x
+
+        # This rule applies only to directly diagonal neighbouring cells.
+        if abs(dy) != 1 or abs(dx) != 1:
+            return False
+
+        side_cell_1 = (start_y + dy, start_x)
+        side_cell_2 = (start_y, start_x + dx)
+
+        return blocked[side_cell_1] or blocked[side_cell_2]
     
     def build_graph(self):
         """
@@ -613,15 +609,15 @@ class GVD:
         """
         # self.thin() # not working: deleting essential endpoints. TODO remove, or find better solution
         # perhaps modify "Building Skeleton Models via 3D Medial Surface/Axis Thinning Algorithms", T.-C. Lee, R. Kashyap, C.-N. Chu (1994)
-        self._build_special_point_bridges()
-        bridge_grid = self.special_point_bridges.astype(np.uint8)  # 0 = free cell, 1 = special point bridge
+        
+        self._find_special_point_connections()
         
         # 0 = free cell, 1 = skeleton cell (on free cell), 2 = occupied cell
         voronoi_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
         voronoi_grid[self.voro] = 1
         obstacle_grid = np.zeros_like(self.occupancy_grid, dtype=np.uint8)
         obstacle_grid[self.occupancy_grid > 0] = 2
-        grid = voronoi_grid + obstacle_grid + bridge_grid  # 0 = free, 1 = skeleton/bridge, 2 = occupied
+        grid = voronoi_grid + obstacle_grid
         
         skeleton_cell_count = int(np.sum(voronoi_grid))
         progress = GenerationProgress("GVD", "Generating graph from Voronoi skeleton", self.iteration)
@@ -646,24 +642,21 @@ class GVD:
             ( 0, -1),          ( 0, 1),
             ( 1, -1), ( 1, 0), ( 1, 1),
         ]
+        # # neighbor cell offsets for 4-connectivity
+        # directions = [(-1, 0), ( 0, -1), ( 0, 1), ( 1, 0)]
 
         # calculate the degree of each skeleton cell (number of neighbors that are also skeleton cells)
-        skeleton_points = np.argwhere(grid == 1)
-        degree = {}
-        for point_number, (r, c) in enumerate(skeleton_points, start=1):
-            degree[(r, c)] = len(neighbors((r, c)))
-            if point_number % 1000 == 0 or point_number == len(skeleton_points):
-                progress.update(point_number, len(skeleton_points), "classifying skeleton cells")
+        vertex_cells = [tuple(cell) for cell in np.argwhere(grid == 1)]
+        # degree = {}
+        # for point_number, (r, c) in enumerate(skeleton_points, start=1):
+        #     degree[(r, c)] = len(neighbors((r, c)))
+        #     if point_number % 1000 == 0 or point_number == len(skeleton_points):
+        #         progress.update(point_number, len(skeleton_points), "classifying skeleton cells")
 
-        # identify vertex cells: skeleton cells that are not degree 2 or contain a special point
-        # NOTE different from original paper: we also include skeleton cells that contain special points as vertices, even if they have degree 2, to ensure that special points are always represented as graph vertices
-        vertex_cells = [(r, c) for (r, c), deg in degree.items() if deg != 2 or self._special_point_on_cell((r, c))]
-
-        # create a mapping from cell coordinates to the exact position of special points if they are located on the cell
-        special_point_by_cell = {
-            (int(sp[0]), int(sp[1])): (sp[0], sp[1])
-            for sp in self.access_points + self.io_points
-        }
+        # identify vertex cells: skeleton cells that are not degree 2 or connect a special point
+        # NOTE different from original paper: we also include special point connection cells as vertices, even if they have degree 2, to ensure that special points can be connected to the graph
+        # vertex_cells = [(r, c) for (r, c), deg in degree.items() if deg != 2 or self._special_point_connection_on_cell((r, c))]
+        #  = [(r, c) for (r, c), deg in degree.items()]
         
         # create mappings between vertex_id and vertex cell coordinates and vice versa
         vertex_id_to_cell_coords = {} # maps from vertex_id to cell coordinates of vertex cells
@@ -729,30 +722,55 @@ class GVD:
                 if connected_vertex_id == source_vertex_id:
                     continue
         
-            # a connection between two different vertices was found
+            # if a connection between two different vertices was found
             if connected_vertex_id >= 0:
-                edges.add(tuple(sorted((source_vertex_id, connected_vertex_id))))
+                # add an edge between the source vertex and the connected vertex, if it does not cross a blocked corner
+                if not self._diagonal_crosses_blocked_corner(vertex_id_to_cell_coords[source_vertex_id], vertex_id_to_cell_coords[connected_vertex_id], self.occupancy_grid > 0):
+                    edges.add(tuple(sorted((source_vertex_id, connected_vertex_id))))
             processed_floodfill_cells += 1
             if processed_floodfill_cells % 1000 == 0:
                 progress.update(processed_floodfill_cells, details="tracing skeleton paths")
 
-        # replace the cell coordinates of vertex cells with the exact position of special points if they are located on the cell
-        vertex_id_to_cell_coords = {
-            vertex_id: special_point_by_cell.get(cell, (cell[0] + 0.5, cell[1] + 0.5))
+        # replace the cell coordinates of vertex cells with their cell centers
+        vertices = {
+            vertex_id: (cell[0] + 0.5, cell[1] + 0.5)
             for vertex_id, cell in vertex_id_to_cell_coords.items()
         }
 
+        # create individual graph vertices for special points, so points located on the same cell are not merged
+        special_point_vertices = {"access": {}, "io": {}}
+        next_vertex_id = len(vertices)
+        for point_type, special_points in (("access", self.access_points), ("io", self.io_points)):
+            for point_number, special_point in enumerate(special_points):
+                if point_type == "access":
+                    connection_cell = self.access_point_connection_cells[point_number]
+                else:
+                    connection_cell = self.io_point_connection_cells[point_number]
+                hub_vertex_id = cell_coords_to_vertex_id.get(connection_cell)
+
+                # skip special points that could not be connected to the Voronoi skeleton
+                if hub_vertex_id is None:
+                    continue
+
+                # add the special point as a vertex and connect it directly to the Voronoi cell
+                special_vertex_id = next_vertex_id
+                next_vertex_id += 1
+                vertices[special_vertex_id] = (special_point[0], special_point[1])
+                edges.add(tuple(sorted((special_vertex_id, hub_vertex_id))))
+                special_point_vertices[point_type][point_number] = special_vertex_id
+
         self.graph = {
-            "vertices": vertex_id_to_cell_coords,
+            "vertices": vertices,
             "edges": edges,
+            "special_point_vertices": special_point_vertices,
         }
         
         # count how many special points are connected to the graph for prgress reporting
-        connected_special_points = sum((int(sp[0]), int(sp[1])) in cell_coords_to_vertex_id for sp in self.access_points + self.io_points)
+        connected_special_points = sum(len(special_vertices) for special_vertices in special_point_vertices.values())
     
         # check that graph is connected
         graph_connected = self._is_graph_connected()
-        progress.finish(graph_connected, f"vertices: {len(vertex_id_to_cell_coords)} | edges: {len(edges)} | "
+        progress.finish(graph_connected, f"vertices: {len(vertices)} | edges: {len(edges)} | "
             f"special points connected: {connected_special_points}/{len(self.access_points) + len(self.io_points)}")
         
         if self.recorder is not None:
@@ -763,7 +781,6 @@ class GVD:
                     "graph",
                     graph=self.graph,
                     voro=self.voro,
-                    bridges=self.special_point_bridges,
                 )
             except Exception as error:
                 save_progress.finish(False, f"could not save graph: {error}")

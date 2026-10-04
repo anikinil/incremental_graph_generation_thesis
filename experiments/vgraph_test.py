@@ -4,7 +4,7 @@ from scenario.scenario_generation import Scenario
 from algorithms.vgraph import VGraph
 from artifacts.record import ExperimentRecorder
 
-from scenario.geometry import continuous_special_points
+from algorithms.geometry import continuous_special_points
 
 
 
@@ -16,12 +16,12 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 250
-    width = 300
+    height = 10
+    width = 10
     
     agv_radius = 0.45
     
-    occupancy_rate = 0.5
+    occupancy_rate = 0.2
 
     io_points = {
         (height * 0.18, 0),

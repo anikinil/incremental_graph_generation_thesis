@@ -20,12 +20,12 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 20
-    width = 30
+    height = 25
+    width = 25
     
-    agv_radius = 0.3
+    agv_radius = 0.49
 
-    occupancy_rate = 0.3
+    occupancy_rate = 0.4
 
     io_points = {
         (height * 0.15, 0),
@@ -51,7 +51,7 @@ if __name__ == "__main__":
         noisy_aisle_sigma=1,
         io_points=io_points,
         io_points_radius=3,
-        simple_obstacle_rate=0.05,
+        simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
     )

@@ -1,12 +1,11 @@
 from matplotlib import pyplot as plt
 from matplotlib.colors import ListedColormap
-from shapely.geometry import LineString, Point, box
 from itertools import combinations
 import networkx as nx
 import geopandas as gpd
 from artifacts.progress import GenerationProgress
-from scenario.geometry import navigation_space
-
+from algorithms.geometry import navigation_space
+from shapely.geometry import LineString
 
 class VGraph:
     """
@@ -34,15 +33,24 @@ class VGraph:
         self.number_of_vertices = self.G.number_of_nodes
         self.number_of_edges = self.G.number_of_edges
 
+        self.wall_epsilon = 1e-6  # small epsilon to avoid vertices that touch the wall
+
 
     def _get_convex_vertices(self, polygon):
         """Get all convex vertices of a polygon."""
+        
         convex_vertices = []
         coords = list(polygon.exterior.coords)[:-1]  # remove duplicate closing point
         # direction of the polygon is counter-clockwise, so a clockwise turn indicates a convex vertex
         for i in range(len(coords)):
             prev_vertex = coords[i - 1]
             curr_vertex = coords[i]
+            
+            # check if curr_vertex touches the wall (within wall_epsilon)
+            if (abs(curr_vertex[0]) < self.wall_epsilon or abs(curr_vertex[0] - self.height) < self.wall_epsilon or
+                abs(curr_vertex[1]) < self.wall_epsilon or abs(curr_vertex[1] - self.width) < self.wall_epsilon):
+                continue  # skip vertices that touch the wall
+            
             next_vertex = coords[(i + 1) % len(coords)]
             vector_a = (curr_vertex[0] - prev_vertex[0], curr_vertex[1] - prev_vertex[1])
             vector_b = (next_vertex[0] - curr_vertex[0], next_vertex[1] - curr_vertex[1])
@@ -99,11 +107,7 @@ class VGraph:
             if pair_number % 100 == 0 or pair_number == total_pairs:
                 visibility_progress.update(pair_number, total_pairs, f"checking vertices {i} and {j}")
             
-            a = Point(self.G.nodes[i]["pos"])
-            b = Point(self.G.nodes[j]["pos"])
-            line = LineString([a, b])
-    
-            # if line inside free space, add edge with weight equal length to graph
+            line = LineString([self.G.nodes[i]['pos'], self.G.nodes[j]['pos']])
             if free_space.covers(line):
                 self.G.add_edge(i, j)
 

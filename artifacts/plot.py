@@ -6,7 +6,7 @@ from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, PathPatch, Recta
 from matplotlib.collections import LineCollection, PatchCollection, QuadMesh
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
-from scenario.geometry import buffered_obstacle_space
+from algorithms.geometry import buffered_obstacle_space
 
 # color palette
 

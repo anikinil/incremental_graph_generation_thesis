@@ -3,7 +3,7 @@ import sys
 
 import numpy as np
 
-from scenario.geometry import continuous_special_points
+from algorithms.geometry import continuous_special_points
 from scenario.scenario_generation import Scenario
 from artifacts.record import ExperimentRecorder
 
@@ -13,28 +13,26 @@ from algorithms.vgraph import VGraph
 
 if __name__ == "__main__":
 
-    seed = 42
+    seed = 41
     rng = np.random.default_rng(seed)
-
-    height = 50
-    width = 100
     
-    agv_radius = 0.42
-    eps = 0.05
-
-    sigma_coarse = 3
-    sigma_fine = 1
-
-    occupancy_rate = 0.7
+    height = 160
+    width = 160
+    
+    agv_radius = 0.45
+    eps = 0.04
+    
+    occupancy_rate = 0.4
 
     io_points = {
-        (height * 0.18, 0),
-        (height - 1.6, width * 0.73),
+        (height * 0.15, 0),
+        (height - 1.5, width * 0.75),
     }
 
     recorder = ExperimentRecorder(seed=seed)
 
     recorder.set_algorithm("scenario", use_iterations=False, plot=True)
+
     scenario = Scenario(
         rng=rng,
         height=height,
@@ -49,11 +47,6 @@ if __name__ == "__main__":
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
-        
-        # ordered_aisle_widths = (2, 1),
-        # ordered_aisle_spacing = (3, 5),
-        # ordered_aisle_offset = (0, 0),
-        # wall_clearance = (2, 2, 3, 3)
     )
     scenario_success = scenario.generate()
     print()
@@ -72,13 +65,13 @@ if __name__ == "__main__":
         height=height,
         width=width,
         eps=eps,
-        max_dist=4,
+        max_dist=5,
         max_neighbors=10,
         agv_radius=scenario.agv_radius,
         num_buffer_segments=num_buffer_segments,
         recorder=recorder,
     )
-    prm.construction_step(min_num_vertices=1000, avoid_cycles=False)
+    prm.construction_step(min_num_vertices=10000, avoid_cycles=True)
     prm.connect_special_points()
     prm.record_graph()
     print()

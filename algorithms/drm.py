@@ -8,6 +8,7 @@ from shapely.geometry import LineString, Point, box
 from shapely.ops import unary_union
 
 from artifacts.progress import GenerationProgress
+from algorithms.geometry import buffered_edge_cells
 
 
 class DRM:
@@ -251,9 +252,6 @@ class DRM:
                         # and would need to cut a corner to pass through one or two adjacent obstacle cells
                         and (self.occupancy[row, neighbour_col] != 0 or self.occupancy[neighbour_row, col] != 0)):
                             continue # ignore
-
-                    if not self._is_path_collision_free(self.vertices[index], self.vertices[neighbour_index]):
-                        continue
 
                     self._add_edge(index, neighbour_index)
 
@@ -508,85 +506,8 @@ class DRM:
     
     def _determine_edge_cells(self, vertex1, vertex2):
         """Returns grid cells crossed by the buffered edge between two vertices."""
-            
-        # offset the vertices in the positive and negativ directions of the edge normal by the AGV radius to get the buffered edge
-        x1, y1 = vertex1
-        x2, y2 = vertex2
-        edge_vector = np.array([x2 - x1, y2 - y1])
-        edge_normal = np.array([-edge_vector[1], edge_vector[0]]) / np.linalg.norm(edge_vector)  # normalized edge normal
-        offset_vector = edge_normal * (self.agv_radius - self.edge_clearance_epsilon) # subtract a small epsilon to avoid floating-point precision issues
-        start1 = (x1 + offset_vector[0], y1 + offset_vector[1])
-        start2 = (x1 - offset_vector[0], y1 - offset_vector[1])
-        end1 = (x2 + offset_vector[0], y2 + offset_vector[1])
-        end2 = (x2 - offset_vector[0], y2 - offset_vector[1])
-        
-        def _amanatides_woo(start, end):
-            """Returns cells crossed by a 2D Amanatides-Woo traversal.
-            
-            "A Fast Voxel Traversal Algorithm for Ray Tracing", John Amanatides and Andrew Woo (1987)
-            
-            https://m4xc.dev/articles/amanatides-and-woo/
-            https://gitlab.com/athilenius/fast-voxel-traversal-rs/-/blob/main/src/raycast_2d.rs?ref_type=heads
-            """
 
-            x0, y0 = start # starting point of the ray
-            x1, y1 = end # ending point of the ray
-            dx = x1 - x0 # total change in x
-            dy = y1 - y0 # total change in y
-
-            current_x = int(x0) # current cell x-coordinate
-            current_y = int(y0) # current cell y-coordinate
-            end_x = int(x1) # end cell x-coordinate
-            end_y = int(y1) # end cell y-coordinateof
-
-            # set x-varibales
-            if dx > 0:
-                step_x = 1 # step of one cell in the positive x direction
-                t_delta_x = 1 / dx # how far along the ray we must move for the x-coordinate to change by 1
-                t_max_x = (current_x + 1 - x0) / dx # how far along the ray we must move for the first x-boundary to be crossed
-            elif dx < 0:
-                step_x = -1
-                t_delta_x = 1 / -dx
-                t_max_x = (current_x - x0) / dx
-            else: # dx == 0: the ray is vertical, x-boundaries will never be crossed
-                step_x = 0
-                t_delta_x = float("inf")
-                t_max_x = float("inf")
-
-            # set y-variables
-            if dy > 0:
-                step_y = 1
-                t_delta_y = 1 / dy
-                t_max_y = (current_y + 1 - y0) / dy
-            elif dy < 0:
-                step_y = -1
-                t_delta_y = 1 / -dy
-                t_max_y = (current_y - y0) / dy
-            else: # dy == 0: the ray is horizontal, y-boundaries will never be crossed
-                step_y = 0
-                t_delta_y = float("inf")
-                t_max_y = float("inf")
-
-            cells = [(current_y, current_x)] # (y, x) for row, column indexing
-            remaining_steps = abs(end_x - current_x) + abs(end_y - current_y)
-            for _ in range(remaining_steps):
-                # if the next x-boundary is closer than the next y-boundary or the current cell is in the same column as the end cell
-                if t_max_y < t_max_x or current_x == end_x:
-                    current_y += step_y # step in the y direction
-                    t_max_y += t_delta_y # update the next y-boundary crossing distance
-                # if the next y-boundary is closer than the next x-boundary or the current cell is in the same row as the end cell
-                elif t_max_x < t_max_y or current_y == end_y:
-                    current_x += step_x # step in the x direction
-                    t_max_x += t_delta_x # update the next x-boundary crossing distance
-                cells.append((current_y, current_x)) # add traversed cell ((y, x) for row, column indexing)
-
-            return cells
-        
-        # get the grid cells crossed by the two offset edges using Amanatides-Woo traversal
-        cells1 = _amanatides_woo(start1, end1)
-        cells2 = _amanatides_woo(start2, end2)
-        
-        return list(set(cell for cell in cells1 + cells2 if 0 <= cell[0] < self.height and 0 <= cell[1] < self.width))  # return unique cells crossed by the buffered edge
+        return buffered_edge_cells(vertex1, vertex2, self.agv_radius, self.height, self.width, self.edge_clearance_epsilon)
     
 
     def _get_vertex_footprint_cells(self, index):

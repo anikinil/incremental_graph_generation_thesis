@@ -1,7 +1,7 @@
 import networkx as nx
 
 from artifacts.progress import GenerationProgress
-from scenario.geometry import offset_access_points
+from algorithms.geometry import offset_access_points
 
 
 class IncrementalKingsGraph:

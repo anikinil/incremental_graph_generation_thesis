@@ -2,7 +2,7 @@
 import numpy as np
 from algorithms.dynamic_vgraph import DynamicVGraph
 from artifacts.record import ExperimentRecorder
-from scenario.geometry import continuous_special_points
+from algorithms.geometry import continuous_special_points
 from scenario.scenario_generation import Scenario
 
 
@@ -19,12 +19,12 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 60
-    width = 60
+    height = 50
+    width = 50
     
-    agv_radius = 0
+    agv_radius = 0.45
     
-    occupancy_rate = 0.1
+    occupancy_rate = 0.5
 
     io_points = {
         (height * 0.15, 0),

@@ -8,7 +8,7 @@ import numpy as np
 from scipy.spatial import KDTree
 from collections import defaultdict
 from artifacts.progress import GenerationProgress
-from scenario.geometry import navigation_space
+from algorithms.geometry import navigation_space
 
 
 class UnionFind:
@@ -249,10 +249,10 @@ class PRM:
                         (self.occupancy[row, neighbour_col] != 0 or self.occupancy[neighbour_row, col] != 0)):
                         continue
 
-                    # the local path must also respect the buffered obstacle space
-                    path = LineString([self.vertices[vertex_idx], self.vertices[neighbour_idx]])
-                    if self.free_space.covers(path): # line between the two vertices is collision-free
-                        self._connect_vertices(vertex_idx, neighbour_idx)
+                    # # the local path must also respect the buffered obstacle space
+                    # path = LineString([self.vertices[vertex_idx], self.vertices[neighbour_idx]])
+                    # if self.free_space.covers(path): # line between the two vertices is collision-free
+                    self._connect_vertices(vertex_idx, neighbour_idx)
 
         # build the tree after all wall vertices have been added
         self._update_kdtree()

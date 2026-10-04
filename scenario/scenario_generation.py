@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.ndimage import binary_closing, distance_transform_edt, gaussian_filter, label
 from shapely.geometry import box
-from scenario.geometry import buffered_obstacle_space
+from algorithms.geometry import buffered_obstacle_space
 from artifacts.progress import GenerationProgress
 
 
@@ -305,6 +305,9 @@ class Scenario:
         
         for _ in range(number_of_updates):
             action = self.rng.choice(["add", "move", "remove"])
+
+            if action in {"move", "remove"} and not np.any(self.occupancy):
+                raise ValueError(f"Cannot {action} an obstacle: the scenario contains no obstacles.")
             
             success = False
             while not success:
