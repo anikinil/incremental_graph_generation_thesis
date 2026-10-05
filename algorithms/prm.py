@@ -182,6 +182,10 @@ class PRM:
 
         # filter out infinite distances (no neighbor found within max_dist)
         candidates = [int(index) for distance, index in zip(distances, indices) if np.isfinite(distance)]
+        # if no candidates found, return the nearest vertex regardless of distance
+        if not candidates:
+            nearest_index = int(self.kdtree.query(config, k=1)[1])
+            return [nearest_index]
         return candidates
 
     def _update_kdtree(self):

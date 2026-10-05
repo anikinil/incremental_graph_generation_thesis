@@ -21,10 +21,10 @@ if __name__ == "__main__":
     rng = np.random.default_rng(seed)
 
     
-    height = 160
-    width = 160
+    height = 30
+    width = 30
     
-    agv_radius = 0.45
+    agv_radius = 0.1
     
     occupancy_rate = 0.4
 

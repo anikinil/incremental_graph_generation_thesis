@@ -661,8 +661,9 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
         self._draw_environment(ax, context)
 
         vertices = np.asarray(data["vertices"])
+        vertex_present = np.asarray(data.get("vertex_present", np.ones(len(vertices), dtype=bool)), dtype=bool)
         vertex_active = np.asarray(data["vertex_active"], dtype=bool)
-        if len(vertex_active) != len(vertices):
+        if len(vertex_present) != len(vertices) or len(vertex_active) != len(vertices):
             raise ValueError("DRM snapshot has mismatched vertex labels")
 
         active_edges = []
@@ -671,7 +672,8 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
         for left, right in data["edges"]:
             arc = (left, right) if left < right else (right, left)
             all_edges.add(arc)
-            if (data["edge_active"].get(arc, False) and vertex_active[left] and vertex_active[right]):
+            if (data["edge_active"].get(arc, False) and vertex_present[left] and vertex_present[right]
+                and vertex_active[left] and vertex_active[right]):
                 active_edges.append((left, right))
             else:
                 inactive_edges.append((left, right))
@@ -683,13 +685,15 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
             ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in active_edges],
                                              colors=[GRAPH_EDGE_COLOR], linewidths=1.1, capstyle="round", zorder=10, label="Active roadmap arcs"))
 
-        if np.any(~vertex_active):
-            inactive_vertices = vertices[~vertex_active]
+        inactive_vertex_mask = vertex_present & ~vertex_active
+        active_vertex_mask = vertex_present & vertex_active
+        if np.any(inactive_vertex_mask):
+            inactive_vertices = vertices[inactive_vertex_mask]
             ax.scatter(inactive_vertices[:, 0], inactive_vertices[:, 1], s=13,
                        color=INACTIVE_GRAPH_VERTEX_COLOR, edgecolors="none",
                        zorder=9, label="Inactive roadmap vertices")
-        if np.any(vertex_active):
-            active_vertices = vertices[vertex_active]
+        if np.any(active_vertex_mask):
+            active_vertices = vertices[active_vertex_mask]
             ax.scatter(active_vertices[:, 0], active_vertices[:, 1], s=18,
                        color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR,
                        linewidths=0.35, zorder=11, label="Active roadmap vertices")
@@ -699,7 +703,8 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
         } & all_edges
         affected_active_edges = [
             edge for edge in affected_edges
-            if data["edge_active"].get(edge, False) and vertex_active[edge[0]] and vertex_active[edge[1]]
+            if (data["edge_active"].get(edge, False) and vertex_present[edge[0]] and vertex_present[edge[1]]
+                and vertex_active[edge[0]] and vertex_active[edge[1]])
         ]
         affected_inactive_edges = affected_edges.difference(affected_active_edges)
         if affected_active_edges:
@@ -717,7 +722,7 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
 
         affected_vertices = sorted({
             int(index) for index in data.get("affected_vertices", ())
-            if 0 <= int(index) < len(vertices)
+            if 0 <= int(index) < len(vertices) and vertex_present[int(index)]
         })
         affected_active_vertices = [index for index in affected_vertices if vertex_active[index]]
         affected_inactive_vertices = [index for index in affected_vertices if not vertex_active[index]]

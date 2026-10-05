@@ -16,10 +16,10 @@ if __name__ == "__main__":
     seed = 41
     rng = np.random.default_rng(seed)
     
-    height = 160
-    width = 160
+    height = 30
+    width = 30
     
-    agv_radius = 0.45
+    agv_radius = 0.1
     eps = 0.04
     
     occupancy_rate = 0.4
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         num_buffer_segments=num_buffer_segments,
         recorder=recorder,
     )
-    prm.construction_step(min_num_vertices=10000, avoid_cycles=True)
+    prm.construction_step(min_num_vertices=1000, avoid_cycles=False)
     prm.connect_special_points()
     prm.record_graph()
     print()

@@ -106,15 +106,14 @@ def amanatides_woo_cells(start, end, height, width):
 
     return cells
 
-def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width,
-                        edge_clearance_epsilon=1e-6):
+def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width, edge_clearance_epsilon=1e-6):
     """Returns grid cells crossed by the buffered edge between two vertices."""
 
     x1, y1 = vertex1
     x2, y2 = vertex2
     dx = x2 - x1
     dy = y2 - y1
-    length = hypot(dx, dy)
+    length = hypot(dx, dy) # TODO: necessary?
 
     if agv_radius == 0: # if robot is a point, only traverse the edge centerline
         return amanatides_woo_cells(vertex1, vertex2, height, width)
@@ -128,8 +127,8 @@ def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width,
     offset_y = dx / length * offset_distance
 
     # get the grid cells crossed by the two offset edges using Amanatides-Woo traversal
-    cells = amanatides_woo_cells( (x1 + offset_x, y1 + offset_y), (x2 + offset_x, y2 + offset_y), height, width)
-    cells.extend(amanatides_woo_cells( (x1 - offset_x, y1 - offset_y), (x2 - offset_x, y2 - offset_y), height, width))
+    cells = amanatides_woo_cells((x1 + offset_x, y1 + offset_y), (x2 + offset_x, y2 + offset_y), height, width)
+    cells.extend(amanatides_woo_cells((x1 - offset_x, y1 - offset_y), (x2 - offset_x, y2 - offset_y), height, width))
     return list(dict.fromkeys(cells))
 
 
