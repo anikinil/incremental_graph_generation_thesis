@@ -33,9 +33,6 @@ class VGraph:
         self.number_of_vertices = self.G.number_of_nodes
         self.number_of_edges = self.G.number_of_edges
 
-        self.wall_epsilon = 1e-6  # small epsilon to avoid vertices that touch the wall
-
-
     def _get_convex_vertices(self, polygon):
         """Get all convex vertices of a polygon."""
         
@@ -46,9 +43,9 @@ class VGraph:
             prev_vertex = coords[i - 1]
             curr_vertex = coords[i]
             
-            # check if curr_vertex touches the wall (within wall_epsilon)
-            if (abs(curr_vertex[0]) < self.wall_epsilon or abs(curr_vertex[0] - self.height) < self.wall_epsilon or
-                abs(curr_vertex[1]) < self.wall_epsilon or abs(curr_vertex[1] - self.width) < self.wall_epsilon):
+            # check if curr_vertex touches the wall
+            if (curr_vertex[0] == 0 or curr_vertex[0] == self.height or
+                curr_vertex[1] == 0 or curr_vertex[1] == self.width):
                 continue  # skip vertices that touch the wall
             
             next_vertex = coords[(i + 1) % len(coords)]

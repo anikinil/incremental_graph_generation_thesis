@@ -19,9 +19,6 @@ class DRM:
     Peter Leven, Seth Hutchinson (2002)
     """
     
-    # TODO use agv_radius + eps for collision checking, like in PRM
-    
-
     def __init__(self, rng, occupancy, access_points, io_points, height, width, max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None):
 
         self.rng = rng
@@ -31,7 +28,6 @@ class DRM:
         self.max_dist = float(max_dist)
         self.max_neighbors = int(max_neighbors)
         self.agv_radius = float(agv_radius)
-        self.edge_clearance_epsilon = 1e-6 # small epsilon to avoid floating-point precision issues when checking collision-free robot footprints
         self.num_buffer_segments = int(num_buffer_segments)
         self.recorder = recorder
         self.iteration = 0
@@ -93,7 +89,7 @@ class DRM:
         if self.agv_radius == 0: # if the robot is a point, check if it is in free space
             return point.disjoint(self.obstacle_space)
         else: # else check if the distance from the robot's center to the nearest obstacle is at least the robot's radius
-            return point.distance(self.obstacle_space) >= self.agv_radius - self.edge_clearance_epsilon
+            return point.distance(self.obstacle_space) >= self.agv_radius
 
     def _is_path_collision_free(self, start, end):
         """Return whether the robot can traverse the path from start to end collision-free."""
@@ -433,7 +429,7 @@ class DRM:
     def _get_edge_footprint_cells(self, edge):
         """Return the set of cells that intersect the given roadmap edge's footprint."""
         # footprint = self._path_footprint(self.vertices[edge[0]], self.vertices[edge[1]])
-        cells = set(buffered_edge_cells(self.vertices[edge[0]], self.vertices[edge[1]], self.agv_radius, self.height, self.width, self.edge_clearance_epsilon))
+        cells = set(buffered_edge_cells(self.vertices[edge[0]], self.vertices[edge[1]], self.agv_radius, self.height, self.width))
         cells.difference_update(self._get_vertex_footprint_cells(edge[0]))
         cells.difference_update(self._get_vertex_footprint_cells(edge[1]))
         return cells

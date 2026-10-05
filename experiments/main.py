@@ -20,8 +20,6 @@ if __name__ == "__main__":
     width = 30
     
     agv_radius = 0.1
-    eps = 0.04
-    
     occupancy_rate = 0.4
 
     io_points = {
@@ -54,6 +52,7 @@ if __name__ == "__main__":
     continuous_access_points, continuous_io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
     bounds = (0, 0, width, height)
 
+    eps = 0.05
 
     recorder.set_algorithm("prm", use_iterations=False, plot=True)
     num_buffer_segments = 2  # PRM may use a different buffered-corner approximation

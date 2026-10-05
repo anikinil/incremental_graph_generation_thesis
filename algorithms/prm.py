@@ -86,17 +86,17 @@ class PRM:
         self.rng = rng # random number generator
         self.occupancy = occupancy # occupancy grid: 0 = free, 1 = simple obstacle, 2 = unit load
         self.height, self.width = height, width # grid dimensions
+        self.eps = eps # discretization step for local planner
         self.free_space = None
         self.access_points = access_points # access points (y, x)
         self.io_points = io_points # io points (y, x)
         self.special_points = np.array(np.concatenate([io_points, access_points])) # access points ++ io points
-        self.eps = eps # step size for path discretization
         self.max_dist = max_dist # maximum distance to consider for neighbors
         self.max_neighbors = max_neighbors # maximum number of neighbors to consider for connection
         self.agv_radius = agv_radius # radius of the AGV for collision costraints
-        if self.agv_radius + self.eps >= 0.5:
-            raise ValueError(f"AGV radius {self.agv_radius} + epsilon {self.eps} is too large for the occupancy grid (max 0.5).")
-        self.buffer = agv_radius + eps # radius of the AGV for collision costraints + epsilon buffer
+        if self.agv_radius >= 0.5:
+            raise ValueError(f"AGV radius {self.agv_radius} is too large for the occupancy grid (max 0.5).")
+        self.buffer = agv_radius # radius of the AGV for collision costraints
         self.num_buffer_segments = num_buffer_segments # segments per rounded-corner quadrant
         self.recorder = recorder
         
@@ -333,7 +333,7 @@ class PRM:
 
     #     # all checked configurations
     #     path = [current.copy()]
-    #     remaining_steps = int(np.ceil(walk_length / self.eps))
+    #     remaining_steps = int(np.ceil(walk_length / step_size))
     #     bounces = 0
     #     # stop when walk length or max bounces reached
     #     while remaining_steps > 0 and bounces < max_bounces:
@@ -342,7 +342,7 @@ class PRM:
             
     #         # move in the chosen direction until hitting obstacle or max steps reached
     #         while remaining_steps > 0:
-    #             next_pos = current + direction * self.eps
+    #             next_pos = current + direction * step_size
     #             # stop if left warehouse bounds
     #             if not (0 <= next_pos[0] < self.width and 0 <= next_pos[1] < self.height):
     #                 break
@@ -490,7 +490,6 @@ class PRM:
                 data={
                     "occupancy": self.occupancy,
                     "agv_radius": self.agv_radius,
-                    "eps": self.eps,
                     "num_buffer_segments": self.num_buffer_segments,
                     "access_points": self.access_points,
                     "io_points": self.io_points,

@@ -3,11 +3,6 @@ from math import floor, hypot, isclose
 from shapely.geometry import GeometryCollection, box
 from shapely.ops import unary_union
 
-
-SPECIAL_POINT_CLEARANCE_MARGIN = 0
-# SPECIAL_POINT_CLEARANCE_MARGIN = 1e-6
-
-
 def amanatides_woo_cells(start, end, height, width):
     """Returns cells crossed by a 2D Amanatides-Woo traversal.
 
@@ -106,7 +101,7 @@ def amanatides_woo_cells(start, end, height, width):
 
     return cells
 
-def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width, edge_clearance_epsilon=1e-6):
+def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width):
     """Returns grid cells crossed by the buffered edge between two vertices."""
 
     x1, y1 = vertex1
@@ -122,9 +117,8 @@ def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width, edge_cleara
         return amanatides_woo_cells(vertex1, vertex2, height, width)
 
     # offset the vertices in the positive and negative directions of the edge normal by the AGV radius
-    offset_distance = max(0.0, agv_radius - edge_clearance_epsilon)
-    offset_x = -dy / length * offset_distance
-    offset_y = dx / length * offset_distance
+    offset_x = -dy / length * agv_radius
+    offset_y = dx / length * agv_radius
 
     # get the grid cells crossed by the two offset edges using Amanatides-Woo traversal
     cells = amanatides_woo_cells((x1 + offset_x, y1 + offset_y), (x2 + offset_x, y2 + offset_y), height, width)
@@ -146,14 +140,13 @@ def buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments):
     world = box(0, 0, width, height)
     return union.intersection(world) # clip to world bounds
 
-def offset_access_points(access_points, agv_radius, margin=SPECIAL_POINT_CLEARANCE_MARGIN):
-    """Offset access points away from obstacles by the AGV radius plus a margin, to account for obstacle buffer."""
-    clearance = agv_radius + margin
+def offset_access_points(access_points, agv_radius):
+    """Offset access points away from obstacles by the AGV radius."""
     offsets = {
-        "n": (-clearance, 0.0),
-        "s": (clearance, 0.0),
-        "w": (0.0, -clearance),
-        "e": (0.0, clearance),
+        "n": (-agv_radius, 0.0),
+        "s": (agv_radius, 0.0),
+        "w": (0.0, -agv_radius),
+        "e": (0.0, agv_radius),
     }
 
     offset_points = []
@@ -163,10 +156,9 @@ def offset_access_points(access_points, agv_radius, margin=SPECIAL_POINT_CLEARAN
     return offset_points
 
 
-def continuous_special_points(access_points, io_points, agv_radius,
-                              margin=SPECIAL_POINT_CLEARANCE_MARGIN):
+def continuous_special_points(access_points, io_points, agv_radius):
     """Convert grid special points to collision-free configurations via offsetting by the AGV radius."""
-    offset_access = offset_access_points(access_points, agv_radius, margin)
+    offset_access = offset_access_points(access_points, agv_radius)
     # swap row and column for shapely coordinates (x, y)
     continuous_access_points = [(column, row) for row, column, _ in offset_access]
     continuous_io_points = [(column, row) for row, column in io_points]

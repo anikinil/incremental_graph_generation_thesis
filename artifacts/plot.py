@@ -11,7 +11,6 @@ from algorithms.geometry import buffered_obstacle_space
 # color palette
 
 AGV_RADIUS_BUFFER_COLOR = (0.8, 0.8, 0.8, 1)      # light grey
-EPSILON_BUFFER_COLOR = (0.9, 0.9, 0.9, 1)         # lighter grey
 
 SIMPLE_OBSTACLE_COLOR = (0.3, 0.3, 0.3, 1)        # dark grey
 UNIT_LOAD_COLOR = (0.5, 0.5, 0.5, 1)              # grey
@@ -160,19 +159,12 @@ def _setup_continuous_axes(ax, bounds):
 
 
 def _draw_continuous_environment(ax, occupancy, bounds, *, agv_radius=None,
-                                 num_buffer_segments=None, eps=None):
-    """Draw the occupancy grid plus optional AGV-radius and epsilon obstacle buffers."""
+                                 num_buffer_segments=None):
+    """Draw the occupancy grid plus an optional AGV-radius obstacle buffer."""
 
     min_x, min_y, max_x, max_y = bounds
 
     if num_buffer_segments is not None:
-        if eps is not None and eps > 0:
-            epsilon_buffer = _build_buffer_patch(
-                occupancy, agv_radius + eps, num_buffer_segments,
-                color=EPSILON_BUFFER_COLOR,
-            )
-            if epsilon_buffer is not None:
-                ax.add_collection(epsilon_buffer)
         buffer = _build_buffer_patch(occupancy, agv_radius, num_buffer_segments)
         if buffer is not None:
             ax.add_collection(buffer)
@@ -602,7 +594,6 @@ class _ContinuousGraphPlotter(BasePlotter):
             bounds=(min_x, min_y, max_x, max_y),
             agv_radius=context["agv_radius"],
             num_buffer_segments=context["num_buffer_segments"],
-            eps=context.get("eps"),
         )
 
     def _draw_special_points(self, ax, context):

@@ -19,12 +19,12 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 50
-    width = 50
+    height = 30
+    width = 30
     
     agv_radius = 0.45
     
-    occupancy_rate = 0.5
+    occupancy_rate = 0.2
 
     io_points = {
         (height * 0.15, 0),
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         scenario.agv_radius,
     )
 
-    recorder.set_algorithm("dynamic_vgraph", use_iterations=True, plot=False)
+    recorder.set_algorithm("dynamic_vgraph", use_iterations=True, plot=True)
 
     vgraph = DynamicVGraph(
         height=height,
@@ -69,7 +69,6 @@ if __name__ == "__main__":
         access_points=access_points,
         io_points=continuous_io_points,
         recorder=recorder,
-        edge_clearance_epsilon=1e-6,
     )
 
     vgraph.preprocessing()

@@ -14,14 +14,12 @@ class DynamicVGraph:
     """
     
     
-    def __init__(self, height, width, occupancy, agv_radius, access_points, io_points,
-                 recorder=None, edge_clearance_epsilon=1e-6):
+    def __init__(self, height, width, occupancy, agv_radius, access_points, io_points, recorder=None):
         
         self.height = height
         self.width = width
         self.occupancy = occupancy.copy()
         self.agv_radius = agv_radius
-        self.edge_clearance_epsilon = float(edge_clearance_epsilon)
         self.num_buffer_segments = 0 # always 0, since it's the only way to avoid collisions (temporary)
         self.access_points = access_points
         self.io_points = io_points
@@ -39,8 +37,6 @@ class DynamicVGraph:
 
         self.iteration = 0
         
-        self.wall_epsilon = 1e-6  # small epsilon to avoid vertices that touch the wall
-        
     
     def _extract_convex_vertices(self, obstacle_space):
         """Get all convex vertices of the obstacle space."""
@@ -53,9 +49,9 @@ class DynamicVGraph:
                 prev_vertex = coords[i - 1]
                 curr_vertex = coords[i]
                 
-                # check if curr_vertex touches the wall (within wall_epsilon)
-                if (abs(curr_vertex[0]) < self.wall_epsilon or abs(curr_vertex[0] - self.height) < self.wall_epsilon or
-                    abs(curr_vertex[1]) < self.wall_epsilon or abs(curr_vertex[1] - self.width) < self.wall_epsilon):
+                # check if curr_vertex touches the wall
+                if (curr_vertex[0] == 0 or curr_vertex[0] == self.height or
+                    curr_vertex[1] == 0 or curr_vertex[1] == self.width):
                     continue  # skip vertices that touch the wall
                 
                 next_vertex = coords[(i + 1) % len(coords)]
@@ -87,7 +83,7 @@ class DynamicVGraph:
     def _determine_edge_cells(self, vertex1, vertex2):
         """Returns grid cells crossed by the buffered edge between two vertices."""
 
-        return buffered_edge_cells(vertex1, vertex2, self.agv_radius, self.height, self.width, self.edge_clearance_epsilon)
+        return buffered_edge_cells(vertex1, vertex2, self.agv_radius, self.height, self.width)
 
 
     def _deactivate_edges_in_obstacle_cells(self):
@@ -279,7 +275,6 @@ class DynamicVGraph:
                 data={
                     "occupancy": self.occupancy.copy(),
                     "agv_radius": self.agv_radius,
-                    "edge_clearance_epsilon": self.edge_clearance_epsilon,
                     "access_points": sorted(self.access_points),
                     "io_points": sorted(self.io_points),
                     "height": self.height,
