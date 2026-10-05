@@ -3,6 +3,10 @@ from math import floor, hypot, isclose
 from shapely.geometry import GeometryCollection, box
 from shapely.ops import unary_union
 
+
+SPECIAL_POINT_CLEARANCE_MARGIN = 1e-6
+
+
 def amanatides_woo_cells(start, end, height, width):
     """Returns cells crossed by a 2D Amanatides-Woo traversal.
 
@@ -141,12 +145,13 @@ def buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments):
     return union.intersection(world) # clip to world bounds
 
 def offset_access_points(access_points, agv_radius):
-    """Offset access points away from obstacles by the AGV radius."""
+    """Offset access points away from obstacles by the AGV radius plus a small margin."""
+    clearance = agv_radius + SPECIAL_POINT_CLEARANCE_MARGIN
     offsets = {
-        "n": (-agv_radius, 0.0),
-        "s": (agv_radius, 0.0),
-        "w": (0.0, -agv_radius),
-        "e": (0.0, agv_radius),
+        "n": (-clearance, 0.0),
+        "s": (clearance, 0.0),
+        "w": (0.0, -clearance),
+        "e": (0.0, clearance),
     }
 
     offset_points = []
