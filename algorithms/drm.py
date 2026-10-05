@@ -195,16 +195,17 @@ class DRM:
             c = self._generate_random_free_config()
             candidate_indices = self._get_candidate_neighbors(c)
             c_idx = self._add_vertex(c)
-            for neighbour_index in candidate_indices:
-                self._add_edge(c_idx, neighbour_index)
+            added_vertices_num += 1
+            for n_idx in candidate_indices:
+                self._add_edge(c_idx, n_idx)
             self._rebuild_kdtree()
+            num_components = self._num_active_components()
 
+            # new in DRM: mark the new vertex and its incident edges as active, and update the number of connected components
             incident_edges = self._get_incident_edges({c_idx})
             self._refresh_active_status({c_idx}, incident_edges)
-            num_components = self._num_active_components()
             added_vertices.add(c_idx)
             added_edges.update(incident_edges)
-            added_vertices_num += 1
             if added_vertices_num % 100 == 0:
                 progress.update(added_vertices_num, details=(f"components: {num_components} | vertices: {sum(self.vertex_present)} | "
                                                              f"edges: {len(self.edges)}"))
