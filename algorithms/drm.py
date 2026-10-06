@@ -262,7 +262,7 @@ class DRM:
         return new_edges
 
     def _get_wall_update_candidate_cells(self, changed_cells):
-        """Return the set cells that may be wall cells affected by changes in occupancy."""
+        """Return the set of wall-cell candidates affected by changes in occupancy."""
         # get the neighborhood of changed cells
         neighbourhood_cells = set()
         # for all changed cells
@@ -273,16 +273,12 @@ class DRM:
                     neighbour_row = row + row_offset
                     neighbour_col = col + col_offset
                     if 0 <= neighbour_row < self.height and 0 <= neighbour_col < self.width:
-                        neighbourhood_cells.add((neighbour_row, neighbour_col)) # add neighbor to potentially affected wall cells
-        # get the wall cells that are affected by the changed layout
-        index_to_wall_cell = {index: cell for cell, index in self.wall_vertices.items()}
-        mapped_vertices, mapped_edges = self._get_mapped_roadmap_items(changed_cells)
-        wall_cells = {
-            index_to_wall_cell[index] for index in mapped_vertices if index in index_to_wall_cell
-        }
-        wall_cells.update(index_to_wall_cell[index] for edge in mapped_edges for index in edge if index in index_to_wall_cell)
+                        cell = (neighbour_row, neighbour_col)
+                        # add free cells that may become wall cells and wall vertices that may need removal
+                        if self.occupancy[cell] == 0 or cell in self.wall_vertices:
+                            neighbourhood_cells.add(cell)
 
-        return neighbourhood_cells | wall_cells
+        return neighbourhood_cells
 
     def _update_wall_graph(self, changed_cells):
         """Update the wall graph based on changed occupancy cells."""
