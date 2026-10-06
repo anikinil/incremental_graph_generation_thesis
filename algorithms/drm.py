@@ -531,6 +531,12 @@ class DRM:
         # update the wall-graph vertices and edges affected by the edits
         affected_wall_vertices, new_wall_edges = self._update_wall_graph(changed_cells)
 
+        # update the active/inactive status of all vertices and edges affected by cell changes
+        affected_vertices, affected_edges = self._get_mapped_roadmap_items(changed_cells)
+
+        # add all edges connected to affected vertices to the affected set
+        affected_edges.update(self._get_incident_edges(affected_vertices))
+
         # determine which special vertices and edges are affected by the edits
         special_vertices = set(self.special_vertices.values())
         new_special_vertices = {
@@ -538,12 +544,6 @@ class DRM:
         }
         changed_special_edges = self._get_incident_edges(new_special_vertices)
         special_edges = self._get_incident_edges(special_vertices)
-
-        # update the active/inactive status of all vertices and edges affected by cell changes
-        affected_vertices, affected_edges = self._get_mapped_roadmap_items(changed_cells)
-
-        # add all edges connected to affected vertices to the affected set
-        affected_edges.update(self._get_incident_edges(affected_vertices))
 
         # refresh the active/inactive status of all affected vertices and edges, including special points
         refreshed_vertices = affected_vertices | special_vertices | affected_wall_vertices
