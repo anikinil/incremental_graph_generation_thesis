@@ -1,7 +1,7 @@
 from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.colors import ListedColormap
-from shapely.geometry import LineString, Point
+from shapely.geometry import Point
 import networkx as nx
 import geopandas as gpd
 import numpy as np
@@ -278,6 +278,9 @@ class PRM:
         # build wall graph
         self._build_wall_graph()
         
+        # connect special points to the roadmap
+        self._connect_special_points(avoid_cycles=avoid_cycles)
+        
         added_vertices_num = 0
         num_components = self._num_components()
         while num_components > 1 or (min_num_vertices is not None and added_vertices_num < min_num_vertices):
@@ -371,7 +374,7 @@ class PRM:
             edge_path = np.asarray(path, dtype=np.float64)
             self.edge_paths[edge] = edge_path if edge == (vertex_a, vertex_b) else edge_path[::-1].copy()
 
-    def connect_special_points(self):
+    def _connect_special_points(self, avoid_cycles=True):
         """Attempts to connect special points (access + IO points) to the roadmap."""
 
         # progress tracking
@@ -390,7 +393,7 @@ class PRM:
 
             for neighbor_idx in candidate_indices:
                 # skip if already in same component
-                if not self.union_find.find(vertex_idx) == self.union_find.find(neighbor_idx):
+                if not avoid_cycles or self.union_find.find(vertex_idx) != self.union_find.find(neighbor_idx):
 
                     # # check if can be connected via local planner
                     # self.attempt_count[vertex_idx] += 1

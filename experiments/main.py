@@ -71,7 +71,7 @@ if __name__ == "__main__":
         recorder=recorder,
     )
     prm.construction_step(min_num_vertices=1000, avoid_cycles=False)
-    prm.connect_special_points()
+    # prm.connect_special_points()
     prm.record_graph()
     print()
 

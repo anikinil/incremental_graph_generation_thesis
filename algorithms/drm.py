@@ -199,11 +199,9 @@ class DRM:
             for n_idx in candidate_indices:
                 self._add_edge(c_idx, n_idx)
             self._rebuild_kdtree()
-            num_components = self._num_active_components()
-
-            # new in DRM: mark the new vertex and its incident edges as active, and update the number of connected components
             incident_edges = self._get_incident_edges({c_idx})
             self._refresh_active_status({c_idx}, incident_edges)
+            num_components = self._num_active_components()
             added_vertices.add(c_idx)
             added_edges.update(incident_edges)
             if added_vertices_num % 100 == 0:
@@ -298,8 +296,7 @@ class DRM:
             # if cell is a wall vertex but no longer a wall cell, mark it for removal
             if cell in self.wall_vertices and not self._is_adjacent_to_wall(cell):
                 removed_indices.add(self.wall_vertices[cell])
-        if removed_indices:
-            self._remove_vertices(removed_indices)
+        self._remove_vertices(removed_indices)
 
         # add new wall vertices for any newly created wall cells
         added_vertices = set()
