@@ -20,6 +20,8 @@ AFFECTED_VORO_CELLS_COLOR = (0.8, 0.2, 0.2, 0.7)  # red overlay
 AFFECTED_DISTANCES_COLOR = (0.9, 0.1, 0.1, 0.3)   # red
 BRIDGE_COLOR = (0.2, 0.5, 0.2, 0.7)               # green
 
+OFFSET_VEC_COLOR = (0.9, 0.2, 0.2, 0.8)  # red, semi-transparent
+
 GRAPH_VERTEX_COLOR = (0.1, 0.4, 0.7, 1)           # blue
 GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 0.8)           # blue
 
@@ -35,7 +37,7 @@ AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.1) # red
 # outline of affected region on the GVD distance map
 AFFECTED_OUTLINE_COLOR = (0.9, 0.2, 0.2, 1)       # red
 
-VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.3)      # blue, semi-transparent for better visibility
+VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.5)      # blue, semi-transparent for better visibility
 
 IO_POINT_COLOR = (0.2, 0.6, 0.4)                  # green
 ACCESS_POINT_COLOR = (0.9, 0.5, 0.1)              # orange

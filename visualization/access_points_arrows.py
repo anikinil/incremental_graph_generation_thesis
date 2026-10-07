@@ -10,15 +10,21 @@ from matplotlib.legend_handler import HandlerPatch
 from matplotlib.patches import FancyArrowPatch, Patch, Rectangle
 import numpy as np
 
-from artifacts.plot import (
+from artifacts.plot import _draw_continuous_environment, _draw_scenario_access_points
+from visualization.meta import (
+    ACCESS_POINT_ARROW_LENGTH,
     ACCESS_POINT_COLOR,
+    FONT_SIZE,
     GRID_ZORDER,
     IO_POINT_COLOR,
+    LEGEND_POSITION,
+    LEGEND_RIGHT,
     SIMPLE_OBSTACLE_COLOR,
+    SINGLE_FIGURE_SIZE,
     SPECIAL_POINT_EDGE_COLOR,
     UNIT_LOAD_COLOR,
-    _draw_continuous_environment,
-    _draw_scenario_access_points,
+    WALL_COLOR,
+    WALL_THICKNESS,
 )
 from scenario.scenario_generation import Scenario
 
@@ -32,9 +38,6 @@ occupancy = [
     [2, 0, 0, 0, 0, 0, 0, 0],
 ]
 
-WALL_COLOR = (0.3, 0.6, 0.9, 1)
-WALL_THICKNESS = 0.25
-ACCESS_POINT_ARROW_LENGTH = 0.42
 DEMO_IO_POINTS = ((3.4, 5.7), (4.8, 5.7))  # continuous (x, y) coordinates
 OUTPUT_PATH = Path("artifacts/visualization/access_points_demo.pdf")
 
@@ -153,7 +156,7 @@ def build_access_point_demo():
 def plot_access_point_demo():
     """Plot access-point markers and their outward directions."""
     scenario = build_access_point_demo()
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    fig, ax = plt.subplots(figsize=SINGLE_FIGURE_SIZE)
     legend_handles = [
         Patch(facecolor=WALL_COLOR, edgecolor="none", label="Walls"),
         Patch(facecolor=SIMPLE_OBSTACLE_COLOR, edgecolor="none", label="Simple obstacle"),
@@ -185,9 +188,10 @@ def plot_access_point_demo():
 
     ax.set_axis_off()
     fig.legend(legend_handles, [handle.get_label() for handle in legend_handles],
-               loc="center left", bbox_to_anchor=(0.78, 0.5), frameon=False,
+               loc="center left", bbox_to_anchor=LEGEND_POSITION, frameon=False,
+               fontsize=FONT_SIZE,
                handler_map={FancyArrowPatch: HandlerPatch(patch_func=_legend_access_point_arrow)})
-    fig.subplots_adjust(left=0.03, right=0.76, bottom=0.03, top=0.97)
+    fig.subplots_adjust(left=0.03, right=LEGEND_RIGHT, bottom=0.03, top=0.97)
     return fig, ax
 
 

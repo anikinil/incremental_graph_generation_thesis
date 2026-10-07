@@ -180,13 +180,8 @@ class PRM:
         distances = np.atleast_1d(distances)
         indices = np.atleast_1d(indices)
 
-        # filter out infinite distances (no neighbor found within max_dist)
-        candidates = [int(index) for distance, index in zip(distances, indices) if np.isfinite(distance)]
-        # if no candidates found, return the nearest vertex regardless of distance
-        if not candidates:
-            nearest_index = int(self.kdtree.query(config, k=1)[1])
-            return [nearest_index]
-        return candidates
+        # return indices of candidates that are within max_dist and are valid vertices
+        return [int(index) for distance, index in zip(distances, indices) if np.isfinite(distance)]
 
     def _update_kdtree(self):
         """Rebuilds KDTree with current vertices."""
