@@ -355,7 +355,8 @@ class ScenarioPlotter(BasePlotter):
         ))
 
     def set_title(self, fig, ax, title):
-        fig.suptitle(title)
+        # fig.suptitle(title)
+        pass
 
     def finalize(self, fig, ax):
         pass

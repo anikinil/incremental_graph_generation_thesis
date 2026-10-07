@@ -90,7 +90,8 @@ class PRM:
         self.free_space = None
         self.access_points = access_points # access points (y, x)
         self.io_points = io_points # io points (y, x)
-        self.special_points = np.array(np.concatenate([io_points, access_points])) # access points ++ io points
+        # self.special_points = np.array(np.concatenate([io_points, access_points])) # io points ++ access points
+        self.special_points = np.asarray([*io_points, *access_points], dtype=float) # io points ++ access points
         self.max_dist = max_dist # maximum distance to consider for neighbors
         self.max_neighbors = max_neighbors # maximum number of neighbors to consider for connection
         self.agv_radius = agv_radius # radius of the AGV for collision costraints

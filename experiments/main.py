@@ -13,19 +13,21 @@ from algorithms.vgraph import VGraph
 
 if __name__ == "__main__":
 
-    seed = 41
+    seed = 42
     rng = np.random.default_rng(seed)
     
     height = 30
-    width = 30
+    width = 60
     
     agv_radius = 0.1
-    occupancy_rate = 0.4
+    occupancy_rate = 0.5
 
-    io_points = {
-        (height * 0.15, 0),
-        (height - 1.5, width * 0.75),
-    }
+    # io_points = {
+    #     (height * 0.15, 0),
+    #     (height - 1.5, width * 0.75),
+    # }
+    
+    io_points = {(int(height*0.1),0), (int(height*0.95),int(width*0.55)), (int(height*0.95),int(width*0.67)), (int(height*0.95),int(width*0.79))}
 
     recorder = ExperimentRecorder(seed=seed)
 
@@ -40,9 +42,15 @@ if __name__ == "__main__":
         sigma_fine=1,
         noisy_aisles_num=0,
         noisy_aisle_sigma=1,
+        
+        # ordered_aisle_widths = (2, 1),
+        # ordered_aisle_spacing = (8, 2),
+        # ordered_aisle_offset = (0, 0),
+        # wall_clearance = (2, 2, 5, 3),
+
         io_points=io_points,
         io_points_radius=3,
-        simple_obstacle_rate=0.1,
+        simple_obstacle_rate=1,
         agv_radius=agv_radius,
         recorder=recorder,
     )

@@ -16,19 +16,20 @@ if __name__ == "__main__":
     seed = 42
     rng = np.random.default_rng(seed)
 
-    height = 10
-    width = 10
+    height = 15
+    width = 20
     
-    agv_radius = 0.45
+    agv_radius = 0.3
     
-    occupancy_rate = 0.2
+    occupancy_rate = 0.3
 
     io_points = {
-        (height * 0.18, 0),
-        (height - 1.6, width * 0.73),
+        (height - 0.3, width * 0.73),
+        (height - 0.3, width * 0.78),
+        (height - 0.3, width * 0.83),
     }
 
-    recorder = ExperimentRecorder(seed=seed)
+    recorder = ExperimentRecorder(seed=seed, experiment_name="vgraph_test")
 
     recorder.set_algorithm("scenario", use_iterations=False, plot=True)
     scenario = Scenario(
