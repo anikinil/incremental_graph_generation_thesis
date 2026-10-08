@@ -20,6 +20,7 @@ from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
 from visualization.meta import (
+    GRAPH_NODE_SIZE_SCALE,
     PRM_EDGE_COLOR,
     PRM_GOAL_COLOR,
     PRM_PATH_COLOR,
@@ -209,10 +210,9 @@ def _draw_samples(ax, samples):
     ax.scatter(
         points[:, 0],
         points[:, 1],
-        s=26,
+        s=26 * GRAPH_NODE_SIZE_SCALE,
         color=PRM_SAMPLE_COLOR,
-        edgecolors=SPECIAL_POINT_EDGE_COLOR,
-        linewidths=0.5,
+        edgecolors="none",
         zorder=25,
     )
 
@@ -245,8 +245,7 @@ def _draw_query(ax, demo):
             *positions[name],
             s=220,
             color=color,
-            edgecolors=SPECIAL_POINT_EDGE_COLOR,
-            linewidths=0.8,
+            edgecolors="none",
             zorder=27,
         )
         ax.annotate(

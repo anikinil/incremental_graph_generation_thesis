@@ -16,22 +16,25 @@ def _apply_scenario_updates(vgraph, scenario):
 if __name__ == "__main__":
     
 
-    seed = 42
+
+
+    seed = 40
     rng = np.random.default_rng(seed)
 
-    height = 30
-    width = 30
+    height = 6
+    width = 9
     
-    agv_radius = 0.45
+    agv_radius = 0.3
     
-    occupancy_rate = 0.2
+    occupancy_rate = 0.4
 
     io_points = {
-        (height * 0.15, 0),
-        (height - 1.5, width * 0.75),
+        (height - 0.3, width * 0.73),
+        (height - 0.3, width * 0.78),
+        (height - 0.3, width * 0.83),
     }
 
-    recorder = ExperimentRecorder(seed=seed, experiment_name="dynamic_vgraph_test", plot_buffer_segments=5)
+    recorder = ExperimentRecorder(seed=seed, experiment_name="dynamic_vgraph_test", plot_buffer_segments=0)
 
     recorder.set_algorithm("scenario", use_iterations=False, plot=True)
 
@@ -46,7 +49,7 @@ if __name__ == "__main__":
         noisy_aisle_sigma=1,
         io_points=io_points,
         io_points_radius=3,
-        simple_obstacle_rate=0.05,
+        simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
     )
@@ -73,15 +76,27 @@ if __name__ == "__main__":
 
     vgraph.preprocessing()
     vgraph.record_graph(phase="preprocessing")
-
-    scenario.make_updates(number_of_updates=30)
+    
+    scenario._add_obstacle(cell=(3, 5), type=2)
+    scenario.update_access_points()
+    scenario._record_scenario()
+    
+    scenario._remove_obstacle(cell=(5, 2))
+    scenario.update_access_points()
     _apply_scenario_updates(vgraph, scenario)
 
-    scenario.remove_region(top_left=(int(height * 0.15), int(width * 0.25)), bottom_right=(int(height * 0.55), int(width * 0.65)))
-    _apply_scenario_updates(vgraph, scenario)
+    # scenario.make_updates(number_of_updates=1)
+    # _apply_scenario_updates(vgraph, scenario)
+    
+    # scenario.make_updates(number_of_updates=3)
+    # _apply_scenario_updates(vgraph, scenario)
 
-    scenario.add_region(top_left=(int(height * 0.25), int(width * 0.35)), bottom_right=(int(height * 0.45), int(width * 0.55)))
-    _apply_scenario_updates(vgraph, scenario)
 
-    scenario.add_region(top_left=(0, 0), bottom_right=(1, 1))
-    _apply_scenario_updates(vgraph, scenario)
+    # scenario.remove_region(top_left=(int(height * 0.15), int(width * 0.25)), bottom_right=(int(height * 0.55), int(width * 0.65)))
+    # _apply_scenario_updates(vgraph, scenario)
+
+    # scenario.add_region(top_left=(int(height * 0.25), int(width * 0.35)), bottom_right=(int(height * 0.45), int(width * 0.55)))
+    # _apply_scenario_updates(vgraph, scenario)
+
+    # scenario.add_region(top_left=(0, 0), bottom_right=(1, 1))
+    # _apply_scenario_updates(vgraph, scenario)

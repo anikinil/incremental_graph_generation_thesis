@@ -50,8 +50,8 @@ class DynamicVGraph:
                 curr_vertex = coords[i]
                 
                 # check if curr_vertex touches the wall
-                if (curr_vertex[0] == 0 or curr_vertex[0] == self.height or
-                    curr_vertex[1] == 0 or curr_vertex[1] == self.width):
+                if (curr_vertex[0] == 0 or curr_vertex[0] == self.width or
+                    curr_vertex[1] == 0 or curr_vertex[1] == self.height):
                     continue  # skip vertices that touch the wall
                 
                 next_vertex = coords[(i + 1) % len(coords)]

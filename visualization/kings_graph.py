@@ -24,6 +24,9 @@ SIMPLE_OBSTACLE_COLOR = (0.3, 0.3, 0.3, 1)
 GRAPH_VERTEX_COLOR = (0.1, 0.4, 0.7, 1)
 GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 1)
 GRID_COLOR = (0, 0, 0, 1)
+GRID_ZORDER = 4
+GRAPH_VERTEX_ZORDER = GRID_ZORDER + 1
+GRAPH_NODE_SIZE_SCALE = 2
 SHORTEST_PATH_COLOR = (0, 0, 0, 1)
 TERMINAL_COLOR = (0, 0, 0, 1)
 TERMINAL_LABEL_COLOR = "white"
@@ -91,8 +94,7 @@ def _draw_terminals(axis, positions):
             *configuration,
             s=220,
             color=TERMINAL_COLOR,
-            edgecolors=GRID_COLOR,
-            linewidths=0.8,
+            edgecolors="none",
             zorder=7,
         )
         axis.annotate(
@@ -195,10 +197,10 @@ def plot_kings_graph():
     axis.scatter(
         positions[:, 0],
         positions[:, 1],
-        s=18,
+        s=18 * GRAPH_NODE_SIZE_SCALE,
         color=GRAPH_VERTEX_COLOR,
         edgecolors="none",
-        zorder=3,
+        zorder=GRAPH_VERTEX_ZORDER,
     )
 
     grid_segments = (
@@ -206,7 +208,7 @@ def plot_kings_graph():
         + [[(0, row), (width, row)] for row in range(height + 1)]
     )
     axis.add_collection(
-        LineCollection(grid_segments, colors=[GRID_COLOR], linewidths=0.55, zorder=4)
+        LineCollection(grid_segments, colors=[GRID_COLOR], linewidths=0.55, zorder=GRID_ZORDER)
     )
     terminal_vertices = _draw_terminals(axis, positions)
     _draw_shortest_path(axis, edges, terminal_vertices)

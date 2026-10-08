@@ -20,7 +20,7 @@ if __name__ == "__main__":
     width = 60
     
     agv_radius = 0.1
-    occupancy_rate = 0.5
+    occupancy_rate = 0.3
 
     # io_points = {
     #     (height * 0.15, 0),
@@ -43,10 +43,10 @@ if __name__ == "__main__":
         noisy_aisles_num=0,
         noisy_aisle_sigma=1,
         
-        # ordered_aisle_widths = (2, 1),
-        # ordered_aisle_spacing = (8, 2),
-        # ordered_aisle_offset = (0, 0),
-        # wall_clearance = (2, 2, 5, 3),
+        ordered_aisle_widths = (2, 1),
+        ordered_aisle_spacing = (8, 2),
+        ordered_aisle_offset = (0, 0),
+        wall_clearance = (2, 2, 5, 3),
 
         io_points=io_points,
         io_points_radius=3,

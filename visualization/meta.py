@@ -12,17 +12,16 @@ from artifacts.plot import (
     UNIT_LOAD_COLOR,
     VISIBILITY_EDGE_COLOR,
 )
+from artifacts.presentation import LEGEND_FONT_SIZE, LEGEND_POSITION, LEGEND_RIGHT
 
 
 # Typography and layout
-FONT_SIZE = 24
+FONT_SIZE = LEGEND_FONT_SIZE
 SINGLE_FIGURE_SIZE = (9, 5.5)
 PRM_FIGURE_SIZE = (17, 6.5)
-LEGEND_POSITION = (0.78, 0.5)
-LEGEND_RIGHT = 0.76
 
 # Visualization-specific colors
-WALL_COLOR = (0.3, 0.6, 0.9, 1)
+WALL_COLOR = (0, 0, 0, 1)
 WALL_THICKNESS = 0.25
 RADIUS_OFFSET_COLOR = (0.2, 0.5, 0.2, 1)
 ACCESS_POINT_ARROW_LENGTH = 0.42
@@ -36,6 +35,11 @@ PRM_GOAL_COLOR = (0, 0, 0, 1)
 PRM_PATH_COLOR = (0, 0, 0, 1)
 PRM_TERMINAL_LABEL_COLOR = "white"
 PRM_TERMINAL_LABEL_SIZE = 11
+
+# Interaction points use the same 225%-of-access-point emphasis as result
+# plots, while access-point markers and graph vertices retain their own sizes.
+INTERACTION_POINT_SIZE = 117
+GRAPH_NODE_SIZE_SCALE = 2
 
 # Sampling-based roadmap of trees (SRT) styling
 SRT_CONNECTION_COLOR = (0, 0, 0, 0.9)

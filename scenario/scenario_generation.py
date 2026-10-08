@@ -43,7 +43,7 @@ class Scenario:
                                                 [1, 1, 1],
                                                 [0, 1, 0]], dtype=np.uint8) # structure for connectivity checks
         
-        self.probability_field = None  # normalized probability field for obstacle placement
+        self.priority_field = None  # normalized priority field for obstacle placement
     
         self.iteration = 0
         
@@ -123,25 +123,25 @@ class Scenario:
             # scale the noisy aisle influence to values between zero and one
             noisy_aisle_field /= noisy_aisle_field.max()
             
-            # apply the noisy aisle influence to the obstacle probability field
+            # apply the noisy aisle influence to the obstacle priority field
             field -= noisy_aisle_field
             
             # normalize again
             field = (field - field.min()) / (field.max() - field.min())
 
-        # force every guaranteed-free cell to have zero obstacle probability
+        # force every guaranteed-free cell to have zero obstacle priority
         field[guaranteed_free == 0.0] = 0.0
 
         # force every I/O point cell to be guaranteed free
         for r, c in self.io_points:
             field[int(r), int(c)] = 0.0
 
-        self.probability_field = field
+        self.priority_field = field
         
-    # returns the best free cell for potential obstacle location based on the probability field
+    # returns the best free cell for potential obstacle location based on the priority field
     def get_best_obstacle_location(self):
-        # find the index of the maximum value in the probability field
-        idx = np.unravel_index(np.argmax(self.probability_field), self.probability_field.shape)
+        # find the index of the maximum value in the priority field
+        idx = np.unravel_index(np.argmax(self.priority_field), self.priority_field.shape)
         return idx
         
     # returns a randomly selected free cell
@@ -167,7 +167,7 @@ class Scenario:
 
         # generate the object placement priority field
         self._generate_priority_field()
-        selection_field = self.probability_field.copy()
+        selection_field = self.priority_field.copy()
 
         # create a shuffled list of obstacle types to place
         # 1: simple obstacles, 2: unit-load obstacles        
@@ -178,11 +178,11 @@ class Scenario:
         simple_obstacles_placed = 0
         placed_obstacles = 0
         attempted_placements = 0
-        unforbidden_cells = np.sum(selection_field > 0) # number of cells not forbidden by the probability field 
+        unforbidden_cells = np.sum(selection_field > 0) # number of cells not forbidden by the priority field 
         # attempt to place obstacles until all are placed or no more valid placements are possible
         while len(obstacles_to_place) > 0 and attempted_placements < unforbidden_cells:
 
-            # highest remaining obstacle probability
+            # highest remaining obstacle priority
             idx = np.argmax(selection_field)
             r, c = np.unravel_index(idx, selection_field.shape)
 
@@ -238,7 +238,7 @@ class Scenario:
     def _record_scenario(self):
         self.recorder.set_scenario({
             "occupancy": self.occupancy,
-            "probability_field": self.probability_field,
+            "priority_field": self.priority_field,
             "access_points": list(self.access_points),
             "io_points": list(self.io_points),
             "height": self.height,
@@ -312,7 +312,7 @@ class Scenario:
             success = False
             while not success:
                 
-                # only respect the probability field when adding or moving obstacles
+                # only respect the priority field when adding or moving obstacles
                 # removal cannot violate forbidden areas
                 if action == "add" or action == "move":
                     if respect_probab_field:
@@ -360,7 +360,7 @@ class Scenario:
         self.occupancy[cell] = type  # 1 for simple obstacle, 2 for unit-load obstacle
         
         if (cell in self.io_points):
-            # undo addition if it involves IO points
+            # undo addition if it involves interaction points
             self.occupancy[cell] = 0
             return False
 
@@ -378,7 +378,7 @@ class Scenario:
     def _move_obstacle(self, from_cell, to_cell):
         """Move an obstacle from one cell to another if it does not disconnect the free space."""
         
-        # do not move if an IO point is at target
+        # do not move if an interaction point is at target
         if (to_cell in self.io_points):
             return False
         

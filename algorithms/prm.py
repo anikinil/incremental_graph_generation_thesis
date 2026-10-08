@@ -89,9 +89,9 @@ class PRM:
         self.eps = eps # discretization step for local planner
         self.free_space = None
         self.access_points = access_points # access points (y, x)
-        self.io_points = io_points # io points (y, x)
-        # self.special_points = np.array(np.concatenate([io_points, access_points])) # io points ++ access points
-        self.special_points = np.asarray([*io_points, *access_points], dtype=float) # io points ++ access points
+        self.io_points = io_points # interaction points (y, x)
+        # self.special_points = np.array(np.concatenate([io_points, access_points])) # interaction points ++ access points
+        self.special_points = np.asarray([*io_points, *access_points], dtype=float) # interaction points ++ access points
         self.max_dist = max_dist # maximum distance to consider for neighbors
         self.max_neighbors = max_neighbors # maximum number of neighbors to consider for connection
         self.agv_radius = agv_radius # radius of the AGV for collision costraints
@@ -371,7 +371,7 @@ class PRM:
             self.edge_paths[edge] = edge_path if edge == (vertex_a, vertex_b) else edge_path[::-1].copy()
 
     def _connect_special_points(self, avoid_cycles=True):
-        """Attempts to connect special points (access + IO points) to the roadmap."""
+        """Attempts to connect special points (access + interaction points) to the roadmap."""
 
         # progress tracking
         total_special_points = len(self.special_points)

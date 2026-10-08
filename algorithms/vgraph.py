@@ -83,7 +83,7 @@ class VGraph:
         for i, v in enumerate(vertices):
             self.G.add_node(i, pos=v, type="obstacle")
         
-        # add IO points as vertices
+        # add interaction points as vertices
         for i, (x, y) in enumerate(self.io_points, start=len(vertices)):
             self.G.add_node(i, pos=(x, y), type="io")
     

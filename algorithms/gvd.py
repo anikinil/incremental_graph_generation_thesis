@@ -174,7 +174,7 @@ class GVD:
         new_occupancy[1:-1, 1:-1] = self.occupancy_grid
         self.occupancy_grid = new_occupancy
         
-        # adjust access points and IO points
+        # adjust access points and interaction points
         self.access_points = [(y + 1, x + 1, dir) for (y, x, dir) in self.access_points]
         self.io_points = [(y + 1, x + 1) for (y, x) in self.io_points]
         
@@ -535,11 +535,11 @@ class GVD:
             processed_special_points += 1
 
             if processed_special_points % 10 == 0 or processed_special_points == total_special_points:
-                progress.update(processed_special_points, total_special_points, f"IO points connected: {connected}/{len(self.io_points)}")
+                progress.update(processed_special_points, total_special_points, f"Interaction points connected: {connected}/{len(self.io_points)}")
 
         access_connected = len(self.access_point_connection_cells)
         progress.finish(connected == len(self.io_points) and access_connected == len(self.access_points),
-            f"access points: {access_connected}/{len(self.access_points)} | IO points: {connected}/{len(self.io_points)}")
+            f"access points: {access_connected}/{len(self.access_points)} | Interaction points: {connected}/{len(self.io_points)}")
 
 
     def _special_point_connection_on_cell(self, cell):

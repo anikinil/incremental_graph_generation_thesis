@@ -18,6 +18,7 @@ from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import unary_union
 
 from visualization.meta import (
+    GRAPH_NODE_SIZE_SCALE,
     SIMPLE_OBSTACLE_COLOR,
     SINGLE_FIGURE_SIZE,
     SPECIAL_POINT_EDGE_COLOR,
@@ -231,18 +232,16 @@ def _draw_trees(ax, trees):
         ax.scatter(
             tree["nodes"][:, 0],
             tree["nodes"][:, 1],
-            s=18,
+            s=18 * GRAPH_NODE_SIZE_SCALE,
             color=color,
-            edgecolors=SPECIAL_POINT_EDGE_COLOR,
-            linewidths=0.35,
+            edgecolors="none",
             zorder=15,
         )
         ax.scatter(
             *tree["representative"],
-            s=70,
+            s=70 * GRAPH_NODE_SIZE_SCALE,
             color=color,
-            edgecolors=SPECIAL_POINT_EDGE_COLOR,
-            linewidths=0.9,
+            edgecolors="none",
             zorder=16,
         )
 

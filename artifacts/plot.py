@@ -6,7 +6,21 @@ from matplotlib.patches import FancyArrowPatch, FancyBboxPatch, PathPatch, Recta
 from matplotlib.collections import LineCollection, PatchCollection, QuadMesh
 from matplotlib.colors import Normalize
 from matplotlib.cm import ScalarMappable
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.lines import Line2D
 from algorithms.geometry import buffered_obstacle_space
+from artifacts.presentation import (
+    DISTANCE_MAP_COLORBAR_GAP,
+    DISTANCE_MAP_COLORBAR_WIDTH,
+    DISTANCE_MAP_LEGEND_POSITION,
+    DRM_LEGEND_CANVAS_RIGHT,
+    DYNAMIC_VGRAPH_LEGEND_CANVAS_RIGHT,
+    GVD_LEGEND_CANVAS_RIGHT,
+    LEGEND_FONT_SIZE,
+    LEGEND_RIGHT,
+    RESULT_LEGEND_POSITION,
+    SCENARIO_LEGEND_POSITION,
+)
 
 # color palette
 
@@ -24,22 +38,25 @@ OFFSET_VEC_COLOR = (0.9, 0.2, 0.2, 0.8)  # red, semi-transparent
 
 GRAPH_VERTEX_COLOR = (0.1, 0.4, 0.7, 1)           # blue
 GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 0.8)           # blue
+PRM_EDGE_COLOR = (0.08, 0.34, 0.60, 1)            # darker blue
+PRM_EDGE_ALPHA = 0.65
 
 INACTIVE_GRAPH_VERTEX_COLOR = (0.4, 0.4, 0.4, 0.4)  # semi-transparent grey
-INACTIVE_GRAPH_EDGE_COLOR = (0.4, 0.4, 0.4, 0.3)    # semi-transparent grey
+INACTIVE_GRAPH_EDGE_COLOR = (0.35, 0.35, 0.35, 0.45)  # darker, more visible grey
 
 AFFECTED_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 1)   # red
 AFFECTED_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.8)   # red
 
 AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 0.2) # red
-AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.1) # red
+AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.85, 0.18, 0.18, 0.2) # darker, more visible red
 
 # outline of affected region on the GVD distance map
 AFFECTED_OUTLINE_COLOR = (0.9, 0.2, 0.2, 1)       # red
 
 VISIBILITY_EDGE_COLOR = (0.1, 0.4, 0.7, 0.5)      # blue, semi-transparent for better visibility
+RESULT_VISIBILITY_EDGE_COLOR = (0.08, 0.34, 0.60, 0.65)  # darker, more visible blue
 
-IO_POINT_COLOR = (0.2, 0.6, 0.4)                  # green
+IO_POINT_COLOR = (0.32, 0.70, 0.28)               # brighter, slightly yellow-green
 ACCESS_POINT_COLOR = (0.9, 0.5, 0.1)              # orange
 SPECIAL_POINT_EDGE_COLOR = (0.1, 0.1, 0.1, 1)     # dark grey
 
@@ -54,8 +71,288 @@ UNIT_CELL_GRID_LINE_WIDTH = 0.9
 # TODO
 GRID_ZORDER = 100
 UNIT_CELL_GRID_ZORDER = GRID_ZORDER + 1
+POINT_ZORDER = UNIT_CELL_GRID_ZORDER + 1
+ROADMAP_EDGE_ZORDER = POINT_ZORDER + 1
+ROADMAP_NODE_ZORDER = ROADMAP_EDGE_ZORDER + 1
+
+RESULT_ROADMAP_NODE_SIZE = 36
+# Access points are just larger than roadmap nodes, leaving a visible ring when
+# a node shares their position.  Interaction points remain clearly larger.
+RESULT_SPECIAL_POINT_SIZE = 120
+RESULT_INTERACTION_POINT_SIZE = int(RESULT_SPECIAL_POINT_SIZE * 1.5)
+# Cell-type keys are deliberately larger than point and edge keys, so their
+# filled-cell meaning remains readable at thesis-print scale.
+OBSTACLE_LEGEND_MARKER_SIZE = 24
 
 # utility
+
+def _obstacle_legend_handle(color, label):
+    """Return a square marker for an obstacle-type legend entry."""
+    return Line2D(
+        [], [], marker="s", linestyle="", markersize=OBSTACLE_LEGEND_MARKER_SIZE,
+        markerfacecolor=color, markeredgecolor="none", label=label,
+    )
+
+
+def _free_cell_legend_handle():
+    """Return the shared square legend marker for unoccupied workspace cells."""
+    return Line2D(
+        [], [], marker="s", linestyle="", markersize=OBSTACLE_LEGEND_MARKER_SIZE,
+        markerfacecolor="white", markeredgecolor="black", label="Free cell",
+    )
+
+
+class _DistanceMapFreeCellLegendHandle:
+    """Marker type rendered as a distance-colour gradient in legends."""
+
+
+class _DistanceMapFreeCellLegendHandler(HandlerBase):
+    """Render a smooth diagonal plasma gradient in a cell-sized legend square."""
+
+    _resolution = 24
+    _gradient = (
+        np.add.outer(
+            np.linspace(0, 1, _resolution),
+            np.linspace(0, 1, _resolution),
+        ) / 2
+    )
+
+    def create_artists(self, legend, orig_handle, xdescent, ydescent, width,
+                       height, fontsize, trans):
+        del orig_handle, fontsize
+        # Legend-handler coordinates are in points; ``trans`` performs the
+        # point-to-pixel conversion, so use the shared marker size directly.
+        # Do not constrain this to the handler box: a normal legend handler is
+        # shorter than a doubled cell key.  Its centred square may extend into
+        # the available row spacing, just as a Line2D marker does.
+        square_size = OBSTACLE_LEGEND_MARKER_SIZE
+        x_position = xdescent + (width - square_size) / 2
+        y_position = ydescent + (height - square_size) / 2
+        cell_size = square_size / self._resolution
+        colours = plt.cm.plasma(self._gradient)
+        gradient_cells = [
+            Rectangle(
+                (x_position + column * cell_size, y_position + row * cell_size),
+                cell_size,
+                cell_size,
+                facecolor=colours[row, column],
+                edgecolor="none",
+                antialiased=False,
+                transform=trans,
+            )
+            for row in range(self._resolution)
+            for column in range(self._resolution)
+        ]
+        outline = Rectangle(
+            (x_position, y_position),
+            square_size,
+            square_size,
+            fill=False,
+            edgecolor="black",
+            linewidth=1,
+            transform=trans,
+        )
+        return [*gradient_cells, outline]
+
+
+class _ZoneLegendHandler(HandlerBase):
+    """Draw a filled-area key with the requested height scale.
+
+    The handle box already provides the appropriate horizontal length.  Area
+    keys can therefore differ in height without lengthening line or arrow
+    samples in the same legend.
+    """
+
+    def __init__(self, height_scale):
+        super().__init__()
+        self.height_scale = height_scale
+
+    def create_artists(self, legend, orig_handle, xdescent, ydescent, width,
+                       height, fontsize, trans):
+        del legend, fontsize
+        zone_height = self.height_scale * height
+        zone = Rectangle(
+            (xdescent, ydescent + (height - zone_height) / 2),
+            width,
+            zone_height,
+            facecolor=orig_handle.get_facecolor(),
+            edgecolor=orig_handle.get_edgecolor(),
+            linewidth=orig_handle.get_linewidth(),
+            linestyle=orig_handle.get_linestyle(),
+            hatch=orig_handle.get_hatch(),
+            alpha=orig_handle.get_alpha(),
+            transform=trans,
+            clip_on=False,
+        )
+        return [zone]
+
+
+class _BufferZoneLegendPatch(Patch):
+    """Legend proxy for the thinner robot-radius buffer swatch."""
+
+
+_LARGE_ZONE_LEGEND_HANDLER = _ZoneLegendHandler(height_scale=2)
+_BUFFER_ZONE_LEGEND_HANDLER = _ZoneLegendHandler(height_scale=1)
+
+
+def _buffer_zone_legend_handle():
+    """Return the shared, thinner legend proxy for robot-radius buffers."""
+    return _BufferZoneLegendPatch(
+        facecolor=AGV_RADIUS_BUFFER_COLOR,
+        edgecolor="none",
+        label="Robot radius buffer",
+    )
+
+
+def _area_legend_handler_map():
+    """Return the standard handlers for enlarged zones and buffer zones."""
+    return {
+        Patch: _LARGE_ZONE_LEGEND_HANDLER,
+        _BufferZoneLegendPatch: _BUFFER_ZONE_LEGEND_HANDLER,
+    }
+
+
+def _register_result_legend(axis, handles=None, labels=None, *,
+                            free_cell_handle=None, handler_map=None,
+                            cell_entries=None):
+    """Register legend content; finalization applies the shared presentation."""
+    if handles is None:
+        handles, labels = axis.get_legend_handles_labels()
+
+    if cell_entries is None:
+        cell_entries = [
+            (free_cell_handle or _free_cell_legend_handle(), "Free cell"),
+            (_obstacle_legend_handle(SIMPLE_OBSTACLE_COLOR, "Simple obstacle"), "Simple obstacle"),
+            (_obstacle_legend_handle(UNIT_LOAD_COLOR, "Unit-load obstacle"), "Unit-load obstacle"),
+            (_buffer_zone_legend_handle(), "Robot radius buffer"),
+        ]
+    entries = list(zip(handles, labels))
+    point_labels = ("Access points", "Interaction points")
+    point_entries = [
+        entry for point_label in point_labels
+        for entry in entries if entry[1] == point_label
+    ]
+    other_entries = [entry for entry in entries if entry[1] not in point_labels]
+
+    unique_entries = {}
+    for handle, label in [*cell_entries, *point_entries, *other_entries]:
+        unique_entries.setdefault(label, handle)
+    result_handler_map = _area_legend_handler_map()
+    if handler_map:
+        result_handler_map.update(handler_map)
+    legend = axis.legend(
+        unique_entries.values(),
+        unique_entries.keys(),
+        markerscale=1,
+        handler_map=result_handler_map,
+    )
+    # This temporary axes legend is replaced by a figure-level legend during
+    # finalization.  Excluding it keeps tight_layout independent of how many
+    # entries the current iteration has.
+    legend.set_in_layout(False)
+    legend._result_legend_handles = list(unique_entries.values())
+    legend._result_legend_labels = list(unique_entries.keys())
+    legend._result_legend_handler_map = result_handler_map
+    return legend
+
+
+def _with_vgraph_edge_legend_proxies(handles, labels):
+    """Use readable legend samples without changing roadmap-edge rendering."""
+    edge_colors = {
+        "Roadmap edges": RESULT_VISIBILITY_EDGE_COLOR,
+        "Active roadmap edges": GRAPH_EDGE_COLOR,
+        "Inactive roadmap edges": INACTIVE_GRAPH_EDGE_COLOR,
+    }
+    return [
+        Line2D([], [], color=edge_colors[label], linewidth=1.5,
+               solid_capstyle="round")
+        if label in edge_colors else handle
+        for handle, label in zip(handles, labels)
+    ]
+
+
+def _order_legend_entries(handles, labels, preferred_labels):
+    """Deduplicate legend entries while placing related roadmap items first."""
+    unique_handles = dict(zip(labels, handles))
+    ordered_labels = [
+        label for label in preferred_labels if label in unique_handles
+    ]
+    ordered_labels.extend(
+        label for label in unique_handles if label not in preferred_labels
+    )
+    return [unique_handles[label] for label in ordered_labels], ordered_labels
+
+
+def _with_drm_edge_legend_proxies(handles, labels):
+    """Give every DRM edge entry an equally readable legend sample."""
+    edge_colors = {
+        "Active roadmap edges": GRAPH_EDGE_COLOR,
+        "Inactive roadmap edges": INACTIVE_GRAPH_EDGE_COLOR,
+        "Affected active roadmap edges": AFFECTED_GRAPH_EDGE_COLOR,
+        "Affected inactive roadmap edges": AFFECTED_INACTIVE_GRAPH_EDGE_COLOR,
+    }
+    return [
+        Line2D([], [], color=edge_colors[label], linewidth=1.5,
+               solid_capstyle="round")
+        if label in edge_colors else handle
+        for handle, label in zip(handles, labels)
+    ]
+
+
+def _move_legend_to_result_margin(fig, *, position=RESULT_LEGEND_POSITION,
+                                  canvas_right=None,
+                                  subplots_right=LEGEND_RIGHT):
+    """Move any axes legends into the shared right-hand result margin."""
+    handles = []
+    labels = []
+    handler_map = {}
+    for axis in fig.axes:
+        legend = axis.get_legend()
+        if legend is None:
+            continue
+
+        legend_handles = getattr(legend, "legend_handles", None)
+        if legend_handles is None:  # Matplotlib versions before 3.7
+            legend_handles = legend.legendHandles
+        handles.extend(getattr(legend, "_result_legend_handles", legend_handles))
+        labels.extend(getattr(
+            legend,
+            "_result_legend_labels",
+            [text.get_text() for text in legend.get_texts()],
+        ))
+        handler_map.update(getattr(legend, "_result_legend_handler_map", None) or {})
+        legend.remove()
+
+    if not handles:
+        return
+
+    fig.legend(
+        handles,
+        labels,
+        loc="center left",
+        bbox_to_anchor=position,
+        frameon=False,
+        fontsize=LEGEND_FONT_SIZE,
+        markerscale=1,
+        handler_map=handler_map or None,
+    )
+    if canvas_right is not None:
+        # ``bbox_inches="tight"`` would otherwise shrink PDFs from the same
+        # dynamic algorithm to different widths as their legends change.
+        # This transparent marker fixes a family-specific right boundary
+        # without enlarging unrelated figures.
+        fig.text(
+            canvas_right,
+            0.5,
+            " ",
+            transform=fig.transFigure,
+            alpha=0,
+            ha="left",
+            va="center",
+        )
+    if subplots_right is not None:
+        fig.subplots_adjust(right=subplots_right)
+
 
 def _mask_from_cells(cells, height, width):
     """Returns a boolean mask of shape (height, width) with True at the given cells."""
@@ -175,22 +472,26 @@ def _draw_continuous_environment(ax, occupancy, bounds, *, agv_radius=None,
     _setup_continuous_axes(ax, bounds)
 
 
-def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordinates=False):
+def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordinates=False,
+                                    marker_size=RESULT_SPECIAL_POINT_SIZE, interaction_marker_size=None):
     """Draw PRM/VGraph-style special points, optionally converting grid coordinates."""
+    if interaction_marker_size is None:
+        interaction_marker_size = RESULT_INTERACTION_POINT_SIZE
+
     if grid_coordinates:
         access_points = [(column, row) for row, column, *_ in access_points]
         io_points = [(column + 0.5, row + 0.5) for row, column in io_points]
 
     if access_points:
         xs, ys = zip(*access_points)
-        ax.scatter(xs, ys, s=20, color=ACCESS_POINT_COLOR,
-                   edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.7,
-                   zorder=20, label="Access points")
+        ax.scatter(xs, ys, s=marker_size, color=ACCESS_POINT_COLOR,
+                   edgecolors="none",
+                   zorder=POINT_ZORDER, label="Access points")
     if io_points:
         xs, ys = zip(*io_points)
-        ax.scatter(xs, ys, s=20, color=IO_POINT_COLOR,
-                   edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.8,
-                   zorder=20, label="IO points")
+        ax.scatter(xs, ys, s=interaction_marker_size, color=IO_POINT_COLOR,
+                   edgecolors="none",
+                   zorder=POINT_ZORDER, label="Interaction points")
 
 
 def _draw_scenario_access_points(ax, access_points):
@@ -204,11 +505,10 @@ def _draw_scenario_access_points(ax, access_points):
     return ax.scatter(
         points[:, 0],
         points[:, 1],
-        s=42,
+        s=RESULT_SPECIAL_POINT_SIZE,
         color=ACCESS_POINT_COLOR,
-        edgecolors=SPECIAL_POINT_EDGE_COLOR,
-        linewidths=0.7,
-        zorder=GRID_ZORDER + 2,
+        edgecolors="none",
+        zorder=POINT_ZORDER,
         label="Access points",
     )
 
@@ -218,18 +518,16 @@ def _draw_grid_special_points(ax, access_points, io_points):
     handles = []
     if access_points:
         access = np.asarray([(p[1], p[0]) for p in access_points], dtype=float)
-        handles.append(ax.scatter(access[:, 0], access[:, 1], s=34,
+        handles.append(ax.scatter(access[:, 0], access[:, 1], s=RESULT_SPECIAL_POINT_SIZE,
                                   color=ACCESS_POINT_COLOR,
-                                  edgecolors=SPECIAL_POINT_EDGE_COLOR,
-                                  linewidths=0.7, zorder=20,
+                                  edgecolors="none", zorder=POINT_ZORDER,
                                   label="Access points"))
     if io_points:
         io = np.asarray([(p[1], p[0]) for p in io_points], dtype=float)
-        handles.append(ax.scatter(io[:, 0], io[:, 1], s=48,
+        handles.append(ax.scatter(io[:, 0], io[:, 1], s=RESULT_INTERACTION_POINT_SIZE,
                                   color=IO_POINT_COLOR,
-                                  edgecolors=SPECIAL_POINT_EDGE_COLOR,
-                                  linewidths=0.8, zorder=20,
-                                  label="IO points"))
+                                  edgecolors="none", zorder=POINT_ZORDER,
+                                  label="Interaction points"))
     return handles
 
 
@@ -285,67 +583,82 @@ class BasePlotter:
         raise NotImplementedError
 
     def set_title(self, fig, ax, title):
-        target = ax[0] if isinstance(ax, (list, tuple)) else ax
-        target.set_title(title)
+        """Result plots intentionally do not display titles."""
+        del fig, ax, title
 
     def finalize(self, fig, ax):
         target = ax[0] if isinstance(ax, (list, tuple)) else ax
         target.set_aspect("equal")
         fig.tight_layout()
+        _move_legend_to_result_margin(fig)
 
 class ScenarioPlotter(BasePlotter):
-    """Plots the probability color bar, probability field, and obstacle layout."""
+    """Plots the priority color bar, priority field, and occupancy map."""
 
     def setup_figure(self):
-        fig = plt.figure(figsize=(12, 5))
-        fig.subplots_adjust(left=0.11, right=0.98, bottom=0.1, top=0.9)
-        gs = fig.add_gridspec(1, 3, width_ratios=[0.07, 1, 1], wspace=0.15)
+        fig = plt.figure(figsize=(12, 10))
+        fig.subplots_adjust(left=0.11, right=0.98, bottom=0.07, top=0.95)
+        gs = fig.add_gridspec(
+            2,
+            2,
+            width_ratios=[0.07, 1],
+            height_ratios=[1, 1],
+            wspace=0.15,
+            hspace=0.45,
+        )
         ax_cbar = fig.add_subplot(gs[0, 0])
         ax_prob = fig.add_subplot(gs[0, 1])
-        ax_obst = fig.add_subplot(gs[0, 2])
-        return fig, (ax_cbar, ax_prob, ax_obst)
+        ax_occupancy = fig.add_subplot(gs[1, 1])
+        return fig, (ax_cbar, ax_prob, ax_occupancy)
 
     def draw(self, ax, data):
-        ax_cbar, ax_prob, ax_obst = ax
+        ax_cbar, ax_prob, ax_occupancy = ax
 
         occupancy = data.get("occupancy") if isinstance(data, dict) else data
         access_points = data.get("access_points", []) if isinstance(data, dict) else []
         io_points = data.get("io_points", []) if isinstance(data, dict) else []
-        probability_field = data.get("probability_field") if isinstance(data, dict) else None
+        priority_field = data.get("priority_field") if isinstance(data, dict) else None
 
         height, width = occupancy.shape if occupancy is not None else (0, 0)
 
-        ax_obst.set_title("Obstacle layout")
-        ax_prob.set_title("Probability map")
+        ax_prob.set_title("Priority map")
+        ax_occupancy.set_title("Occupancy map")
 
-        # The QuadMesh keeps the probability map vector-based in the PDF.
-        mesh = ax_prob.pcolormesh(probability_field, cmap="viridis", shading="flat", zorder=1)
+        # The QuadMesh keeps the priority map vector-based in the PDF.
+        mesh = ax_prob.pcolormesh(priority_field, cmap="viridis", shading="flat", zorder=1)
         mesh.set_edgecolor("none")
         mesh.set_antialiased(False)
 
-        _draw_continuous_environment(ax_obst, occupancy, bounds=(0, 0, width, height),)
-        # make centre gap available for the arrow.
-        ax_obst.yaxis.tick_right()
+        _draw_continuous_environment(ax_occupancy, occupancy, bounds=(0, 0, width, height),)
+        ax_occupancy.set_anchor("W")
 
         _setup_continuous_axes(ax_prob, bounds=(0, 0, width, height))
-        _draw_scenario_access_points(ax_obst, access_points)
-        _draw_continuous_special_points(ax_obst, [], io_points, grid_coordinates=True)
+        ax_prob.set_anchor("W")
+        _draw_scenario_access_points(ax_occupancy, access_points)
+        _draw_continuous_special_points(ax_occupancy, [], io_points, grid_coordinates=True)
+        _register_result_legend(
+            ax_occupancy,
+            cell_entries=[
+                (_free_cell_legend_handle(), "Free cell"),
+                (_obstacle_legend_handle(SIMPLE_OBSTACLE_COLOR, "Obstacle"), "Obstacle"),
+            ],
+        )
 
-        colorbar = ax_obst.figure.colorbar(mesh, cax=ax_cbar, label="Probability")
+        colorbar = ax_occupancy.figure.colorbar(mesh, cax=ax_cbar, label="Priority")
         colorbar.ax.yaxis.set_ticks_position("left")
         colorbar.ax.yaxis.set_label_position("left")
         colorbar.ax.tick_params(pad=4)
 
-        probability_position = ax_prob.get_position()
+        priority_position = ax_prob.get_position()
         colorbar_position = ax_cbar.get_position()
-        ax_cbar.set_position([colorbar_position.x0, probability_position.y0, colorbar_position.width, probability_position.height])
+        ax_cbar.set_position([colorbar_position.x0, priority_position.y0, colorbar_position.width, priority_position.height])
 
-        obstacle_position = ax_obst.get_position()
-        arrow_y = (probability_position.y0 + probability_position.y1) / 2
-        ax_obst.figure.add_artist(FancyArrowPatch(
-            (probability_position.x1 + 0.006, arrow_y),
-            (obstacle_position.x0 - 0.006, arrow_y),
-            transform=ax_obst.figure.transFigure,
+        occupancy_position = ax_occupancy.get_position()
+        arrow_x = (priority_position.x0 + priority_position.x1) / 2
+        ax_occupancy.figure.add_artist(FancyArrowPatch(
+            (arrow_x, priority_position.y0 - 0.04),
+            (arrow_x, occupancy_position.y1 + 0.04),
+            transform=ax_occupancy.figure.transFigure,
             arrowstyle="->",
             mutation_scale=16,
             linewidth=1.5,
@@ -354,16 +667,22 @@ class ScenarioPlotter(BasePlotter):
             clip_on=False,
         ))
 
-    def set_title(self, fig, ax, title):
-        # fig.suptitle(title)
-        pass
-
     def finalize(self, fig, ax):
-        pass
+        # The manually positioned colourbar and inter-map arrow must retain
+        # their geometry, so extend the saved canvas for the legend instead of
+        # shrinking this three-panel figure.
+        del ax
+        _move_legend_to_result_margin(
+            fig,
+            position=SCENARIO_LEGEND_POSITION,
+            subplots_right=None,
+        )
 
 
 class _GVDGridPlotter(BasePlotter):
     """Base class for GVD-related grid plots (distance map, Voronoi skeleton)."""
+
+    legend_canvas_right = GVD_LEGEND_CANVAS_RIGHT
     
     def _context(self, data):
         """Return the GVD context for plotting."""
@@ -409,12 +728,17 @@ class _GVDGridPlotter(BasePlotter):
 
     def finalize(self, fig, ax):
         fig.tight_layout()
+        _move_legend_to_result_margin(
+            fig,
+            canvas_right=self.legend_canvas_right,
+        )
 
 
 class DistanceMapPlotter(_GVDGridPlotter):
     """Plots distance map, with optional affected cells highlighted."""
 
     def draw(self, ax, data):
+        self._distance_scalar_mappable = None
         ctx = self._context(data)
         occupancy = ctx["occupancy"]
         height = ctx["height"]
@@ -442,12 +766,46 @@ class DistanceMapPlotter(_GVDGridPlotter):
 
         if np.any(finite):
             norm = Normalize(vmin=0, vmax=max_D if max_D > 0 else 1)
-            sm = ScalarMappable(cmap=plt.cm.plasma, norm=norm)
-            fig = ax.figure
-            fig.colorbar(sm, ax=ax, label="Squared distance to nearest obstacle")
+            self._distance_scalar_mappable = ScalarMappable(
+                cmap=plt.cm.plasma,
+                norm=norm,
+            )
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
         _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+        _register_result_legend(
+            ax,
+            free_cell_handle=_DistanceMapFreeCellLegendHandle(),
+            handler_map={
+                _DistanceMapFreeCellLegendHandle: _DistanceMapFreeCellLegendHandler(),
+            },
+        )
+
+    def finalize(self, fig, ax):
+        """Place a full-height distance scale without resizing the map axes."""
+        fig.tight_layout()
+        _move_legend_to_result_margin(
+            fig,
+            position=DISTANCE_MAP_LEGEND_POSITION,
+            canvas_right=self.legend_canvas_right,
+        )
+
+        if self._distance_scalar_mappable is None:
+            return
+
+        map_position = ax.get_position()
+        colorbar_axis = fig.add_axes([
+            map_position.x1 + DISTANCE_MAP_COLORBAR_GAP,
+            map_position.y0,
+            DISTANCE_MAP_COLORBAR_WIDTH,
+            map_position.height,
+        ])
+        colorbar = fig.colorbar(self._distance_scalar_mappable, cax=colorbar_axis)
+        colorbar.set_label(
+            "Squared distance to nearest obstacle",
+            fontsize=LEGEND_FONT_SIZE,
+        )
+        colorbar.ax.tick_params(labelsize=LEGEND_FONT_SIZE)
 
 
 class VoronoiSkeletonPlotter(_GVDGridPlotter):
@@ -474,6 +832,11 @@ class VoronoiSkeletonPlotter(_GVDGridPlotter):
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
         _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+        _register_result_legend(
+            ax,
+            [Patch(facecolor=VORO_SKELETON_COLOR, edgecolor="none")],
+            ["Voronoi skeleton"],
+        )
 
 
 class VoronoiSkeletonWithBridgeCells(_GVDGridPlotter):
@@ -507,6 +870,7 @@ class VoronoiSkeletonWithBridgeCells(_GVDGridPlotter):
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
         _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+        _register_result_legend(ax)
 
 
 class GraphPlotter(_GVDGridPlotter):
@@ -546,12 +910,12 @@ class GraphPlotter(_GVDGridPlotter):
             edges = graph["edges"]
 
             edge_segments = [[(vertices[v1][1], vertices[v1][0]), (vertices[v2][1], vertices[v2][0])] for v1, v2 in edges]
-            ax.add_collection(LineCollection(edge_segments, colors=[GRAPH_EDGE_COLOR], linewidths=1.6, capstyle="round", joinstyle="round", zorder=10, label="Graph edges"))
+            ax.add_collection(LineCollection(edge_segments, colors=[GRAPH_EDGE_COLOR], linewidths=1.6, capstyle="round", joinstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Roadmap edges"))
 
             coords = np.asarray([(x, y) for y, x in vertices.values()], dtype=float)
             ax.scatter(coords[:, 0], coords[:, 1], color=GRAPH_VERTEX_COLOR,
-                       edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.6,
-                       s=13, zorder=11, label="Graph vertices")
+                       edgecolors="none", s=RESULT_ROADMAP_NODE_SIZE,
+                       zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
         handles, labels = ax.get_legend_handles_labels()
         if voro is not None:
@@ -566,14 +930,17 @@ class GraphPlotter(_GVDGridPlotter):
                 Patch(facecolor=AFFECTED_VORO_CELLS_COLOR, edgecolor="none"),
             ])
             labels.extend(["Changed distance cells", "Affected Voronoi cells"])
-        ax.legend(handles, labels, loc="upper right", fontsize="small",
-                  frameon=True, framealpha=0.92)
+        ordered_handles, ordered_labels = _order_legend_entries(
+            handles, labels, ("Roadmap nodes", "Roadmap edges"),
+        )
+        _register_result_legend(ax, ordered_handles, ordered_labels)
 
 
 class _ContinuousGraphPlotter(BasePlotter):
     """Shared rendering for PRM and visibility-graph snapshots."""
 
     requires_buffer_segments = True
+    legend_canvas_right = None
 
     def setup_figure(self):
         return plt.subplots(figsize=(16, 12))
@@ -600,10 +967,20 @@ class _ContinuousGraphPlotter(BasePlotter):
         )
 
     def _draw_special_points(self, ax, context):
-        _draw_continuous_special_points(ax, context["access_points"], context["io_points"])
+        _draw_continuous_special_points(
+            ax,
+            context["access_points"],
+            context["io_points"],
+            marker_size=RESULT_SPECIAL_POINT_SIZE,
+            interaction_marker_size=RESULT_INTERACTION_POINT_SIZE,
+        )
 
     def finalize(self, fig, ax):
         fig.tight_layout()
+        _move_legend_to_result_margin(
+            fig,
+            canvas_right=self.legend_canvas_right,
+        )
 
 
 class PRMGraphPlotter(_ContinuousGraphPlotter):
@@ -617,8 +994,8 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
         edges = data["edges"]
         if len(edges):
             ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in edges],
-                                             colors=[GRAPH_EDGE_COLOR], linewidths=1.1, alpha=0.55,
-                                             capstyle="round", zorder=10, label="Graph edges"))
+                                             colors=[PRM_EDGE_COLOR], linewidths=1.1, alpha=PRM_EDGE_ALPHA,
+                                             capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Roadmap edges"))
 
         adjacency = [set() for _ in range(len(vertices))]
         for left, right in edges:
@@ -639,16 +1016,20 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
 
         for component in components:
             coordinates = vertices[list(component)]
-            ax.scatter(coordinates[:, 0], coordinates[:, 1], s=5, color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR, linewidths=0.35, zorder=11, label="Graph vertices")
+            ax.scatter(coordinates[:, 0], coordinates[:, 1], s=RESULT_ROADMAP_NODE_SIZE, color=GRAPH_VERTEX_COLOR, edgecolors="none", zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
         self._draw_special_points(ax, context)
         handles, labels = ax.get_legend_handles_labels()
-        unique_handles = dict(zip(labels, handles))
-        ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
+        ordered_handles, ordered_labels = _order_legend_entries(
+            handles, labels, ("Roadmap nodes", "Roadmap edges"),
+        )
+        _register_result_legend(ax, ordered_handles, ordered_labels)
 
 
 class DRMGraphPlotter(_ContinuousGraphPlotter):
     """Plot a DRM snapshot, distinguishing active and inactive roadmap items."""
+
+    legend_canvas_right = DRM_LEGEND_CANVAS_RIGHT
 
     def draw(self, ax, data):
         context = self._context(data)
@@ -674,23 +1055,23 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
 
         if inactive_edges:
             ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in inactive_edges],
-                                             colors=[INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.75, capstyle="round", zorder=8, label="Inactive roadmap arcs"))
+                                             colors=[INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.75, capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Inactive roadmap edges"))
         if active_edges:
             ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in active_edges],
-                                             colors=[GRAPH_EDGE_COLOR], linewidths=1.1, capstyle="round", zorder=10, label="Active roadmap arcs"))
+                                             colors=[GRAPH_EDGE_COLOR], linewidths=1.1, capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Active roadmap edges"))
 
         inactive_vertex_mask = vertex_present & ~vertex_active
         active_vertex_mask = vertex_present & vertex_active
         if np.any(inactive_vertex_mask):
             inactive_vertices = vertices[inactive_vertex_mask]
-            ax.scatter(inactive_vertices[:, 0], inactive_vertices[:, 1], s=13,
+            ax.scatter(inactive_vertices[:, 0], inactive_vertices[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
                        color=INACTIVE_GRAPH_VERTEX_COLOR, edgecolors="none",
-                       zorder=9, label="Inactive roadmap vertices")
+                       zorder=ROADMAP_NODE_ZORDER, label="Inactive roadmap nodes")
         if np.any(active_vertex_mask):
             active_vertices = vertices[active_vertex_mask]
-            ax.scatter(active_vertices[:, 0], active_vertices[:, 1], s=18,
-                       color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR,
-                       linewidths=0.35, zorder=11, label="Active roadmap vertices")
+            ax.scatter(active_vertices[:, 0], active_vertices[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
+                       color=GRAPH_VERTEX_COLOR, edgecolors="none",
+                       zorder=ROADMAP_NODE_ZORDER, label="Active roadmap nodes")
 
         affected_edges = {
             tuple(sorted(edge)) for edge in data.get("affected_edges", ())
@@ -705,13 +1086,13 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
             ax.add_collection(LineCollection(
                 [[vertices[left], vertices[right]] for left, right in affected_active_edges],
                 colors=[AFFECTED_GRAPH_EDGE_COLOR], linewidths=1.1,
-                capstyle="round", zorder=13, label="Affected roadmap arcs",
+                capstyle="round", zorder=ROADMAP_EDGE_ZORDER + 1, label="Affected active roadmap edges",
             ))
         if affected_inactive_edges:
             ax.add_collection(LineCollection(
                 [[vertices[left], vertices[right]] for left, right in affected_inactive_edges],
                 colors=[AFFECTED_INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.75,
-                capstyle="round", zorder=13, label="Affected roadmap arcs",
+                capstyle="round", zorder=ROADMAP_EDGE_ZORDER + 1, label="Affected inactive roadmap edges",
             ))
 
         affected_vertices = sorted({
@@ -722,23 +1103,48 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
         affected_inactive_vertices = [index for index in affected_vertices if not vertex_active[index]]
         if affected_active_vertices:
             affected_coordinates = vertices[affected_active_vertices]
-            ax.scatter(affected_coordinates[:, 0], affected_coordinates[:, 1], s=18,
-                       color=AFFECTED_GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR,
-                       linewidths=0.35, zorder=14, label="Affected roadmap vertices")
+            ax.scatter(affected_coordinates[:, 0], affected_coordinates[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
+                       color=AFFECTED_GRAPH_VERTEX_COLOR, edgecolors="none",
+                       zorder=ROADMAP_NODE_ZORDER + 1, label="Affected active roadmap nodes")
         if affected_inactive_vertices:
             affected_coordinates = vertices[affected_inactive_vertices]
-            ax.scatter(affected_coordinates[:, 0], affected_coordinates[:, 1], s=13,
+            ax.scatter(affected_coordinates[:, 0], affected_coordinates[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
                        color=AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR, edgecolors="none",
-                       zorder=14, label="Affected roadmap vertices")
+                       zorder=ROADMAP_NODE_ZORDER + 1, label="Affected inactive roadmap nodes")
 
         self._draw_special_points(ax, context)
         handles, labels = ax.get_legend_handles_labels()
         unique_handles = dict(zip(labels, handles))
-        ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
+        roadmap_legend_order = (
+            "Active roadmap nodes",
+            "Active roadmap edges",
+            "Inactive roadmap nodes",
+            "Inactive roadmap edges",
+            "Affected active roadmap nodes",
+            "Affected active roadmap edges",
+            "Affected inactive roadmap nodes",
+            "Affected inactive roadmap edges",
+        )
+        unique_labels = [
+            label for label in roadmap_legend_order if label in unique_handles
+        ]
+        unique_labels.extend(
+            label for label in unique_handles if label not in roadmap_legend_order
+        )
+        _register_result_legend(
+            ax,
+            _with_drm_edge_legend_proxies(
+                [unique_handles[label] for label in unique_labels],
+                unique_labels,
+            ),
+            unique_labels,
+        )
 
 
 class IncrementalKingsGridPlotter(_GVDGridPlotter):
     """Plot an eight-connected occupancy-grid graph and its special points."""
+
+    legend_canvas_right = None
 
     def draw(self, ax, data):
         ctx = self._context(data)
@@ -752,23 +1158,23 @@ class IncrementalKingsGridPlotter(_GVDGridPlotter):
         edges = data["edges"]
         if edges:
             ax.add_collection(LineCollection([[vertices[left]["pos"], vertices[right]["pos"]] for left, right in edges],
-                                             colors=[GRAPH_EDGE_COLOR], linewidths=0.65, alpha=0.65, capstyle="round", zorder=10, label="King's-grid edges",))
+                                             colors=[GRAPH_EDGE_COLOR], linewidths=0.65, alpha=0.65, capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Roadmap edges",))
 
         grid_vertices = [vertex["pos"] for vertex in vertices.values() if vertex["type"] == "grid"]
         if grid_vertices:
             vertices = np.asarray(grid_vertices, dtype=float)
-            ax.scatter(vertices[:, 0], vertices[:, 1], s=9,
+            ax.scatter(vertices[:, 0], vertices[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
                        color=GRAPH_VERTEX_COLOR, edgecolors="none",
-                       zorder=11, label="King's-grid vertices")
+                       zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
         _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
 
         handles, labels = ax.get_legend_handles_labels()
-        if handles:
-            unique_handles = dict(zip(labels, handles))
-            ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right",
-                      fontsize="small", frameon=True, framealpha=0.92)
+        ordered_handles, ordered_labels = _order_legend_entries(
+            handles, labels, ("Roadmap nodes", "Roadmap edges"),
+        )
+        _register_result_legend(ax, ordered_handles, ordered_labels)
 
 
 class VisibilityGraphPlotter(_ContinuousGraphPlotter):
@@ -783,18 +1189,41 @@ class VisibilityGraphPlotter(_ContinuousGraphPlotter):
         if edges:
             ax.add_collection(LineCollection(
                 [[vertices[left]["pos"], vertices[right]["pos"]] for left, right in edges],
-                colors=[VISIBILITY_EDGE_COLOR], linewidths=0.45,
-                capstyle="round", zorder=10, label="Visibility edges",
+                colors=[RESULT_VISIBILITY_EDGE_COLOR], linewidths=0.45,
+                capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Roadmap edges",
             ))
 
         self._draw_special_points(ax, context)
-        ax.legend(loc="upper right", fontsize="small", frameon=True, framealpha=0.92)
+        node_positions = np.asarray(
+            [attributes["pos"] for attributes in vertices.values()],
+            dtype=float,
+        )
+        if node_positions.size:
+            ax.scatter(
+                node_positions[:, 0],
+                node_positions[:, 1],
+                s=RESULT_ROADMAP_NODE_SIZE,
+                color=GRAPH_VERTEX_COLOR,
+                edgecolors="none",
+                zorder=ROADMAP_NODE_ZORDER,
+                label="Roadmap nodes",
+            )
+        handles, labels = ax.get_legend_handles_labels()
+        ordered_handles, ordered_labels = _order_legend_entries(
+            handles, labels, ("Roadmap nodes", "Roadmap edges"),
+        )
+        _register_result_legend(
+            ax,
+            _with_vgraph_edge_legend_proxies(ordered_handles, ordered_labels),
+            ordered_labels,
+        )
 
 
 class DynamicVisibilityGraphPlotter(_ContinuousGraphPlotter):
     """Plot a dynamic visibility graph with active and inactive candidates."""
 
     requires_buffer_segments = False
+    legend_canvas_right = DYNAMIC_VGRAPH_LEGEND_CANVAS_RIGHT
 
     def __init__(self, plot_buffer_segments=None):
         self.plot_buffer_segments = plot_buffer_segments
@@ -817,33 +1246,41 @@ class DynamicVisibilityGraphPlotter(_ContinuousGraphPlotter):
         edge_active = data["edge_active"]
         active_edges = [edge for edge in edges if edge_active.get(edge, False)]
         inactive_edges = [edge for edge in edges if not edge_active.get(edge, False)]
+        if active_edges:
+            ax.add_collection(LineCollection(
+                [[left, right] for left, right in active_edges],
+                colors=[GRAPH_EDGE_COLOR], linewidths=0.9,
+                capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Active roadmap edges",
+            ))
 
         if inactive_edges:
             ax.add_collection(LineCollection(
                 [[left, right] for left, right in inactive_edges],
                 colors=[INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.55,
-                capstyle="round", zorder=8, label="Inactive visibility edges",
-            ))
-        if active_edges:
-            ax.add_collection(LineCollection(
-                [[left, right] for left, right in active_edges],
-                colors=[GRAPH_EDGE_COLOR], linewidths=0.9,
-                capstyle="round", zorder=10, label="Active visibility edges",
+                capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Inactive roadmap edges",
             ))
 
         vertices = np.asarray(data["vertices"], dtype=float)
         if vertices.size:
             vertices = vertices.reshape(-1, 2)
-            ax.scatter(vertices[:, 0], vertices[:, 1], s=15,
-                       color=GRAPH_VERTEX_COLOR, edgecolors=SPECIAL_POINT_EDGE_COLOR,
-                       linewidths=0.35, zorder=11, label="Visibility vertices")
+            ax.scatter(vertices[:, 0], vertices[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
+                       color=GRAPH_VERTEX_COLOR, edgecolors="none",
+                       zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
         self._draw_special_points(ax, context)
         handles, labels = ax.get_legend_handles_labels()
-        if handles:
-            unique_handles = dict(zip(labels, handles))
-            ax.legend(unique_handles.values(), unique_handles.keys(), loc="upper right",
-                      fontsize="small", frameon=True, framealpha=0.92)
+        ordered_handles, ordered_labels = _order_legend_entries(
+            handles,
+            labels,
+            ("Roadmap nodes", "Active roadmap edges", "Inactive roadmap edges"),
+        )
+        _register_result_legend(
+            ax,
+            _with_vgraph_edge_legend_proxies(
+                ordered_handles, ordered_labels,
+            ),
+            ordered_labels,
+        )
 
 # -----------------------------------------------
 
@@ -887,12 +1324,4 @@ class PlotManager:
         }.get(algorithm, algorithm or "Scenario")
         print(f"[{display_name} {iteration}] Plotting {data_type}", flush=True)
 
-        title = None
-        if title_info:
-            title = (
-                f"scenario {title_info['scenario_version']:03d} | "
-                f"{title_info['algorithm'] or 'scenario'} | "
-                f"{data_type}"
-            )
-
-        plotter.plot(data=data, scenario=self.scenario, path=path, title=title)
+        plotter.plot(data=data, scenario=self.scenario, path=path)

@@ -264,8 +264,7 @@ def plot_voronoi_diagram():
             *point,
             s=220,
             color=PATH_COLOR,
-            edgecolors=TERMINAL_EDGE_COLOR,
-            linewidths=0.8,
+            edgecolors="none",
             zorder=6,
         )
         axis.annotate(

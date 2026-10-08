@@ -6,11 +6,19 @@ Run from the repository root with ``python -m experiments.visualization``.
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from matplotlib.legend_handler import HandlerPatch
+from matplotlib.legend_handler import HandlerBase, HandlerPatch
 from matplotlib.patches import FancyArrowPatch, Patch, Rectangle
 import numpy as np
 
-from artifacts.plot import _draw_continuous_environment, _draw_scenario_access_points
+from artifacts.plot import (
+    _LARGE_ZONE_LEGEND_HANDLER,
+    _draw_continuous_environment,
+    _draw_scenario_access_points,
+    _free_cell_legend_handle,
+    _obstacle_legend_handle,
+    RESULT_INTERACTION_POINT_SIZE,
+    RESULT_SPECIAL_POINT_SIZE,
+)
 from visualization.meta import (
     ACCESS_POINT_ARROW_LENGTH,
     ACCESS_POINT_COLOR,
@@ -21,7 +29,6 @@ from visualization.meta import (
     LEGEND_RIGHT,
     SIMPLE_OBSTACLE_COLOR,
     SINGLE_FIGURE_SIZE,
-    SPECIAL_POINT_EDGE_COLOR,
     UNIT_LOAD_COLOR,
     WALL_COLOR,
     WALL_THICKNESS,
@@ -38,7 +45,7 @@ occupancy = [
     [2, 0, 0, 0, 0, 0, 0, 0],
 ]
 
-DEMO_IO_POINTS = ((3.4, 5.7), (4.8, 5.7))  # continuous (x, y) coordinates
+DEMO_IO_POINTS = ((1.4, 0.3), (2.8, 0.3))  # continuous (x, y) coordinates
 OUTPUT_PATH = Path("artifacts/visualization/access_points_demo.pdf")
 
 ACCESS_POINT_DIRECTION_VECTORS = {
@@ -47,6 +54,33 @@ ACCESS_POINT_DIRECTION_VECTORS = {
     "w": (-1.0, 0.0),
     "e": (1.0, 0.0),
 }
+
+
+class _WallLegendHandler(HandlerBase):
+    """Render the Walls key slightly smaller than the shared zone swatches."""
+
+    _scale = 0.85
+
+    def create_artists(self, legend, orig_handle, xdescent, ydescent, width,
+                       height, fontsize, trans):
+        del legend, fontsize
+        wall_width = self._scale * width
+        wall_height = self._scale * 2 * height
+        return [
+            Rectangle(
+                (
+                    xdescent + (width - wall_width) / 2,
+                    ydescent + (height - wall_height) / 2,
+                ),
+                wall_width,
+                wall_height,
+                facecolor=orig_handle.get_facecolor(),
+                edgecolor=orig_handle.get_edgecolor(),
+                linewidth=orig_handle.get_linewidth(),
+                transform=trans,
+                clip_on=False,
+            )
+        ]
 
 
 def _draw_walls(ax, height, width):
@@ -72,10 +106,9 @@ def _draw_io_points(ax, io_points):
     ax.scatter(
         points[:, 0],
         points[:, 1],
-        s=52,
+        s=RESULT_INTERACTION_POINT_SIZE,
         color=IO_POINT_COLOR,
-        edgecolors=SPECIAL_POINT_EDGE_COLOR,
-        linewidths=0.8,
+        edgecolors="none",
         zorder=GRID_ZORDER + 2,
     )
 
@@ -97,7 +130,7 @@ def _draw_access_point_directions(ax, access_points):
                 mutation_scale=12,
                 linewidth=0.9,
                 facecolor=ACCESS_POINT_COLOR,
-                edgecolor=SPECIAL_POINT_EDGE_COLOR,
+                edgecolor=ACCESS_POINT_COLOR,
                 zorder=GRID_ZORDER + 3,
             )
         )
@@ -114,7 +147,7 @@ def _legend_access_point_arrow(legend, orig_handle, xdescent, ydescent,
         mutation_scale=fontsize,
         linewidth=0.9,
         facecolor=ACCESS_POINT_COLOR,
-        edgecolor=SPECIAL_POINT_EDGE_COLOR,
+        edgecolor=ACCESS_POINT_COLOR,
     )
 
 
@@ -125,7 +158,7 @@ def _access_point_direction_legend_handle():
         (1, 0),
         arrowstyle="-|>",
         facecolor=ACCESS_POINT_COLOR,
-        edgecolor=SPECIAL_POINT_EDGE_COLOR,
+        edgecolor=ACCESS_POINT_COLOR,
         label="Access point direction",
     )
 
@@ -158,19 +191,20 @@ def plot_access_point_demo():
     scenario = build_access_point_demo()
     fig, ax = plt.subplots(figsize=SINGLE_FIGURE_SIZE)
     legend_handles = [
-        Patch(facecolor=WALL_COLOR, edgecolor="none", label="Walls"),
-        Patch(facecolor=SIMPLE_OBSTACLE_COLOR, edgecolor="none", label="Simple obstacle"),
-        Patch(facecolor=UNIT_LOAD_COLOR, edgecolor="none", label="Unit-load obstacle"),
+        _free_cell_legend_handle(),
+        _obstacle_legend_handle(SIMPLE_OBSTACLE_COLOR, "Simple obstacle"),
+        _obstacle_legend_handle(UNIT_LOAD_COLOR, "Unit-load obstacle"),
+        Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="black", linewidth=6, label="Walls"),
         plt.Line2D(
-            [], [], marker="o", linestyle="", markersize=7,
+            [], [], marker="o", linestyle="", markersize=np.sqrt(RESULT_SPECIAL_POINT_SIZE),
             markerfacecolor=ACCESS_POINT_COLOR,
-            markeredgecolor=SPECIAL_POINT_EDGE_COLOR,
+            markeredgecolor="none",
             label="Access point",
         ),
         _access_point_direction_legend_handle(),
         plt.Line2D(
-            [], [], marker="o", linestyle="", markersize=7,
-            markerfacecolor=IO_POINT_COLOR, markeredgecolor=SPECIAL_POINT_EDGE_COLOR,
+            [], [], marker="o", linestyle="", markersize=np.sqrt(RESULT_INTERACTION_POINT_SIZE),
+            markerfacecolor=IO_POINT_COLOR, markeredgecolor="none",
             label="Interaction point",
         ),
     ]
@@ -190,7 +224,11 @@ def plot_access_point_demo():
     fig.legend(legend_handles, [handle.get_label() for handle in legend_handles],
                loc="center left", bbox_to_anchor=LEGEND_POSITION, frameon=False,
                fontsize=FONT_SIZE,
-               handler_map={FancyArrowPatch: HandlerPatch(patch_func=_legend_access_point_arrow)})
+               handler_map={
+                   Patch: _LARGE_ZONE_LEGEND_HANDLER,
+                   Rectangle: _WallLegendHandler(),
+                   FancyArrowPatch: HandlerPatch(patch_func=_legend_access_point_arrow),
+               })
     fig.subplots_adjust(left=0.03, right=LEGEND_RIGHT, bottom=0.03, top=0.97)
     return fig, ax
 

@@ -14,18 +14,25 @@ import sys
 
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+from matplotlib.colors import to_rgba
 from matplotlib.legend_handler import HandlerBase
 from matplotlib.lines import Line2D
-from matplotlib.patches import FancyArrowPatch, Patch
+from matplotlib.patches import FancyArrowPatch
 import numpy as np
 from shapely.geometry import LineString, box
 from shapely.ops import unary_union
 
 from algorithms.geometry import buffered_obstacle_space, navigation_space
-from artifacts.plot import _draw_continuous_environment
+from artifacts.plot import (
+    _area_legend_handler_map,
+    _buffer_zone_legend_handle,
+    _draw_continuous_environment,
+    _free_cell_legend_handle,
+    _obstacle_legend_handle,
+)
 from visualization.meta import (
-    AGV_RADIUS_BUFFER_COLOR,
     FONT_SIZE,
+    GRAPH_NODE_SIZE_SCALE,
     GRAPH_VERTEX_COLOR,
     GRID_ZORDER,
     LEGEND_POSITION,
@@ -54,6 +61,7 @@ BUFFER_SPACE_AGV_RADIUS = 0.4
 # Static VGraph uses square buffer corners when ``num_buffer_segments`` is 0.
 STATIC_VGRAPH_BUFFER_SEGMENTS = 0
 AGV_RADIUS_ARROW_COLOR = RADIUS_OFFSET_COLOR
+ORIGINAL_VERTEX_COLOR = to_rgba(OFFSET_VEC_COLOR, alpha=1)
 ORIGINAL_VERTEX_ZORDER = GRID_ZORDER + 2
 BUFFERED_VERTEX_ZORDER = GRID_ZORDER + 3
 
@@ -126,6 +134,7 @@ def _visibility_edges(occupancy, vertices):
 
 def _draw_dashed_arrow(ax, start, end, *, color, zorder):
     """Draw a dashed shaft with an undashed, filled arrowhead."""
+    color = to_rgba(color, alpha=1)
     start = np.asarray(start, dtype=float)
     end = np.asarray(end, dtype=float)
     direction = end - start
@@ -187,7 +196,7 @@ class _DashedArrowLegendHandler(HandlerBase):
                        fontsize, transform):
         centre_y = ydescent + height / 2
         arrowhead_start = xdescent + width * 0.72
-        color = orig_handle.get_facecolor()
+        color = to_rgba(orig_handle.get_facecolor(), alpha=1)
         shaft = Line2D(
             [xdescent, arrowhead_start],
             [centre_y, centre_y],
@@ -212,16 +221,17 @@ class _DashedArrowLegendHandler(HandlerBase):
 
 def _arrow_legend_handle(label, color):
     """Return a proxy artist for the dashed-arrow legend renderer."""
+    color = to_rgba(color, alpha=1)
     return FancyArrowPatch(
         (0, 0), (1, 0), arrowstyle="-|>", facecolor=color, edgecolor=color, label=label
     )
 
 
-def _vertex_legend_handle(label, facecolor):
+def _vertex_legend_handle(label, facecolor, marker_area):
     """Return the shared legend marker used for VGraph vertices."""
     return Line2D(
-        [], [], marker="o", linestyle="", markersize=6,
-        markerfacecolor=facecolor, markeredgecolor=SPECIAL_POINT_EDGE_COLOR,
+        [], [], marker="o", linestyle="", markersize=np.sqrt(marker_area),
+        markerfacecolor=facecolor, markeredgecolor="none",
         label=label,
     )
 
@@ -272,38 +282,41 @@ def plot_buffer_space():
         )
     ax.scatter(
         *zip(*original_vertices),
-        s=30,
-        color="white",
-        edgecolors=SPECIAL_POINT_EDGE_COLOR,
-        linewidths=0.7,
+        s=30 * GRAPH_NODE_SIZE_SCALE,
+        color=ORIGINAL_VERTEX_COLOR,
+        edgecolors="none",
         zorder=ORIGINAL_VERTEX_ZORDER,
     )
     ax.scatter(
         *zip(*buffered_vertices),
-        s=32,
+        s=32 * GRAPH_NODE_SIZE_SCALE,
         color=GRAPH_VERTEX_COLOR,
-        edgecolors=SPECIAL_POINT_EDGE_COLOR,
-        linewidths=0.7,
+        edgecolors="none",
         zorder=BUFFERED_VERTEX_ZORDER,
     )
 
     legend_handles = [
-        Patch(
-            facecolor=AGV_RADIUS_BUFFER_COLOR,
-            edgecolor="none",
-            label=f"Robot radius buffer (r = {BUFFER_SPACE_AGV_RADIUS:g})",
-        ),
-        Patch(facecolor=SIMPLE_OBSTACLE_COLOR, edgecolor="none", label="Obstacle"),
+        _free_cell_legend_handle(),
+        _obstacle_legend_handle(SIMPLE_OBSTACLE_COLOR, "Obstacle"),
+        _buffer_zone_legend_handle(),
         _arrow_legend_handle("Obstacle buffer offset = robot radius", AGV_RADIUS_ARROW_COLOR),
-        _arrow_legend_handle("Vertex offset", OFFSET_VEC_COLOR),
-        _vertex_legend_handle("Original obstacle vertex", "white"),
-        _vertex_legend_handle("Buffered VGraph vertex", GRAPH_VERTEX_COLOR),
+        _vertex_legend_handle(
+            "Original obstacle node",
+            ORIGINAL_VERTEX_COLOR,
+            30 * GRAPH_NODE_SIZE_SCALE,
+        ),
+        _arrow_legend_handle("Node offset", OFFSET_VEC_COLOR),
+        _vertex_legend_handle(
+            "Roadmap nodes",
+            GRAPH_VERTEX_COLOR,
+            32 * GRAPH_NODE_SIZE_SCALE,
+        ),
         Line2D(
             [],
             [],
             color=VISIBILITY_EDGE_COLOR,
             linewidth=0.8,
-            label="Visibility edge",
+            label="Roadmap edges",
         ),
     ]
     fig.legend(
@@ -312,7 +325,10 @@ def plot_buffer_space():
         bbox_to_anchor=LEGEND_POSITION,
         frameon=False,
         fontsize=FONT_SIZE,
-        handler_map={FancyArrowPatch: _DashedArrowLegendHandler()},
+        handler_map={
+            **_area_legend_handler_map(),
+            FancyArrowPatch: _DashedArrowLegendHandler(),
+        },
     )
     fig.subplots_adjust(left=0.03, right=LEGEND_RIGHT, bottom=0.03, top=0.97)
     return fig, ax
