@@ -148,13 +148,13 @@ class Scenario(ProgressReportingAlgorithm):
         self.priority_field = field
         
     # returns the best free cell for potential obstacle location based on the priority field
-    def get_best_obstacle_location(self):
+    def _get_best_obstacle_location(self):
         # find the index of the maximum value in the priority field
         idx = np.unravel_index(np.argmax(self.priority_field), self.priority_field.shape)
         return idx
         
     # returns a randomly selected free cell
-    def get_random_cell(self, free):
+    def _get_random_cell(self, free):
         # free=True: select a free cell, free=False: select an occupied cell
         if free:
             free_cells = np.argwhere(self.occupancy == 0)
@@ -334,9 +334,9 @@ class Scenario(ProgressReportingAlgorithm):
                 # removal cannot violate forbidden areas
                 if action == "add" or action == "move":
                     if respect_probab_field:
-                        to_cell = self.get_best_obstacle_location()
+                        to_cell = self._get_best_obstacle_location()
                     else: # select random free cell
-                        to_cell = self.get_random_cell(free=True)
+                        to_cell = self._get_random_cell(free=True)
                 
                 if action == "add":
                     obst_type = 2 if self.rng.random() > self.simple_obstacle_rate else 1 # try to preserve the ratio of unit-load to simple obstacles
@@ -346,7 +346,7 @@ class Scenario(ProgressReportingAlgorithm):
 
                 if action == "move":
                     # randomly select an occupied cell to move the obstacle from
-                    from_cell = self.get_random_cell(free=False)
+                    from_cell = self._get_random_cell(free=False)
                     
                     success = self._move_obstacle(from_cell, to_cell)
                     if success:
@@ -355,7 +355,7 @@ class Scenario(ProgressReportingAlgorithm):
                     
                 if action == "remove":
                     # randomly select an obstacle to remove
-                    cell = self.get_random_cell(free=False)
+                    cell = self._get_random_cell(free=False)
                     success = self._remove_obstacle(cell)
                     if success:
                         changed_cells.add(cell)
@@ -378,7 +378,55 @@ class Scenario(ProgressReportingAlgorithm):
         updates = self.updates
         self.updates = []
         return updates
+    
 
+    def add_obstacles_randomly(self, count, type=None, max_attempts=None):
+        """Add a specified number of specified types of obstacles at random locations to the scenario while preserving connectivity.
+        If type is not specified, a random type will be chosen based on the simple_obstacle_rate.
+        """
+        if max_attempts is None:
+            max_attempts = count * 1000
+
+        added_cells = []
+        attempts = 0
+        while len(added_cells) < count:
+            if attempts >= max_attempts:
+                raise RuntimeError( f"Could only add {len(added_cells)}/{count} obstacles after {max_attempts} attempts.")
+            
+            cell = self._get_random_cell(free=True)
+            if cell is None:
+                raise RuntimeError("No more free cells available.")
+
+            if type is None:
+                obst_type = 2 if self.rng.random() > self.simple_obstacle_rate else 1
+            else:
+                obst_type = type
+
+            success = self._add_obstacle(cell, type=obst_type)
+            if success:
+                added_cells.append(cell)
+            attempts += 1
+            
+    def remove_obstacles_randomly(self, count, max_attempts=None):
+        """Remove a specified number of obstacles at random locations from the scenario while preserving connectivity."""
+        if max_attempts is None:
+            max_attempts = count * 1000
+
+        removed_cells = []
+        attempts = 0
+        while len(removed_cells) < count:
+            if attempts >= max_attempts:
+                raise RuntimeError(f"Could only remove {len(removed_cells)}/{count} obstacles after {max_attempts} attempts.")
+
+            cell = self._get_random_cell(free=False)
+            if cell is None:
+                raise RuntimeError("No obstacles remain to remove.")
+
+            if self._remove_obstacle(cell):
+                removed_cells.append(cell)
+            attempts += 1
+            
+            
     def _add_obstacle(self, cell, type):
         """Add an obstacle of the specified type at the given cell if it does not disconnect the free space."""
         self.occupancy[cell] = type  # 1 for simple obstacle, 2 for unit-load obstacle
