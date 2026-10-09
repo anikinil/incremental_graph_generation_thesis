@@ -79,7 +79,7 @@ class PRM:
     Lydia E. Kavraki, Petr Svestka, Jean-Claude Latombe and Mark H. Overmars (1996)
     """
     
-    def __init__(self, rng, occupancy, access_points, io_points, height, width,
+    def __init__(self, rng, occupancy, access_points, interaction_points, height, width,
                  eps, max_dist, max_neighbors, agv_radius,
                  num_buffer_segments, recorder=None):
 
@@ -89,9 +89,9 @@ class PRM:
         self.eps = eps # discretization step for local planner
         self.free_space = None
         self.access_points = access_points # access points (y, x)
-        self.io_points = io_points # interaction points (y, x)
-        # self.special_points = np.array(np.concatenate([io_points, access_points])) # interaction points ++ access points
-        self.special_points = np.asarray([*io_points, *access_points], dtype=float) # interaction points ++ access points
+        self.interaction_points = interaction_points # interaction points (y, x)
+        # self.special_points = np.array(np.concatenate([interaction_points, access_points])) # interaction points ++ access points
+        self.special_points = np.asarray([*interaction_points, *access_points], dtype=float) # interaction points ++ access points
         self.max_dist = max_dist # maximum distance to consider for neighbors
         self.max_neighbors = max_neighbors # maximum number of neighbors to consider for connection
         self.agv_radius = agv_radius # radius of the AGV for collision costraints
@@ -491,7 +491,7 @@ class PRM:
                     "agv_radius": self.agv_radius,
                     "num_buffer_segments": self.num_buffer_segments,
                     "access_points": self.access_points,
-                    "io_points": self.io_points,
+                    "interaction_points": self.interaction_points,
                     "height": self.height,
                     "width": self.width,
                     "vertices": vertices,

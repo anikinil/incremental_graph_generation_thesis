@@ -23,7 +23,7 @@ if __name__ == "__main__":
     
     occupancy_rate = 0.3
 
-    io_points = {
+    interaction_points = {
         (height - 0.3, width * 0.73),
         (height - 0.3, width * 0.78),
         (height - 0.3, width * 0.83),
@@ -41,8 +41,8 @@ if __name__ == "__main__":
         sigma_fine=1,
         noisy_aisles_num=0,
         noisy_aisle_sigma=1,
-        io_points=io_points,
-        io_points_radius=3,
+        interaction_points=interaction_points,
+        interaction_points_radius=3,
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     scenario_success = scenario.generate()
     print()
 
-    continuous_access_points, continuous_io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
+    continuous_access_points, continuous_interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.agv_radius)
     bounds = (0, 0, width, height)
 
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         occupancy=scenario.occupancy,
         agv_radius=scenario.agv_radius,
         access_points=continuous_access_points,
-        io_points=continuous_io_points,
+        interaction_points=continuous_interaction_points,
         num_buffer_segments=num_buffer_segments,
         recorder=recorder,
     )

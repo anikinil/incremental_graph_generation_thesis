@@ -100,9 +100,9 @@ def _draw_walls(ax, height, width):
     ax.set_ylim(height + thickness, -thickness)
 
 
-def _draw_io_points(ax, io_points):
+def _draw_interaction_points(ax, interaction_points):
     """Draw freely positioned interaction points in continuous plot coordinates."""
-    points = np.asarray(io_points, dtype=float)
+    points = np.asarray(interaction_points, dtype=float)
     ax.scatter(
         points[:, 0],
         points[:, 1],
@@ -174,8 +174,8 @@ def build_access_point_demo():
         sigma_fine=1,
         noisy_aisles_num=0,
         noisy_aisle_sigma=1,
-        io_points=set(),
-        io_points_radius=1,
+        interaction_points=set(),
+        interaction_points_radius=1,
         simple_obstacle_rate=0,
         agv_radius=0,
     )
@@ -217,7 +217,7 @@ def plot_access_point_demo():
     access_points = sorted(scenario.access_points)
     _draw_scenario_access_points(ax, access_points)
     _draw_access_point_directions(ax, access_points)
-    _draw_io_points(ax, DEMO_IO_POINTS)
+    _draw_interaction_points(ax, DEMO_IO_POINTS)
     _draw_walls(ax, scenario.height, scenario.width)
 
     ax.set_axis_off()

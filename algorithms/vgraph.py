@@ -17,14 +17,14 @@ class VGraph:
     # TODO use the same corner translation method as in the paper
     
     def __init__(self, width, height, occupancy, agv_radius,
-                 access_points, io_points, num_buffer_segments, recorder=None):
+                 access_points, interaction_points, num_buffer_segments, recorder=None):
         self.width = width
         self.height = height
         self.occupancy = occupancy
         self.agv_radius = agv_radius
         self.num_buffer_segments = num_buffer_segments
         self.access_points = access_points
-        self.io_points = io_points
+        self.interaction_points = interaction_points
         self.recorder = recorder
         self.iteration = 0
 
@@ -84,15 +84,15 @@ class VGraph:
             self.G.add_node(i, pos=v, type="obstacle")
         
         # add interaction points as vertices
-        for i, (x, y) in enumerate(self.io_points, start=len(vertices)):
-            self.G.add_node(i, pos=(x, y), type="io")
+        for i, (x, y) in enumerate(self.interaction_points, start=len(vertices)):
+            self.G.add_node(i, pos=(x, y), type="interaction")
     
         # add access points as vertices
-        for i, (x, y) in enumerate(self.access_points, start=len(vertices) + len(self.io_points)):
+        for i, (x, y) in enumerate(self.access_points, start=len(vertices) + len(self.interaction_points)):
             self.G.add_node(i, pos=(x, y), type="access")
             # print(f"Added access point node {i} at position {(x, y)}")
     
-        num_vertices_total = len(vertices) + len(self.io_points) + len(self.access_points)
+        num_vertices_total = len(vertices) + len(self.interaction_points) + len(self.access_points)
         vertex_progress.finish(True,
             f"collected {len(vertices)} obstacle vertices | total vertices: {num_vertices_total}")
         
@@ -127,7 +127,7 @@ class VGraph:
                     "agv_radius": self.agv_radius,
                     "num_buffer_segments": self.num_buffer_segments,
                     "access_points": self.access_points,
-                    "io_points": self.io_points,
+                    "interaction_points": self.interaction_points,
                     "bounds": (0, 0, self.width, self.height),
                     "vertices": {
                         vertex: {"pos": tuple(attributes["pos"]), "type": attributes["type"]}

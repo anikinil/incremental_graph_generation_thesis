@@ -14,20 +14,20 @@ class IncrementalKingsGraph:
     Cáp, Vokrínek and Kleiner (2015)
     """
 
-    def __init__(self, bounds, agv_radius, occupancy, access_points, io_points, recorder):
+    def __init__(self, bounds, agv_radius, occupancy, access_points, interaction_points, recorder):
         self.bounds = bounds
         self.agv_radius = agv_radius
         self.occupancy = occupancy.copy() # make a copy to avoid mutating the original occupancy grid
 
         self.access_points = list(offset_access_points(access_points, agv_radius))
-        self.io_points = list(io_points)
+        self.interaction_points = list(interaction_points)
 
         self.iteration = 0
         self.recorder = recorder
 
         self.G = None
 
-    def apply_layout_updates_and_update_graph(self, obstacle_updates, new_access_points, new_io_points):
+    def apply_layout_updates_and_update_graph(self, obstacle_updates, new_access_points, new_interaction_points):
         """Apply whole layout update and update the graph at changed locations."""
         changed_cells = set()
 
@@ -51,7 +51,7 @@ class IncrementalKingsGraph:
         new_access_points = offset_access_points(new_access_points, self.agv_radius)
 
         self._refresh_local_grid_topology(changed_cells)
-        self._update_special_points(new_access_points, list(new_io_points))
+        self._update_special_points(new_access_points, list(new_interaction_points))
 
         self.iteration += 1
 
@@ -115,30 +115,30 @@ class IncrementalKingsGraph:
             return (self.occupancy[row, neighbor_col] == 0 and self.occupancy[neighbor_row, col] == 0)
         return True
 
-    def _update_special_points(self, new_access_points, new_io_points):
+    def _update_special_points(self, new_access_points, new_interaction_points):
         """Recompute graph special points after a layout update."""
 
         # remove old special points from the graph
         for row, col, direction in self.access_points:
             if self.G.has_node((row, col)):
                 self.G.remove_node((row, col))
-        for row, col in self.io_points:
+        for row, col in self.interaction_points:
             if self.G.has_node((row, col)):
                 self.G.remove_node((row, col))
 
-        self._connect_special_points_to_graph(self.G, new_io_points, new_access_points)
+        self._connect_special_points_to_graph(self.G, new_interaction_points, new_access_points)
 
         # update the special points in the class
         self.access_points = new_access_points
-        self.io_points = new_io_points
+        self.interaction_points = new_interaction_points
 
-    def _connect_special_points_to_graph(self, G, new_io_points, new_access_points):
+    def _connect_special_points_to_graph(self, G, new_interaction_points, new_access_points):
         """Add a vertex for each special point and connect it to the closest grid vertex in the graph."""
         special_progress = GenerationProgress("Incremental King's grid", "Connecting special points", self.iteration)
-        total_special_points = len(new_io_points) + len(new_access_points)
+        total_special_points = len(new_interaction_points) + len(new_access_points)
         special_progress.start(f"target: {total_special_points} special points")
 
-        for point_number, (row, col) in enumerate(new_io_points, start=1):
+        for point_number, (row, col) in enumerate(new_interaction_points, start=1):
             G.add_node((row, col), pos=(col, row))
             closest_grid_vertex = (int(row), int(col))
             if G.has_node(closest_grid_vertex):
@@ -151,7 +151,7 @@ class IncrementalKingsGraph:
             if point_number % 10 == 0 or point_number == total_special_points:
                 special_progress.update(point_number, total_special_points, f"connected: {point_number}/{total_special_points}")
 
-        for point_number, (row, col, direction) in enumerate(new_access_points, start = len(new_io_points) + 1):
+        for point_number, (row, col, direction) in enumerate(new_access_points, start = len(new_interaction_points) + 1):
             G.add_node((row, col), pos=(col, row))
             
             # if the special point is an access point, connect it to the grid vertex that is directed towards the access point's direction
@@ -211,7 +211,7 @@ class IncrementalKingsGraph:
         graph_progress.finish(True, f"vertices: {grid_vertices} | edges: {G.number_of_edges()}")
 
         # add special points as nodes (with labels) and connect them to the closest grid vertex
-        self._connect_special_points_to_graph(G, self.io_points, self.access_points)
+        self._connect_special_points_to_graph(G, self.interaction_points, self.access_points)
 
         self.G = G
 
@@ -231,7 +231,7 @@ class IncrementalKingsGraph:
                     "occupancy": self.occupancy,
                     "agv_radius": self.agv_radius,
                     "access_points": self.access_points,
-                    "io_points": self.io_points,
+                    "interaction_points": self.interaction_points,
                     "bounds": self.bounds,
                     "vertices": {
                         node: {

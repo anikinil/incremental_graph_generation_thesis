@@ -14,7 +14,7 @@ class DynamicVGraph:
     """
     
     
-    def __init__(self, height, width, occupancy, agv_radius, access_points, io_points, recorder=None):
+    def __init__(self, height, width, occupancy, agv_radius, access_points, interaction_points, recorder=None):
         
         self.height = height
         self.width = width
@@ -22,7 +22,7 @@ class DynamicVGraph:
         self.agv_radius = agv_radius
         self.num_buffer_segments = 0 # always 0, since it's the only way to avoid collisions (temporary)
         self.access_points = access_points
-        self.io_points = io_points
+        self.interaction_points = interaction_points
         self.recorder = recorder
         
         self.vertices = []
@@ -105,7 +105,7 @@ class DynamicVGraph:
 
         # get all convex vertices of the obstacle polygons
         _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
-        vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.io_points) + list(self.access_points)))
+        vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
 
         vertex_progress.finish(True, f"collected {len(vertices)} visibility vertices")
 
@@ -148,7 +148,7 @@ class DynamicVGraph:
 
         edge_progress.finish(True, f"mapped {len(self.edge_to_cells)} candidate edges | active: {len(self.edges)}")
 
-    def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points):
+    def apply_layout_updates(self, obstacle_updates, new_access_points, new_interaction_points):
         """Apply layout updates and update the visibility graph."""
 
         # update the occupancy grid and collect added and removed obstacle cells
@@ -182,14 +182,14 @@ class DynamicVGraph:
                         self.edge_active_status[edge] = True
 
         self.access_points = new_access_points
-        self.io_points = new_io_points
+        self.interaction_points = new_interaction_points
 
         print("UPDATED SPECIAL POINTS")
 
         # TODO make incremental, only look at relebvant parts instead of recomputing whole obstacle space
         # get all vertices of the updated obstacle space and special points
         _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
-        new_vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.io_points) + list(self.access_points)))
+        new_vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
 
         # remove vertices that are no longer part of the obstacle space or special points
         new_vertex_set = set(new_vertices)
@@ -276,7 +276,7 @@ class DynamicVGraph:
                     "occupancy": self.occupancy.copy(),
                     "agv_radius": self.agv_radius,
                     "access_points": sorted(self.access_points),
-                    "io_points": sorted(self.io_points),
+                    "interaction_points": sorted(self.interaction_points),
                     "height": self.height,
                     "width": self.width,
                     "vertices": sorted({tuple(vertex) for vertex in self.vertices}),

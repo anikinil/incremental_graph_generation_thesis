@@ -55,7 +55,7 @@ class BucketPriorityQueue:
 
 class GVD:
     
-    def __init__(self, rng, occupancy_grid, scale_factor, access_points, io_points, agv_radius, recorder):
+    def __init__(self, rng, occupancy_grid, scale_factor, access_points, interaction_points, agv_radius, recorder):
         self.rng = rng
 
         self.occupancy_grid = occupancy_grid.copy()
@@ -63,7 +63,7 @@ class GVD:
         
         
         self.access_points = access_points
-        self.io_points = io_points
+        self.interaction_points = interaction_points
         
         self.agv_radius = agv_radius
         
@@ -102,7 +102,7 @@ class GVD:
 
         # maps special point indices to their Voronoi connection cells
         self.access_point_connection_cells = []
-        self.io_point_connection_cells = []
+        self.interaction_point_connection_cells = []
     
         self.iteration = 0 # increased after every layout update
 
@@ -117,7 +117,7 @@ class GVD:
         return {
             "occupancy": self.occupancy_grid,
             "access_points": self.access_points,
-            "io_points": self.io_points,
+            "interaction_points": self.interaction_points,
             "agv_radius": self.agv_radius,
             "scale_factor": self.scale_factor,
             "iteration": self.iteration,
@@ -159,7 +159,7 @@ class GVD:
             (y * self.scale_factor, x * self.scale_factor, direction)
             for y, x, direction in offset_access_points(self.access_points, self.agv_radius)
         ]
-        self.io_points = [(y * self.scale_factor, x * self.scale_factor) for y, x in self.io_points]
+        self.interaction_points = [(y * self.scale_factor, x * self.scale_factor) for y, x in self.interaction_points]
         
         # scale agv_radius
         self.agv_radius *= self.scale_factor
@@ -176,7 +176,7 @@ class GVD:
         
         # adjust access points and interaction points
         self.access_points = [(y + 1, x + 1, dir) for (y, x, dir) in self.access_points]
-        self.io_points = [(y + 1, x + 1) for (y, x) in self.io_points]
+        self.interaction_points = [(y + 1, x + 1) for (y, x) in self.interaction_points]
         
     
     def _addImaginaryObstacles():
@@ -389,7 +389,7 @@ class GVD:
                 self.voro[n] = True
                 self.affected_voro_cells.add(n)
 
-    def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points):
+    def apply_layout_updates(self, obstacle_updates, new_access_points, new_interaction_points):
 
         # clear affected cells
         self.affected_voro_cells.clear()
@@ -447,11 +447,11 @@ class GVD:
         self.access_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1, direction)
             for y, x, direction in offset_access_points(new_access_points, source_agv_radius)
         ]
-        self.io_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for y, x in new_io_points]
+        self.interaction_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for y, x in new_interaction_points]
 
         self.special_point_connections.fill(False)
         self.access_point_connection_cells = []
-        self.io_point_connection_cells = []
+        self.interaction_point_connection_cells = []
         
         self.iteration += 1
         if self.recorder is not None:
@@ -469,13 +469,13 @@ class GVD:
         
         dirs = {'n': (-1, 0), 's': (1, 0), 'e': (0, 1), 'w': (0, -1)} # dir: (dy, dx)
         
-        total_special_points = len(self.access_points) + len(self.io_points)
+        total_special_points = len(self.access_points) + len(self.interaction_points)
         progress = GenerationProgress("GVD", "Connecting special points to Voronoi skeleton", self.iteration)
         progress.start(f"target: {total_special_points} special points")
 
         self.special_point_connections.fill(False) # reset special point connection map
         self.access_point_connection_cells = [] # reset access point connection cells
-        self.io_point_connection_cells = [] # reset IO point connection cells
+        self.interaction_point_connection_cells = [] # reset interaction point connection cells
         connected = 0
         processed_special_points = 0
         for ap in self.access_points:
@@ -502,7 +502,7 @@ class GVD:
                 progress.update(processed_special_points, total_special_points, f"access points connected: {connected}/{len(self.access_points)}")
         
         connected = 0
-        for iop in self.io_points:
+        for iop in self.interaction_points:
             y, x = iop
             best_connection_cell = None
 
@@ -527,26 +527,26 @@ class GVD:
 
                 rays = next_rays
 
-            self.io_point_connection_cells.append(best_connection_cell)
+            self.interaction_point_connection_cells.append(best_connection_cell)
             if best_connection_cell is not None:
                 connected += 1
             else:
-                progress.warning(f"IO point {iop} does not reach the Voronoi skeleton")
+                progress.warning(f"Interaction point {iop} does not reach the Voronoi skeleton")
             processed_special_points += 1
 
             if processed_special_points % 10 == 0 or processed_special_points == total_special_points:
-                progress.update(processed_special_points, total_special_points, f"Interaction points connected: {connected}/{len(self.io_points)}")
+                progress.update(processed_special_points, total_special_points, f"Interaction points connected: {connected}/{len(self.interaction_points)}")
 
         access_connected = len(self.access_point_connection_cells)
-        progress.finish(connected == len(self.io_points) and access_connected == len(self.access_points),
-            f"access points: {access_connected}/{len(self.access_points)} | Interaction points: {connected}/{len(self.io_points)}")
+        progress.finish(connected == len(self.interaction_points) and access_connected == len(self.access_points),
+            f"access points: {access_connected}/{len(self.access_points)} | Interaction points: {connected}/{len(self.interaction_points)}")
 
 
     def _special_point_connection_on_cell(self, cell):
         """
         Checks if a given cell is a connection cell for any special point.
         """
-        return cell in self.access_point_connection_cells or cell in self.io_point_connection_cells
+        return cell in self.access_point_connection_cells or cell in self.interaction_point_connection_cells
     
     # for testing and validation only
     def _get_connected_components(self):
@@ -738,14 +738,14 @@ class GVD:
         }
 
         # create individual graph vertices for special points, so points located on the same cell are not merged
-        special_point_vertices = {"access": {}, "io": {}}
+        special_point_vertices = {"access": {}, "interaction": {}}
         next_vertex_id = len(vertices)
-        for point_type, special_points in (("access", self.access_points), ("io", self.io_points)):
+        for point_type, special_points in (("access", self.access_points), ("interaction", self.interaction_points)):
             for point_number, special_point in enumerate(special_points):
                 if point_type == "access":
                     connection_cell = self.access_point_connection_cells[point_number]
                 else:
-                    connection_cell = self.io_point_connection_cells[point_number]
+                    connection_cell = self.interaction_point_connection_cells[point_number]
                 hub_vertex_id = cell_coords_to_vertex_id.get(connection_cell)
 
                 # skip special points that could not be connected to the Voronoi skeleton
@@ -771,7 +771,7 @@ class GVD:
         # check that graph is connected
         graph_connected = self._is_graph_connected()
         progress.finish(graph_connected, f"vertices: {len(vertices)} | edges: {len(edges)} | "
-            f"special points connected: {connected_special_points}/{len(self.access_points) + len(self.io_points)}")
+            f"special points connected: {connected_special_points}/{len(self.access_points) + len(self.interaction_points)}")
         
         if self.recorder is not None:
             save_progress = GenerationProgress("GVD", "Saving graph to disk", self.iteration)

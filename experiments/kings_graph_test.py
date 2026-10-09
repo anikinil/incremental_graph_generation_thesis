@@ -14,7 +14,7 @@ if __name__ == "__main__":
     
     agv_radius = 0
 
-    io_points = {
+    interaction_points = {
         (height * 0.13, 0),
         (height - 1.8, width * 0.78),
     }
@@ -31,8 +31,8 @@ if __name__ == "__main__":
         sigma_fine=1,
         noisy_aisles_num=0,
         noisy_aisle_sigma=1,
-        io_points=io_points,
-        io_points_radius=3,
+        interaction_points=interaction_points,
+        interaction_points_radius=3,
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     kings_grid = IncrementalKingsGraph(
         occupancy=scenario.occupancy,
         access_points=scenario.access_points,
-        io_points=scenario.io_points,
+        interaction_points=scenario.interaction_points,
         bounds=(0, 0, height, width),
         agv_radius=scenario.agv_radius,
         recorder=recorder,
@@ -60,16 +60,16 @@ if __name__ == "__main__":
     kings_grid.record_graph()
 
     scenario.make_updates(number_of_updates=10)
-    kings_grid.apply_layout_updates_and_update_graph(scenario.consume_updates(), scenario.access_points, scenario.io_points,)
+    kings_grid.apply_layout_updates_and_update_graph(scenario.consume_updates(), scenario.access_points, scenario.interaction_points,)
     kings_grid.record_graph()
 
     scenario.remove_region(top_left=(5, 5), bottom_right=(15, 15))
-    kings_grid.apply_layout_updates_and_update_graph(scenario.consume_updates(), scenario.access_points, scenario.io_points,)
+    kings_grid.apply_layout_updates_and_update_graph(scenario.consume_updates(), scenario.access_points, scenario.interaction_points,)
     kings_grid.record_graph()
 
 
     scenario.add_region(top_left=(10, 8), bottom_right=(12, 11))
-    kings_grid.apply_layout_updates_and_update_graph(scenario.consume_updates(), scenario.access_points, scenario.io_points,)
+    kings_grid.apply_layout_updates_and_update_graph(scenario.consume_updates(), scenario.access_points, scenario.interaction_points,)
     kings_grid.record_graph()
 
     

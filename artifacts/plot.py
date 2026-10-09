@@ -472,7 +472,7 @@ def _draw_continuous_environment(ax, occupancy, bounds, *, agv_radius=None,
     _setup_continuous_axes(ax, bounds)
 
 
-def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordinates=False,
+def _draw_continuous_special_points(ax, access_points, interaction_points, *, grid_coordinates=False,
                                     marker_size=RESULT_SPECIAL_POINT_SIZE, interaction_marker_size=None):
     """Draw PRM/VGraph-style special points, optionally converting grid coordinates."""
     if interaction_marker_size is None:
@@ -480,15 +480,15 @@ def _draw_continuous_special_points(ax, access_points, io_points, *, grid_coordi
 
     if grid_coordinates:
         access_points = [(column, row) for row, column, *_ in access_points]
-        io_points = [(column + 0.5, row + 0.5) for row, column in io_points]
+        interaction_points = [(column + 0.5, row + 0.5) for row, column in interaction_points]
 
     if access_points:
         xs, ys = zip(*access_points)
         ax.scatter(xs, ys, s=marker_size, color=ACCESS_POINT_COLOR,
                    edgecolors="none",
                    zorder=POINT_ZORDER, label="Access points")
-    if io_points:
-        xs, ys = zip(*io_points)
+    if interaction_points:
+        xs, ys = zip(*interaction_points)
         ax.scatter(xs, ys, s=interaction_marker_size, color=IO_POINT_COLOR,
                    edgecolors="none",
                    zorder=POINT_ZORDER, label="Interaction points")
@@ -513,8 +513,8 @@ def _draw_scenario_access_points(ax, access_points):
     )
 
 
-def _draw_grid_special_points(ax, access_points, io_points):
-    """Scatter access and IO-points stored as grid (row, col[, direction]) tuples."""
+def _draw_grid_special_points(ax, access_points, interaction_points):
+    """Scatter access and interaction points stored as grid (row, col[, direction]) tuples."""
     handles = []
     if access_points:
         access = np.asarray([(p[1], p[0]) for p in access_points], dtype=float)
@@ -522,8 +522,8 @@ def _draw_grid_special_points(ax, access_points, io_points):
                                   color=ACCESS_POINT_COLOR,
                                   edgecolors="none", zorder=POINT_ZORDER,
                                   label="Access points"))
-    if io_points:
-        io = np.asarray([(p[1], p[0]) for p in io_points], dtype=float)
+    if interaction_points:
+        io = np.asarray([(p[1], p[0]) for p in interaction_points], dtype=float)
         handles.append(ax.scatter(io[:, 0], io[:, 1], s=RESULT_INTERACTION_POINT_SIZE,
                                   color=IO_POINT_COLOR,
                                   edgecolors="none", zorder=POINT_ZORDER,
@@ -616,7 +616,7 @@ class ScenarioPlotter(BasePlotter):
 
         occupancy = data.get("occupancy") if isinstance(data, dict) else data
         access_points = data.get("access_points", []) if isinstance(data, dict) else []
-        io_points = data.get("io_points", []) if isinstance(data, dict) else []
+        interaction_points = data.get("interaction_points", []) if isinstance(data, dict) else []
         priority_field = data.get("priority_field") if isinstance(data, dict) else None
 
         height, width = occupancy.shape if occupancy is not None else (0, 0)
@@ -635,7 +635,7 @@ class ScenarioPlotter(BasePlotter):
         _setup_continuous_axes(ax_prob, bounds=(0, 0, width, height))
         ax_prob.set_anchor("W")
         _draw_scenario_access_points(ax_occupancy, access_points)
-        _draw_continuous_special_points(ax_occupancy, [], io_points, grid_coordinates=True)
+        _draw_continuous_special_points(ax_occupancy, [], interaction_points, grid_coordinates=True)
         _register_result_legend(
             ax_occupancy,
             cell_entries=[
@@ -691,7 +691,7 @@ class _GVDGridPlotter(BasePlotter):
         agv_radius = data.get("agv_radius", 0)
         scale_factor = data.get("scale_factor", 1)
         access_points = data.get("access_points", [])
-        io_points = data.get("io_points", [])
+        interaction_points = data.get("interaction_points", [])
         iteration = data.get("iteration", 0)
         affected_distance_cells = data.get("affected_distance_cells", set())
         affected_voro_cells = data.get("affected_voro_cells", set())
@@ -705,7 +705,7 @@ class _GVDGridPlotter(BasePlotter):
             "height": height,
             "width": width,
             "access_points": access_points,
-            "io_points": io_points,
+            "interaction_points": interaction_points,
             "iteration": iteration,
             "affected_distance_cells": affected_distance_cells,
             "affected_voro_cells": affected_voro_cells
@@ -772,7 +772,7 @@ class DistanceMapPlotter(_GVDGridPlotter):
             )
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
-        _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+        _draw_grid_special_points(ax, ctx["access_points"], ctx["interaction_points"])
         _register_result_legend(
             ax,
             free_cell_handle=_DistanceMapFreeCellLegendHandle(),
@@ -831,7 +831,7 @@ class VoronoiSkeletonPlotter(_GVDGridPlotter):
         _rgba_quadmesh(ax, vis_map, extent=(0, width, 0, height), zorder=1)
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
-        _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+        _draw_grid_special_points(ax, ctx["access_points"], ctx["interaction_points"])
         _register_result_legend(
             ax,
             [Patch(facecolor=VORO_SKELETON_COLOR, edgecolor="none")],
@@ -869,7 +869,7 @@ class VoronoiSkeletonWithBridgeCells(_GVDGridPlotter):
         _rgba_quadmesh(ax, vis_map, extent=(0, width, 0, height), zorder=1)
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
-        _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+        _draw_grid_special_points(ax, ctx["access_points"], ctx["interaction_points"])
         _register_result_legend(ax)
 
 
@@ -902,7 +902,7 @@ class GraphPlotter(_GVDGridPlotter):
         _rgba_quadmesh(ax, vis_map, extent=(0, width, 0, height), zorder=1)
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
-        _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+        _draw_grid_special_points(ax, ctx["access_points"], ctx["interaction_points"])
 
         graph = data.get("graph", data) if isinstance(data, dict) else None
         if graph and graph.get("vertices"):
@@ -946,7 +946,7 @@ class _ContinuousGraphPlotter(BasePlotter):
         return plt.subplots(figsize=(16, 12))
 
     def _context(self, data):
-        required = ("occupancy", "agv_radius", "access_points", "io_points", "height", "width")
+        required = ("occupancy", "agv_radius", "access_points", "interaction_points", "height", "width")
         if self.requires_buffer_segments:
             required += ("num_buffer_segments",)
         missing = [field for field in required if field not in data]
@@ -970,7 +970,7 @@ class _ContinuousGraphPlotter(BasePlotter):
         _draw_continuous_special_points(
             ax,
             context["access_points"],
-            context["io_points"],
+            context["interaction_points"],
             marker_size=RESULT_SPECIAL_POINT_SIZE,
             interaction_marker_size=RESULT_INTERACTION_POINT_SIZE,
         )
@@ -1168,7 +1168,7 @@ class IncrementalKingsGridPlotter(_GVDGridPlotter):
                        zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
-        _draw_grid_special_points(ax, ctx["access_points"], ctx["io_points"])
+        _draw_grid_special_points(ax, ctx["access_points"], ctx["interaction_points"])
 
         handles, labels = ax.get_legend_handles_labels()
         ordered_handles, ordered_labels = _order_legend_entries(

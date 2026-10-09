@@ -6,7 +6,7 @@ from artifacts.progress import GenerationProgress
 
 
 class Scenario:
-    def __init__(self, rng, height, width, occupancy_rate, sigma_coarse, sigma_fine, noisy_aisles_num, noisy_aisle_sigma, io_points, io_points_radius, simple_obstacle_rate, agv_radius, ordered_aisle_widths = (0, 0), ordered_aisle_spacing = (0, 0), ordered_aisle_offset = (0, 0), wall_clearance = (0, 0, 0, 0), recorder=None):
+    def __init__(self, rng, height, width, occupancy_rate, sigma_coarse, sigma_fine, noisy_aisles_num, noisy_aisle_sigma, interaction_points, interaction_points_radius, simple_obstacle_rate, agv_radius, ordered_aisle_widths = (0, 0), ordered_aisle_spacing = (0, 0), ordered_aisle_offset = (0, 0), wall_clearance = (0, 0, 0, 0), recorder=None):
         
         self.rng = rng
         
@@ -20,9 +20,9 @@ class Scenario:
         self.noisy_aisles_num = noisy_aisles_num
         self.noisy_aisle_sigma = noisy_aisle_sigma # determines the width of the aisles, smaller values create narrower aisles
 
-        self.io_points = set(io_points) # input/output points that should remain free of obstacles (y, x)
+        self.interaction_points = set(interaction_points) # input/output points that should remain free of obstacles (y, x)
         self.access_points = set() # (y, x, direction)
-        self.io_points_radius = io_points_radius
+        self.interaction_points_radius = interaction_points_radius
         self.simple_obstacle_rate = simple_obstacle_rate # how many of the obstacles are simple (non-unit-load) obstacles
         
         self.agv_radius = agv_radius
@@ -66,16 +66,16 @@ class Scenario:
         # create a grid containing the row and column indices of each cell
         rr, cc = np.meshgrid(np.arange(self.height), np.arange(self.width), indexing="ij")
 
-        # create an obstacle penalty around all I/O points
-        io_penalty = np.zeros_like(field)
-        for r, c in self.io_points:
+        # create an obstacle penalty around all interaction points
+        interaction_point_penalty = np.zeros_like(field)
+        for r, c in self.interaction_points:
             distance = (rr - r) ** 2 + (cc - c) ** 2
-            # calculate penalty, using a radial basis function kernel with sigma equal to the I/O points radius
+            # calculate penalty, using a radial basis function kernel with sigma equal to the interaction points radius
             # https://en.wikipedia.org/wiki/Radial_basis_function_kernel
-            io_penalty += np.exp(-distance / (2 * self.io_points_radius ** 2))
+            interaction_point_penalty += np.exp(-distance / (2 * self.interaction_points_radius ** 2))
             
-        # apply the obstacle penalty around I/O points
-        field -= io_penalty
+        # apply the obstacle penalty around interaction points
+        field -= interaction_point_penalty
         
         # normalize again, since the penalty may have changed the range of values
         field = (field - field.min()) / (field.max() - field.min())
@@ -132,8 +132,8 @@ class Scenario:
         # force every guaranteed-free cell to have zero obstacle priority
         field[guaranteed_free == 0.0] = 0.0
 
-        # force every I/O point cell to be guaranteed free
-        for r, c in self.io_points:
+        # force every interaction point cell to be guaranteed free
+        for r, c in self.interaction_points:
             field[int(r), int(c)] = 0.0
 
         self.priority_field = field
@@ -240,7 +240,7 @@ class Scenario:
             "occupancy": self.occupancy,
             "priority_field": self.priority_field,
             "access_points": list(self.access_points),
-            "io_points": list(self.io_points),
+            "interaction_points": list(self.interaction_points),
             "height": self.height,
             "width": self.width,
             "agv_radius": self.agv_radius,
@@ -359,7 +359,7 @@ class Scenario:
         """Add an obstacle of the specified type at the given cell if it does not disconnect the free space."""
         self.occupancy[cell] = type  # 1 for simple obstacle, 2 for unit-load obstacle
         
-        if (cell in self.io_points):
+        if (cell in self.interaction_points):
             # undo addition if it involves interaction points
             self.occupancy[cell] = 0
             return False
@@ -379,7 +379,7 @@ class Scenario:
         """Move an obstacle from one cell to another if it does not disconnect the free space."""
         
         # do not move if an interaction point is at target
-        if (to_cell in self.io_points):
+        if (to_cell in self.interaction_points):
             return False
         
         # move the obstacle
@@ -458,7 +458,7 @@ class Scenario:
         # add obstacles in the region
         for r in range(r1, r2):
             for c in range(c1, c2):
-                if (r, c) not in self.io_points:
+                if (r, c) not in self.interaction_points:
                     self.occupancy[r, c] = obstacle_type
                     self.updates.append({"action": "add", "cell": (r, c), "obstacle_type": obstacle_type})
 

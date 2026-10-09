@@ -55,7 +55,7 @@ def _lower_left_interaction_points(height, width):
 
 
 def _dynamic_vgraph_test_interaction_points(height, width):
-    """Return the interaction-point layout used by dynamic_vgraph_test.py."""
+    """Return the interaction point layout used by dynamic_vgraph_test.py."""
     return {
         (height - 0.3, width * 0.70),
         (height - 0.3, width * 0.78),
@@ -217,13 +217,13 @@ def _large_layout_parameters(rng, *, with_aisles):
         "ordered_aisle_spacing": (8, 2) if with_aisles else (0, 0),
         "ordered_aisle_offset": (0, 0),
         "wall_clearance": (2, 2, 5, 3) if with_aisles else (0, 0, 0, 0),
-        "io_points": {
+        "interaction_points": {
             (int(height * 0.1), 0),
             (int(height * 0.95), int(width * 0.55)),
             (int(height * 0.95), int(width * 0.67)),
             (int(height * 0.95), int(width * 0.79)),
         },
-        "io_points_radius": 3,
+        "interaction_points_radius": 3,
         "simple_obstacle_rate": 1,
         "agv_radius": 0.1,
     }
@@ -245,7 +245,7 @@ def generate_large_scenario_figures():
         )
 
 
-def _roadmap_scenario_parameters(rng, height, width, occupancy_rate, io_points):
+def _roadmap_scenario_parameters(rng, height, width, occupancy_rate, interaction_points):
     """Return the common compact scenario configuration for roadmap figures."""
     return {
         "rng": rng,
@@ -256,8 +256,8 @@ def _roadmap_scenario_parameters(rng, height, width, occupancy_rate, io_points):
         "sigma_fine": 1,
         "noisy_aisles_num": 0,
         "noisy_aisle_sigma": 1,
-        "io_points": io_points,
-        "io_points_radius": 3,
+        "interaction_points": interaction_points,
+        "interaction_points_radius": 3,
         "simple_obstacle_rate": 0.1,
         "agv_radius": 0.3,
     }
@@ -276,13 +276,13 @@ def generate_vgraph_figure():
             height,
             width,
             occupancy_rate=0.3,
-            io_points=_lower_left_interaction_points(height, width),
+            interaction_points=_lower_left_interaction_points(height, width),
         ),
     )
 
-    access_points, io_points = continuous_special_points(
+    access_points, interaction_points = continuous_special_points(
         scenario.access_points,
-        scenario.io_points,
+        scenario.interaction_points,
         scenario.agv_radius,
     )
     recorder.set_algorithm("vgraph", use_iterations=False, plot=True)
@@ -292,7 +292,7 @@ def generate_vgraph_figure():
         occupancy=scenario.occupancy,
         agv_radius=scenario.agv_radius,
         access_points=access_points,
-        io_points=io_points,
+        interaction_points=interaction_points,
         num_buffer_segments=0,
         recorder=recorder,
     )
@@ -302,15 +302,15 @@ def generate_vgraph_figure():
 
 def _apply_dynamic_update(graph, scenario):
     """Apply one recorded scenario update to the dynamic visibility graph."""
-    access_points, io_points = continuous_special_points(
+    access_points, interaction_points = continuous_special_points(
         scenario.access_points,
-        scenario.io_points,
+        scenario.interaction_points,
         scenario.agv_radius,
     )
     graph.apply_layout_updates(
         scenario.consume_updates(),
         new_access_points=access_points,
-        new_io_points=io_points,
+        new_interaction_points=interaction_points,
     )
 
 
@@ -327,13 +327,13 @@ def generate_dynamic_vgraph_figures():
             height,
             width,
             occupancy_rate=0.4,
-            io_points=_dynamic_vgraph_test_interaction_points(height, width),
+            interaction_points=_dynamic_vgraph_test_interaction_points(height, width),
         ),
     )
 
-    access_points, io_points = continuous_special_points(
+    access_points, interaction_points = continuous_special_points(
         scenario.access_points,
-        scenario.io_points,
+        scenario.interaction_points,
         scenario.agv_radius,
     )
     recorder.set_algorithm("dynamic_vgraph", use_iterations=True, plot=True)
@@ -343,7 +343,7 @@ def generate_dynamic_vgraph_figures():
         occupancy=scenario.occupancy,
         agv_radius=scenario.agv_radius,
         access_points=access_points,
-        io_points=io_points,
+        interaction_points=interaction_points,
         recorder=recorder,
     )
     graph.preprocessing()
@@ -357,13 +357,13 @@ def generate_dynamic_vgraph_figures():
 
 
 def _interior_cells(scenario, occupied):
-    """Return reproducibly ordered, non-I/O interior cells of the requested type."""
+    """Return reproducibly ordered, non-interaction-point interior cells of the requested type."""
     candidates = [
         (int(row), int(column))
         for row, column in np.argwhere(scenario.occupancy != 0 if occupied else scenario.occupancy == 0)
         if 0 < row < scenario.height - 1
         and 0 < column < scenario.width - 1
-        and (int(row), int(column)) not in scenario.io_points
+        and (int(row), int(column)) not in scenario.interaction_points
     ]
     # The coprime multipliers spread consecutive edits over the compact layout
     # instead of concentrating them in row-major order.
@@ -401,15 +401,15 @@ def _apply_illustrative_layout_changes(scenario, *, count):
 
 def _apply_drm_updates(graph, scenario):
     """Update DRM with the obstacle and special-point changes stored by Scenario."""
-    access_points, io_points = continuous_special_points(
+    access_points, interaction_points = continuous_special_points(
         scenario.access_points,
-        scenario.io_points,
+        scenario.interaction_points,
         scenario.agv_radius,
     )
     graph.apply_layout_updates(
         scenario.consume_updates(),
         new_access_points=access_points,
-        new_io_points=io_points,
+        new_interaction_points=interaction_points,
     )
 
 
@@ -426,13 +426,13 @@ def generate_drm_figures():
             height,
             width,
             occupancy_rate=0.3,
-            io_points=_lower_left_interaction_points(height, width),
+            interaction_points=_lower_left_interaction_points(height, width),
         ),
     )
 
-    access_points, io_points = continuous_special_points(
+    access_points, interaction_points = continuous_special_points(
         scenario.access_points,
-        scenario.io_points,
+        scenario.interaction_points,
         scenario.agv_radius,
     )
     recorder.set_algorithm("drm", use_iterations=True, plot=True)
@@ -440,7 +440,7 @@ def generate_drm_figures():
         rng=rng,
         occupancy=scenario.occupancy,
         access_points=access_points,
-        io_points=io_points,
+        interaction_points=interaction_points,
         height=height,
         width=width,
         max_dist=5,
@@ -462,7 +462,7 @@ def _build_gvd(rng, scenario, recorder):
         occupancy_grid=scenario.occupancy,
         scale_factor=1,
         access_points=scenario.access_points,
-        io_points=scenario.io_points,
+        interaction_points=scenario.interaction_points,
         agv_radius=scenario.agv_radius,
         recorder=recorder,
     )
@@ -490,7 +490,7 @@ def _gvd_roadmap_without_special_connections(roadmap):
             edge for edge in roadmap["edges"]
             if special_vertex_ids.isdisjoint(edge)
         },
-        "special_point_vertices": {"access": {}, "io": {}},
+        "special_point_vertices": {"access": {}, "interaction": {}},
     }
 
 
@@ -507,7 +507,7 @@ def generate_gvd_figure():
             height,
             width,
             occupancy_rate=0.25,
-            io_points=_lower_left_interaction_points(height, width),
+            interaction_points=_lower_left_interaction_points(height, width),
         ),
     )
 
@@ -556,7 +556,7 @@ def _apply_gvd_update(graph, scenario):
     graph.apply_layout_updates(
         scenario.consume_updates(),
         new_access_points=scenario.access_points,
-        new_io_points=scenario.io_points,
+        new_interaction_points=scenario.interaction_points,
     )
     graph.updateDistanceMap()
     graph.build_graph()
@@ -569,7 +569,7 @@ def _add_gvd_l_shape_above_interaction_points(scenario, *, distance=4):
     The subsequent GVD rebuild therefore treats this cluster and the illustrative
     layout edits as one coupled first update.
     """
-    interaction_rows, interaction_columns = zip(*scenario.io_points)
+    interaction_rows, interaction_columns = zip(*scenario.interaction_points)
     anchor_row = int(max(interaction_rows)) - distance
     anchor_column = int(np.rint(np.median(interaction_columns)))
     l_shape_cells = (
@@ -604,7 +604,7 @@ def generate_dynamic_gvd_figures():
             height,
             width,
             occupancy_rate=0.25,
-            io_points=_lower_left_interaction_points(height, width),
+            interaction_points=_lower_left_interaction_points(height, width),
         ),
     )
 
@@ -626,7 +626,7 @@ def _build_kings_graph(scenario, recorder):
     return IncrementalKingsGraph(
         occupancy=scenario.occupancy,
         access_points=scenario.access_points,
-        io_points=scenario.io_points,
+        interaction_points=scenario.interaction_points,
         bounds=(0, 0, scenario.height, scenario.width),
         agv_radius=scenario.agv_radius,
         recorder=recorder,
@@ -646,7 +646,7 @@ def generate_kings_graph_figure():
             height,
             width,
             occupancy_rate=0.6,
-            io_points=_lower_left_interaction_points(height, width),
+            interaction_points=_lower_left_interaction_points(height, width),
         ),
     )
 
@@ -661,7 +661,7 @@ def _apply_kings_graph_update(graph, scenario):
     graph.apply_layout_updates_and_update_graph(
         scenario.consume_updates(),
         scenario.access_points,
-        scenario.io_points,
+        scenario.interaction_points,
     )
     graph.record_graph()
 
@@ -679,7 +679,7 @@ def generate_dynamic_kings_graph_figures():
             height,
             width,
             occupancy_rate=0.6,
-            io_points=_lower_left_interaction_points(height, width),
+            interaction_points=_lower_left_interaction_points(height, width),
         ),
     )
 
@@ -708,13 +708,13 @@ def generate_prm_figure():
             height,
             width,
             occupancy_rate=0.3,
-            io_points=_lower_left_interaction_points(height, width),
+            interaction_points=_lower_left_interaction_points(height, width),
         ),
     )
 
-    access_points, io_points = continuous_special_points(
+    access_points, interaction_points = continuous_special_points(
         scenario.access_points,
-        scenario.io_points,
+        scenario.interaction_points,
         scenario.agv_radius,
     )
     recorder.set_algorithm("prm", use_iterations=False, plot=True)
@@ -722,7 +722,7 @@ def generate_prm_figure():
         rng=rng,
         occupancy=scenario.occupancy,
         access_points=access_points,
-        io_points=io_points,
+        interaction_points=interaction_points,
         height=height,
         width=width,
         eps=0.05,

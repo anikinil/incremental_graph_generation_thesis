@@ -10,7 +10,7 @@ def _apply_scenario_updates(gvd, scenario):
     gvd.apply_layout_updates(
         scenario.consume_updates(),
         new_access_points=scenario.access_points,
-        new_io_points=scenario.io_points,
+        new_interaction_points=scenario.interaction_points,
     )
     gvd.updateDistanceMap()
     gvd.build_graph()
@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
     occupancy_rate = 0.4
 
-    io_points = {
+    interaction_points = {
         (height * 0.15, 0),
         (height - 1.5, width * 0.75),
     }
@@ -49,8 +49,8 @@ if __name__ == "__main__":
         sigma_fine=1,
         noisy_aisles_num=0,
         noisy_aisle_sigma=1,
-        io_points=io_points,
-        io_points_radius=3,
+        interaction_points=interaction_points,
+        interaction_points_radius=3,
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         occupancy_grid=scenario.occupancy,
         scale_factor=3,
         access_points=scenario.access_points,
-        io_points=scenario.io_points,
+        interaction_points=scenario.interaction_points,
         agv_radius=agv_radius,
         recorder=recorder,
     )

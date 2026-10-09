@@ -10,9 +10,9 @@ from scenario.scenario_generation import Scenario
 
 def _apply_scenario_updates(drm, scenario, min_num_vertices=None):
     
-    access_points, io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
+    access_points, interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.agv_radius)
     
-    drm.apply_layout_updates(scenario.consume_updates(), new_access_points=access_points, new_io_points=io_points, min_num_vertices=min_num_vertices)
+    drm.apply_layout_updates(scenario.consume_updates(), new_access_points=access_points, new_interaction_points=interaction_points, min_num_vertices=min_num_vertices)
     drm.build_graph()
 
 if __name__ == "__main__":
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     
     occupancy_rate = 0.4
 
-    io_points = {
+    interaction_points = {
         (height * 0.15, 0),
         (height - 1.5, width * 0.75),
     }
@@ -46,8 +46,8 @@ if __name__ == "__main__":
         sigma_fine=1,
         noisy_aisles_num=0,
         noisy_aisle_sigma=1,
-        io_points=io_points,
-        io_points_radius=3,
+        interaction_points=interaction_points,
+        interaction_points_radius=3,
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
@@ -55,9 +55,9 @@ if __name__ == "__main__":
 
     scenario.generate()
 
-    access_points, continuous_io_points = continuous_special_points(
+    access_points, continuous_interaction_points = continuous_special_points(
         scenario.access_points,
-        scenario.io_points,
+        scenario.interaction_points,
         scenario.agv_radius,
     )
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         rng=rng,
         occupancy=scenario.occupancy,
         access_points=access_points,
-        io_points=continuous_io_points,
+        interaction_points=continuous_interaction_points,
         height=height,
         width=width,
         max_dist=5,

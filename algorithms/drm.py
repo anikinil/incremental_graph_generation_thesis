@@ -19,7 +19,7 @@ class DRM:
     Peter Leven, Seth Hutchinson (2002)
     """
     
-    def __init__(self, rng, occupancy, access_points, io_points, height, width, max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None):
+    def __init__(self, rng, occupancy, access_points, interaction_points, height, width, max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None):
 
         self.rng = rng
         self.occupancy = np.asarray(occupancy, dtype=np.uint8).copy()
@@ -53,7 +53,7 @@ class DRM:
         self.special_vertices = {} # (point, vertex_index) mapping for special points
         
         self.access_points = access_points
-        self.io_points = io_points
+        self.interaction_points = interaction_points
         
         self.wall_vertices = {} # (row, col) -> vertex_index
         self.affected_vertices = set()
@@ -366,11 +366,11 @@ class DRM:
         print(f"Removed {len(removed_indices)} vertices. Remaining vertices: {sum(self.vertex_present)}. Remaining edges: {len(self.edges)}.")
 
 
-    def _update_special_points(self, access_points, io_points, map_new=True):
+    def _update_special_points(self, access_points, interaction_points, map_new=True):
         """Update the special points in the roadmap, optionally mapping newly added elements to occupancy cells."""
         self.access_points = list(access_points)
-        self.io_points = list(io_points)
-        current_points = list(dict.fromkeys(self.access_points + self.io_points))
+        self.interaction_points = list(interaction_points)
+        current_points = list(dict.fromkeys(self.access_points + self.interaction_points))
 
         # determine which special points have been removed and remove their vertices and edges from the roadmap
         removed_points = set(self.special_vertices).difference(current_points)
@@ -466,7 +466,7 @@ class DRM:
         self._build_wall_graph()
         print("WALL GRAPH BUILT")
         # self._repair_active_connectivity()
-        self._update_special_points(self.access_points, self.io_points, map_new=False)
+        self._update_special_points(self.access_points, self.interaction_points, map_new=False)
         print("SPECIAL POINTS ADDED", flush=True)
         self._build_workspace_to_roadmap_mapping()
         print("WORKSPACE MAPPED TO ROADMAP", flush=True)
@@ -490,7 +490,7 @@ class DRM:
                 both_vertices_are_active = (self.vertex_active[edge[0]] and self.vertex_active[edge[1]])
                 self.edge_active[edge] = (both_vertices_are_active and edge_is_collision_free)
 
-    def apply_layout_updates(self, obstacle_updates, new_access_points, new_io_points, min_num_vertices=None):
+    def apply_layout_updates(self, obstacle_updates, new_access_points, new_interaction_points, min_num_vertices=None):
         """Apply changed cells and update only the affected roadmap regions."""
 
         self.affected_vertices.clear()
@@ -523,10 +523,10 @@ class DRM:
         self._refresh_obstacle_space()
         
         # determine which special points are new (for highlighting in plot)
-        new_special_points = (set(new_access_points) | set(new_io_points)).difference(self.special_vertices)
+        new_special_points = (set(new_access_points) | set(new_interaction_points)).difference(self.special_vertices)
 
         # update special points and map new elements before the wall update consults cell mappings
-        self._update_special_points(new_access_points, new_io_points)
+        self._update_special_points(new_access_points, new_interaction_points)
 
         # update the wall-graph vertices and edges affected by the edits
         affected_wall_vertices, new_wall_edges = self._update_wall_graph(changed_cells)
@@ -590,7 +590,7 @@ class DRM:
                     "agv_radius": self.agv_radius,
                     "num_buffer_segments": self.num_buffer_segments,
                     "access_points": sorted(self.access_points),
-                    "io_points": sorted(self.io_points),
+                    "interaction_points": sorted(self.interaction_points),
                     "height": self.height,
                     "width": self.width,
                     "vertices": vertices,

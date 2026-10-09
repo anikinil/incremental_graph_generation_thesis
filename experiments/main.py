@@ -22,12 +22,12 @@ if __name__ == "__main__":
     agv_radius = 0.1
     occupancy_rate = 0.3
 
-    # io_points = {
+    # interaction_points = {
     #     (height * 0.15, 0),
     #     (height - 1.5, width * 0.75),
     # }
     
-    io_points = {(int(height*0.1),0), (int(height*0.95),int(width*0.55)), (int(height*0.95),int(width*0.67)), (int(height*0.95),int(width*0.79))}
+    interaction_points = {(int(height*0.1),0), (int(height*0.95),int(width*0.55)), (int(height*0.95),int(width*0.67)), (int(height*0.95),int(width*0.79))}
 
     recorder = ExperimentRecorder(seed=seed)
 
@@ -48,8 +48,8 @@ if __name__ == "__main__":
         ordered_aisle_offset = (0, 0),
         wall_clearance = (2, 2, 5, 3),
 
-        io_points=io_points,
-        io_points_radius=3,
+        interaction_points=interaction_points,
+        interaction_points_radius=3,
         simple_obstacle_rate=1,
         agv_radius=agv_radius,
         recorder=recorder,
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     scenario_success = scenario.generate()
     print()
 
-    continuous_access_points, continuous_io_points = continuous_special_points(scenario.access_points, scenario.io_points, scenario.agv_radius)
+    continuous_access_points, continuous_interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.agv_radius)
     bounds = (0, 0, width, height)
 
     eps = 0.05
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         rng=rng,
         occupancy=scenario.occupancy,
         access_points=continuous_access_points,
-        io_points=continuous_io_points,
+        interaction_points=continuous_interaction_points,
         height=height,
         width=width,
         eps=eps,
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         occupancy_grid=scenario.occupancy,
         scale_factor=scale_factor,
         access_points=scenario.access_points,
-        io_points=scenario.io_points,
+        interaction_points=scenario.interaction_points,
         agv_radius=scenario.agv_radius,
         recorder=recorder
     )
@@ -101,17 +101,17 @@ if __name__ == "__main__":
     updates_per_iteration = 10
     for _ in range(gvd_iterations):
         scenario.make_updates(number_of_updates=updates_per_iteration)
-        gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+        gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_interaction_points=scenario.interaction_points)
         gvd.updateDistanceMap()
         gvd.build_graph()
         
     scenario.remove_region(top_left=(10, 10), bottom_right=(20, 20))
-    gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+    gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_interaction_points=scenario.interaction_points)
     gvd.updateDistanceMap()
     gvd.build_graph()
     
     scenario.add_region(top_left=(12, 12), bottom_right=(15, 15))
-    gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_io_points=scenario.io_points)
+    gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_interaction_points=scenario.interaction_points)
     gvd.updateDistanceMap()
     gvd.build_graph()
 
