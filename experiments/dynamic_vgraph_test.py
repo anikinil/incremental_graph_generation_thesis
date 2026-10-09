@@ -52,6 +52,7 @@ if __name__ == "__main__":
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
+        print_progress=True,
     )
 
     scenario.generate()
@@ -72,6 +73,7 @@ if __name__ == "__main__":
         access_points=access_points,
         interaction_points=continuous_interaction_points,
         recorder=recorder,
+        print_progress=True,
     )
 
     vgraph.preprocessing()

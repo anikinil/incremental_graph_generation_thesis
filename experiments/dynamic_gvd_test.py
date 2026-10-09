@@ -54,6 +54,7 @@ if __name__ == "__main__":
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
+        print_progress=True,
     )
 
     scenario.generate()
@@ -68,6 +69,7 @@ if __name__ == "__main__":
         interaction_points=scenario.interaction_points,
         agv_radius=agv_radius,
         recorder=recorder,
+        print_progress=True,
     )
 
     gvd.computeDistanceMap()

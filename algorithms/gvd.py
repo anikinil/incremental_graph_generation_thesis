@@ -8,7 +8,7 @@ import numpy as np
 from collections import defaultdict, deque
 
 from algorithms.geometry import offset_access_points
-from artifacts.progress import GenerationProgress
+from artifacts.progress import ProgressReportingAlgorithm
 
 
 class BucketPriorityQueue:
@@ -27,14 +27,14 @@ class BucketPriorityQueue:
         self.current_min_distance = np.inf
     
     def insert(self, cell, distance):
-        
+
         distance = int(distance)  # cast distance to integer
         if distance < self.current_min_distance: # if new cell has smaller distance, update current min distance
             self.current_min_distance = distance
         self.buckets[distance].append(cell) # add cell to the appropriate bucket based on its distance
     
     def pop(self):
-        
+
         # from min distance
         while self.current_min_distance <= self.max_distance:
             # if there are cells in the current min distance bucket
@@ -53,9 +53,12 @@ class BucketPriorityQueue:
         return all(len(cells) == 0 for cells in self.buckets.values())
 
 
-class GVD:
+class GVD(ProgressReportingAlgorithm):
+
+    progress_name = "GVD"
     
-    def __init__(self, rng, occupancy_grid, scale_factor, access_points, interaction_points, agv_radius, recorder):
+    def __init__(self, rng, occupancy_grid, scale_factor, access_points, interaction_points,
+                 agv_radius, recorder, print_progress=True):
         self.rng = rng
 
         self.occupancy_grid = occupancy_grid.copy()
@@ -70,6 +73,7 @@ class GVD:
         self.scale_factor = 1
 
         self.recorder = recorder
+        self.print_progress = bool(print_progress)
         
         # increase resolution and add outer walls
         self.increase_resolution()
@@ -217,8 +221,9 @@ class GVD:
         # return neighbors
     
     def computeDistanceMap(self):
-        progress = GenerationProgress("GVD", "Generating distance map", self.iteration)
-        progress.start(f"grid: {self.height}x{self.width}")
+        progress = self._create_progress("Generating distance map")
+        if progress is not None:
+            progress.start(f"grid: {self.height}x{self.width}")
 
         # initialize and enqueue occupied cells
         for y in range(self.height):
@@ -230,14 +235,17 @@ class GVD:
                     self.open.insert(s, 0) # enqueue for wavefront propagation: distance=0, cell=s
                         
         # propagate wavefronts
-        processed_cells = 0
+        if progress is not None:
+            processed_cells = 0
         while not self.open.is_empty():
             s, _ = self.open.pop() # pop cell with smallest distance
             self.lower(s) # propagate to neighbors and update their distances if closer to obstacle
-            processed_cells += 1
-            if processed_cells % 1000 == 0:
-                progress.update(processed_cells, details="wavefront cells processed")
-        progress.finish(True, f"processed {processed_cells} wavefront cells")
+            if progress is not None:
+                processed_cells += 1
+                if processed_cells % 1000 == 0:
+                    progress.update(processed_cells, details="wavefront cells processed")
+        if progress is not None:
+            progress.finish(True, f"processed {processed_cells} wavefront cells")
 
         # self.prune_voronoi(connectivity=8) # prune
         self._record("distance_map", D=self.D, obst=self.obst)
@@ -307,9 +315,10 @@ class GVD:
         return value  # return the type of obstacle that was removed (for move operations)
     
     def updateDistanceMap(self):
-        progress = GenerationProgress("GVD", "Updating distance map", self.iteration)
-        progress.start()
-        processed_cells = 0
+        progress = self._create_progress("Updating distance map")
+        if progress is not None:
+            progress.start()
+            processed_cells = 0
         while not self.open.is_empty():
             # pop cell with smallest distance
             s, _ = self.open.pop()
@@ -326,16 +335,18 @@ class GVD:
                     if s in self.affected_voro_cells:
                         self.affected_voro_cells.remove(s) # Voronoi cell can be deleted
                     self.lower(s) 
-            processed_cells += 1
-            if processed_cells % 1000 == 0:
-                progress.update(processed_cells, details="wavefront cells processed")
+            if progress is not None:
+                processed_cells += 1
+                if processed_cells % 1000 == 0:
+                    progress.update(processed_cells, details="wavefront cells processed")
         
         # # determine which cells were affected
         # changed_mask = (previous_D != self.D)
         # # store as tuples
         # self.affected_distance_cells = {(int(y), int(x)) for y, x in np.argwhere(changed_mask)}
         
-        progress.finish(True, f"processed {processed_cells} wavefront cells")
+        if progress is not None:
+            progress.finish(True, f"processed {processed_cells} wavefront cells")
         self._record("distance_map", D=self.D, obst=self.obst)
         self._record("voronoi_skeleton", voro=self.voro)
 
@@ -469,15 +480,17 @@ class GVD:
         
         dirs = {'n': (-1, 0), 's': (1, 0), 'e': (0, 1), 'w': (0, -1)} # dir: (dy, dx)
         
-        total_special_points = len(self.access_points) + len(self.interaction_points)
-        progress = GenerationProgress("GVD", "Connecting special points to Voronoi skeleton", self.iteration)
-        progress.start(f"target: {total_special_points} special points")
+        progress = self._create_progress("Connecting special points to Voronoi skeleton")
+        if progress is not None:
+            total_special_points = len(self.access_points) + len(self.interaction_points)
+            progress.start(f"target: {total_special_points} special points")
 
         self.special_point_connections.fill(False) # reset special point connection map
         self.access_point_connection_cells = [] # reset access point connection cells
         self.interaction_point_connection_cells = [] # reset interaction point connection cells
-        connected = 0
-        processed_special_points = 0
+        if progress is not None:
+            connected_access_points = 0
+            processed_special_points = 0
         for ap in self.access_points:
             
             y, x, dir = ap
@@ -491,17 +504,24 @@ class GVD:
                 # if on a Voronoi cell, save it as the access point's connection cell
                 if self.voro[current_cell]:
                     self.access_point_connection_cells.append(current_cell)
-                    connected += 1
+                    if progress is not None:
+                        connected_access_points += 1
                     break
                 
                 # move in the direction of the dir label
                 y += dir_vec[0]
                 x += dir_vec[1]
-            processed_special_points += 1
-            if processed_special_points % 10 == 0 or processed_special_points == total_special_points:
-                progress.update(processed_special_points, total_special_points, f"access points connected: {connected}/{len(self.access_points)}")
-        
-        connected = 0
+            if progress is not None:
+                processed_special_points += 1
+                if processed_special_points % 10 == 0 or processed_special_points == total_special_points:
+                    progress.update(
+                        processed_special_points,
+                        total_special_points,
+                        f"access points connected: {connected_access_points}/{len(self.access_points)}",
+                    )
+
+        if progress is not None:
+            connected_interaction_points = 0
         for iop in self.interaction_points:
             y, x = iop
             best_connection_cell = None
@@ -529,17 +549,30 @@ class GVD:
 
             self.interaction_point_connection_cells.append(best_connection_cell)
             if best_connection_cell is not None:
-                connected += 1
-            else:
+                if progress is not None:
+                    connected_interaction_points += 1
+            elif progress is not None:
                 progress.warning(f"Interaction point {iop} does not reach the Voronoi skeleton")
-            processed_special_points += 1
 
-            if processed_special_points % 10 == 0 or processed_special_points == total_special_points:
-                progress.update(processed_special_points, total_special_points, f"Interaction points connected: {connected}/{len(self.interaction_points)}")
+            if progress is not None:
+                processed_special_points += 1
+                if processed_special_points % 10 == 0 or processed_special_points == total_special_points:
+                    progress.update(
+                        processed_special_points,
+                        total_special_points,
+                        f"Interaction points connected: {connected_interaction_points}/{len(self.interaction_points)}",
+                    )
 
-        access_connected = len(self.access_point_connection_cells)
-        progress.finish(connected == len(self.interaction_points) and access_connected == len(self.access_points),
-            f"access points: {access_connected}/{len(self.access_points)} | Interaction points: {connected}/{len(self.interaction_points)}")
+        if progress is not None:
+            access_connected = len(self.access_point_connection_cells)
+            progress.finish(
+                connected_interaction_points == len(self.interaction_points)
+                and access_connected == len(self.access_points),
+                f"access points: {access_connected}/{len(self.access_points)} | "
+                f"Interaction points: {connected_interaction_points}/{len(self.interaction_points)}",
+                completed=total_special_points,
+                total=total_special_points,
+            )
 
 
     def _special_point_connection_on_cell(self, cell):
@@ -619,9 +652,10 @@ class GVD:
         obstacle_grid[self.occupancy_grid > 0] = 2
         grid = voronoi_grid + obstacle_grid
         
-        skeleton_cell_count = int(np.sum(voronoi_grid))
-        progress = GenerationProgress("GVD", "Generating graph from Voronoi skeleton", self.iteration)
-        progress.start(f"skeleton cells: {skeleton_cell_count}")
+        progress = self._create_progress("Generating graph from Voronoi skeleton")
+        if progress is not None:
+            skeleton_cell_count = int(np.sum(voronoi_grid))
+            progress.start(f"skeleton cells: {skeleton_cell_count}")
 
         def neighbors(cell):
             """Returns 8-connected neighbors of a cell that are also part of the skeleton."""
@@ -684,7 +718,8 @@ class GVD:
         edges = set()
 
         # while there are cells to process in the flood-fill queue
-        processed_floodfill_cells = 0
+        if progress is not None:
+            processed_floodfill_cells = 0
         while floodfill_queue:
             # pop the next cell and its source vertex_id from the queue
             curr_cell_coords, source_vertex_id = floodfill_queue.popleft()
@@ -727,9 +762,10 @@ class GVD:
                 # add an edge between the source vertex and the connected vertex, if it does not cross a blocked corner
                 if not self._diagonal_crosses_blocked_corner(vertex_id_to_cell_coords[source_vertex_id], vertex_id_to_cell_coords[connected_vertex_id], self.occupancy_grid > 0):
                     edges.add(tuple(sorted((source_vertex_id, connected_vertex_id))))
-            processed_floodfill_cells += 1
-            if processed_floodfill_cells % 1000 == 0:
-                progress.update(processed_floodfill_cells, details="tracing skeleton paths")
+            if progress is not None:
+                processed_floodfill_cells += 1
+                if processed_floodfill_cells % 1000 == 0:
+                    progress.update(processed_floodfill_cells, details="tracing skeleton paths")
 
         # replace the cell coordinates of vertex cells with their cell centers
         vertices = {
@@ -765,17 +801,23 @@ class GVD:
             "special_point_vertices": special_point_vertices,
         }
         
-        # count how many special points are connected to the graph for prgress reporting
-        connected_special_points = sum(len(special_vertices) for special_vertices in special_point_vertices.values())
-    
         # check that graph is connected
         graph_connected = self._is_graph_connected()
-        progress.finish(graph_connected, f"vertices: {len(vertices)} | edges: {len(edges)} | "
-            f"special points connected: {connected_special_points}/{len(self.access_points) + len(self.interaction_points)}")
+        if progress is not None:
+            connected_special_points = sum(
+                len(special_vertices) for special_vertices in special_point_vertices.values()
+            )
+            progress.finish(
+                graph_connected,
+                f"vertices: {len(vertices)} | edges: {len(edges)} | "
+                f"special points connected: {connected_special_points}/"
+                f"{len(self.access_points) + len(self.interaction_points)}",
+            )
         
         if self.recorder is not None:
-            save_progress = GenerationProgress("GVD", "Saving graph to disk", self.iteration)
-            save_progress.start()
+            save_progress = self._create_progress("Saving graph to disk")
+            if save_progress is not None:
+                save_progress.start()
             try:
                 saved_artifacts = self._record(
                     "graph",
@@ -783,13 +825,15 @@ class GVD:
                     voro=self.voro,
                 )
             except Exception as error:
-                save_progress.finish(False, f"could not save graph: {error}")
+                if save_progress is not None:
+                    save_progress.finish(False, f"could not save graph: {error}")
                 raise
             if saved_artifacts is None:
-                save_progress.finish(True, "skipped; recorder returned no artifact")
+                if save_progress is not None:
+                    save_progress.finish(True, "skipped; recorder returned no artifact")
             else:
-                save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
-        print()
+                if save_progress is not None:
+                    save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
         return graph_connected
     
 # TODO: edge splitting (obstacle avoidance) -- necessary?

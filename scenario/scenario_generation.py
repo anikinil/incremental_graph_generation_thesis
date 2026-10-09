@@ -2,11 +2,19 @@ import numpy as np
 from scipy.ndimage import binary_closing, distance_transform_edt, gaussian_filter, label
 from shapely.geometry import box
 from algorithms.geometry import buffered_obstacle_space
-from artifacts.progress import GenerationProgress
+from artifacts.progress import ProgressReportingAlgorithm
 
 
-class Scenario:
-    def __init__(self, rng, height, width, occupancy_rate, sigma_coarse, sigma_fine, noisy_aisles_num, noisy_aisle_sigma, interaction_points, interaction_points_radius, simple_obstacle_rate, agv_radius, ordered_aisle_widths = (0, 0), ordered_aisle_spacing = (0, 0), ordered_aisle_offset = (0, 0), wall_clearance = (0, 0, 0, 0), recorder=None):
+class Scenario(ProgressReportingAlgorithm):
+
+    progress_name = "Scenario"
+
+    def __init__(self, rng, height, width, occupancy_rate, sigma_coarse, sigma_fine,
+                 noisy_aisles_num, noisy_aisle_sigma, interaction_points,
+                 interaction_points_radius, simple_obstacle_rate, agv_radius,
+                 ordered_aisle_widths=(0, 0), ordered_aisle_spacing=(0, 0),
+                 ordered_aisle_offset=(0, 0), wall_clearance=(0, 0, 0, 0),
+                 recorder=None, print_progress=True):
         
         self.rng = rng
         
@@ -48,6 +56,7 @@ class Scenario:
         self.iteration = 0
         
         self.recorder = recorder
+        self.print_progress = bool(print_progress)
     
     def _generate_priority_field(self):
         
@@ -152,7 +161,6 @@ class Scenario:
         else:
             free_cells = np.argwhere(self.occupancy != 0)
         if len(free_cells) == 0:
-            print(f"[Scenario {self.iteration}] Selecting obstacle location: failed — no free cells available")
             return None
         cell = tuple(free_cells[self.rng.integers(len(free_cells))])
         return cell
@@ -162,8 +170,9 @@ class Scenario:
         unit_loads_num = int(self.height * self.width * self.occupancy_rate * (1-self.simple_obstacle_rate))
         simple_obstacles_num = int(self.height * self.width * self.occupancy_rate) - unit_loads_num
         target_obstacle_count = unit_loads_num + simple_obstacles_num
-        progress = GenerationProgress("Scenario", "Generating obstacle layout", self.iteration)
-        progress.start(f"target: {target_obstacle_count} obstacles")
+        progress = self._create_progress("Generating obstacle layout")
+        if progress is not None:
+            progress.start(f"target: {target_obstacle_count} obstacles")
 
         # generate the object placement priority field
         self._generate_priority_field()
@@ -174,8 +183,9 @@ class Scenario:
         obstacles_to_place = [1] * simple_obstacles_num + [2] * unit_loads_num        
         self.rng.shuffle(obstacles_to_place)
         
-        unit_loads_placed = 0
-        simple_obstacles_placed = 0
+        if progress is not None:
+            unit_loads_placed = 0
+            simple_obstacles_placed = 0
         placed_obstacles = 0
         attempted_placements = 0
         unforbidden_cells = np.sum(selection_field > 0) # number of cells not forbidden by the priority field 
@@ -196,13 +206,17 @@ class Scenario:
             if self.connected():
                 placed_obstacles += 1
                 # track how many of each type of obstacle has been placed
-                if obstacles_to_place[0] == 2:
-                    unit_loads_placed += 1
-                else:
-                    simple_obstacles_placed += 1
-                # print progress
-                if placed_obstacles % 100 == 0:
-                    progress.update(placed_obstacles, target_obstacle_count, f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}")
+                if progress is not None:
+                    if obstacles_to_place[0] == 2:
+                        unit_loads_placed += 1
+                    else:
+                        simple_obstacles_placed += 1
+                    if placed_obstacles % 100 == 0:
+                        progress.update(
+                            placed_obstacles,
+                            target_obstacle_count,
+                            f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
+                        )
                 obstacles_to_place = obstacles_to_place[1:] # remove the placed obstacle from the list
             else:
                 # else: undo placement
@@ -212,22 +226,25 @@ class Scenario:
         self.update_access_points()
         self.obstacle_count = placed_obstacles
         
-        if len(obstacles_to_place) > 0:
-            print("Scenario generation failed: not all obstacles could be placed.")
-        
         # if not all obstacles could be placed, the scenario generation failed
         success = len(obstacles_to_place) == 0
-        if success:
+        if progress is not None:
+            if success:
+                details = (
+                    f"placed {placed_obstacles}/{target_obstacle_count} obstacles | "
+                    f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}"
+                )
+            else:
+                details = (
+                    "not enough occupiable cells; stopped prematurely after "
+                    f"{placed_obstacles}/{target_obstacle_count} obstacles | "
+                    f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}"
+                )
             progress.finish(
-                True,
-                f"placed {placed_obstacles}/{target_obstacle_count} obstacles | "
-                f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
-            )
-        else:
-            progress.finish(
-                False,
-                f"not enough occupiable cells; stopped prematurely after {placed_obstacles}/{target_obstacle_count} obstacles | "
-                f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}",
+                success,
+                details,
+                completed=placed_obstacles,
+                total=target_obstacle_count,
             )
         
         if self.recorder is not None:
@@ -300,8 +317,9 @@ class Scenario:
         """Make random updates to the scenario by adding, moving, or removing obstacles."""
         self.iteration += 1
         changed_cells = set()  # track changed cells to update access points after map updates
-        progress = GenerationProgress("Scenario", "Generating dynamic updates", self.iteration)
-        progress.start(f"target: {number_of_updates} updates")
+        progress = self._create_progress("Generating dynamic updates")
+        if progress is not None:
+            progress.start(f"target: {number_of_updates} updates")
         
         for _ in range(number_of_updates):
             action = self.rng.choice(["add", "move", "remove"])
@@ -341,13 +359,19 @@ class Scenario:
                     success = self._remove_obstacle(cell)
                     if success:
                         changed_cells.add(cell)
-            progress.update(_ + 1, number_of_updates, f"latest action: {action}")
+            if progress is not None:
+                progress.update(_ + 1, number_of_updates, f"latest action: {action}")
         self.update_access_points(changed_cells)
         
-        progress.finish(True, f"applied {number_of_updates}/{number_of_updates} updates")
+        if progress is not None:
+            progress.finish(
+                True,
+                f"applied {number_of_updates}/{number_of_updates} updates",
+                completed=number_of_updates,
+                total=number_of_updates,
+            )
         if self.recorder is not None:
             self._record_scenario()
-        print()
 
     def consume_updates(self):
         """Return and clear the changes since the last consumer update."""

@@ -46,6 +46,7 @@ if __name__ == "__main__":
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
+        print_progress=True,
         
         # ordered_aisle_widths = (2, 1),
         # ordered_aisle_spacing = (3, 5),
@@ -70,6 +71,7 @@ if __name__ == "__main__":
         interaction_points=continuous_interaction_points,
         num_buffer_segments=num_buffer_segments,
         recorder=recorder,
+        print_progress=True,
     )
     vgraph.create_visibility_graph()
     vgraph.record_graph()

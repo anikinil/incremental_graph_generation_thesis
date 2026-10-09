@@ -178,6 +178,7 @@ def build_access_point_demo():
         interaction_points_radius=1,
         simple_obstacle_rate=0,
         agv_radius=0,
+        print_progress=True,
     )
 
     scenario.occupancy = np.array(occupancy, dtype=np.int8)

@@ -53,6 +53,7 @@ if __name__ == "__main__":
         simple_obstacle_rate=1,
         agv_radius=agv_radius,
         recorder=recorder,
+        print_progress=True,
     )
     scenario_success = scenario.generate()
     print()
@@ -77,6 +78,7 @@ if __name__ == "__main__":
         agv_radius=scenario.agv_radius,
         num_buffer_segments=num_buffer_segments,
         recorder=recorder,
+        print_progress=True,
     )
     prm.construction_step(min_num_vertices=1000, avoid_cycles=False)
     # prm.connect_special_points()
@@ -92,7 +94,8 @@ if __name__ == "__main__":
         access_points=scenario.access_points,
         interaction_points=scenario.interaction_points,
         agv_radius=scenario.agv_radius,
-        recorder=recorder
+        recorder=recorder,
+        print_progress=True,
     )
     gvd.computeDistanceMap()
     gvd.build_graph()

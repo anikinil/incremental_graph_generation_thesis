@@ -43,6 +43,7 @@ DYNAMIC_KINGS_GRAPH_SEED = 46
 FIGURE_DIRECTORY = Path("artifacts/visualization/thesis_figures")
 RUN_DIRECTORY = FIGURE_DIRECTORY / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+PRINT_PROGRESS = False
 
 def _lower_left_interaction_points(height, width):
     """Return three interaction points on the lower-left edge."""
@@ -64,8 +65,8 @@ def _dynamic_vgraph_test_interaction_points(height, width):
     }
 
 # retaining the PRM settings used by the main experiment.
-PRM_MIN_NUM_VERTICES = 300
-DRM_MIN_NUM_VERTICES = 200
+PRM_MIN_NUM_VERTICES = 1000
+DRM_MIN_NUM_VERTICES = 1000
 DRM_LAYOUT_CHANGE_COUNT = 6
 ILLUSTRATIVE_LAYOUT_CHANGE_COUNT = 4
 
@@ -189,7 +190,7 @@ def _recorder(scenario_filename, *, plot_buffer_segments=None):
 def _generate_scenario(recorder, **scenario_parameters):
     """Generate and record a scenario, failing clearly if it cannot be made."""
     recorder.set_algorithm("scenario", use_iterations=False, plot=True)
-    scenario = Scenario(recorder=recorder, **scenario_parameters)
+    scenario = Scenario(recorder=recorder, print_progress=PRINT_PROGRESS, **scenario_parameters)
     if not scenario.generate():
         raise RuntimeError("Thesis scenario generation did not place every requested obstacle.")
     return scenario
@@ -201,7 +202,7 @@ def _large_layout_parameters(rng, *, with_aisles):
     Wall clearance is intentionally retained in both variants.  The only
     distinction between the two figures is whether the ordered aisles exist.
     """
-    height = 30
+    height = 40
     width = 60
 
     return {
@@ -265,8 +266,8 @@ def _roadmap_scenario_parameters(rng, height, width, occupancy_rate, interaction
 
 def generate_vgraph_figure():
     """Generate the requested 15 x 20 static visibility-graph figure."""
-    height = 15
-    width = 20
+    height = 40
+    width = 60
     rng = np.random.default_rng(VGRAPH_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -295,6 +296,7 @@ def generate_vgraph_figure():
         interaction_points=interaction_points,
         num_buffer_segments=0,
         recorder=recorder,
+        print_progress=PRINT_PROGRESS,
     )
     graph.create_visibility_graph()
     graph.record_graph()
@@ -316,8 +318,8 @@ def _apply_dynamic_update(graph, scenario):
 
 def generate_dynamic_vgraph_figures():
     """Generate the initial dynamic graph and one updated iteration."""
-    height = 6
-    width = 9
+    height = 40
+    width = 60
     rng = np.random.default_rng(DYNAMIC_VGRAPH_SEED)
     recorder = _recorder(None, plot_buffer_segments=0)
     scenario = _generate_scenario(
@@ -345,6 +347,7 @@ def generate_dynamic_vgraph_figures():
         access_points=access_points,
         interaction_points=interaction_points,
         recorder=recorder,
+        print_progress=PRINT_PROGRESS,
     )
     graph.preprocessing()
     graph.record_graph(phase="preprocessing")
@@ -415,8 +418,8 @@ def _apply_drm_updates(graph, scenario):
 
 def generate_drm_figures():
     """Generate the initial and manually changed 10 x 15 dynamic-roadmap figures."""
-    height = 10
-    width = 15
+    height = 40
+    width = 60
     rng = np.random.default_rng(DRM_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -448,6 +451,7 @@ def generate_drm_figures():
         agv_radius=scenario.agv_radius,
         num_buffer_segments=5,
         recorder=recorder,
+        print_progress=PRINT_PROGRESS,
     )
     graph.preprocessing_step(min_num_vertices=DRM_MIN_NUM_VERTICES)
 
@@ -465,6 +469,7 @@ def _build_gvd(rng, scenario, recorder):
         interaction_points=scenario.interaction_points,
         agv_radius=scenario.agv_radius,
         recorder=recorder,
+        print_progress=PRINT_PROGRESS,
     )
 
 
@@ -496,8 +501,8 @@ def _gvd_roadmap_without_special_connections(roadmap):
 
 def generate_gvd_figure():
     """Generate the static GVD construction sequence for the thesis."""
-    height = 30
-    width = 40
+    height = 40
+    width = 60
     rng = np.random.default_rng(GVD_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -593,8 +598,8 @@ def _add_gvd_l_shape_above_interaction_points(scenario, *, distance=4):
 
 def generate_dynamic_gvd_figures():
     """Generate the initial and changed-layout GVD roadmap figures."""
-    height = 30
-    width = 40
+    height = 40
+    width = 60
     rng = np.random.default_rng(DYNAMIC_GVD_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -630,13 +635,14 @@ def _build_kings_graph(scenario, recorder):
         bounds=(0, 0, scenario.height, scenario.width),
         agv_radius=scenario.agv_radius,
         recorder=recorder,
+        print_progress=PRINT_PROGRESS,
     )
 
 
 def generate_kings_graph_figure():
     """Generate the initial, static King's-graph figure."""
-    height = 15
-    width = 20
+    height = 40
+    width = 60
     rng = np.random.default_rng(KINGS_GRAPH_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -668,8 +674,8 @@ def _apply_kings_graph_update(graph, scenario):
 
 def generate_dynamic_kings_graph_figures():
     """Generate the initial and changed-layout King's-graph figures."""
-    height = 10
-    width = 15
+    height = 40
+    width = 60
     rng = np.random.default_rng(DYNAMIC_KINGS_GRAPH_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -697,8 +703,8 @@ def generate_dynamic_kings_graph_figures():
 
 def generate_prm_figure():
     """Generate a PRM on the same compact scenario used for the VGraph."""
-    height = 15
-    width = 20
+    height = 40
+    width = 60
     rng = np.random.default_rng(VGRAPH_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -731,6 +737,7 @@ def generate_prm_figure():
         agv_radius=scenario.agv_radius,
         num_buffer_segments=5,
         recorder=recorder,
+        print_progress=PRINT_PROGRESS,
     )
     graph.construction_step(min_num_vertices=PRM_MIN_NUM_VERTICES, avoid_cycles=False)
     graph.record_graph()

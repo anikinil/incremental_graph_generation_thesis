@@ -1311,17 +1311,4 @@ class PlotManager:
         if plotter is None:
             raise ValueError(f"No plotter registered for data_type: {data_type}")
 
-        algorithm = title_info.get("algorithm") if title_info else None
-        iteration = title_info.get("iteration", 0) if title_info else 0
-        display_name = {
-            "gvd": "GVD",
-            "prm": "PRM",
-            "drm": "Dynamic Roadmap",
-            "incremental_kings_grid": "Incremental King's grid",
-            "vgraph": "Visibility graph",
-            "dynamic_vgraph": "Dynamic visibility graph",
-            "scenario": "Scenario",
-        }.get(algorithm, algorithm or "Scenario")
-        print(f"[{display_name} {iteration}] Plotting {data_type}", flush=True)
-
         plotter.plot(data=data, scenario=self.scenario, path=path)

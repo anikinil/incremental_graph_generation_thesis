@@ -7,11 +7,11 @@ from scipy.spatial import KDTree
 from shapely.geometry import Point, box
 from shapely.ops import unary_union
 
-from artifacts.progress import GenerationProgress
+from artifacts.progress import ProgressReportingAlgorithm
 from algorithms.geometry import buffered_edge_cells
 
 
-class DRM:
+class DRM(ProgressReportingAlgorithm):
     """
     Based on:
     
@@ -19,7 +19,11 @@ class DRM:
     Peter Leven, Seth Hutchinson (2002)
     """
     
-    def __init__(self, rng, occupancy, access_points, interaction_points, height, width, max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None):
+    progress_name = "DRM"
+
+    def __init__(self, rng, occupancy, access_points, interaction_points, height, width,
+                 max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None,
+                 print_progress=True):
 
         self.rng = rng
         self.occupancy = np.asarray(occupancy, dtype=np.uint8).copy()
@@ -31,6 +35,7 @@ class DRM:
         self.num_buffer_segments = int(num_buffer_segments)
         self.recorder = recorder
         self.iteration = 0
+        self.print_progress = print_progress
 
         self.obstacle_space = None
         self._refresh_obstacle_space()
@@ -184,8 +189,9 @@ class DRM:
         
         min_num_vertices: minimum number of vertices to add (None: add until connected)
         """
-        progress = GenerationProgress("DRM", "Connecting active roadmap", self.iteration)
-        progress.start()
+        progress = self._create_progress("Connecting active roadmap")
+        if progress is not None:
+            progress.start()
         
         num_components = self._num_active_components()
         added_vertices = set()
@@ -204,11 +210,12 @@ class DRM:
             num_components = self._num_active_components()
             added_vertices.add(c_idx)
             added_edges.update(incident_edges)
-            if added_vertices_num % 100 == 0:
+            if progress is not None and added_vertices_num % 100 == 0:
                 progress.update(added_vertices_num, details=(f"components: {num_components} | vertices: {sum(self.vertex_present)} | "
                                                              f"edges: {len(self.edges)}"))
-        progress.finish(True, (f"added vertices: {added_vertices_num} | vertices: {sum(self.vertex_present)} | "
-                               f"edges: {len(self.edges)} | components: {num_components}"))
+        if progress is not None:
+            progress.finish(True, (f"added vertices: {added_vertices_num} | vertices: {sum(self.vertex_present)} | "
+                                   f"edges: {len(self.edges)} | components: {num_components}"))
         return added_vertices, added_edges
 
     def _build_wall_graph(self):
@@ -347,8 +354,6 @@ class DRM:
         removed_indices = {index for index in removed_indices if self.vertex_present[index]}
         if not removed_indices:
             return
-        print(f"Removing {len(removed_indices)} vertices from the roadmap.")
-
         for edge in self._get_incident_edges(removed_indices):
             self._remove_edge(edge)
         for index in removed_indices:
@@ -363,14 +368,18 @@ class DRM:
             cell: index for cell, index in self.wall_vertices.items() if index not in removed_indices
         }
         self._rebuild_kdtree()
-        print(f"Removed {len(removed_indices)} vertices. Remaining vertices: {sum(self.vertex_present)}. Remaining edges: {len(self.edges)}.")
 
 
     def _update_special_points(self, access_points, interaction_points, map_new=True):
         """Update the special points in the roadmap, optionally mapping newly added elements to occupancy cells."""
+        progress = self._create_progress("Updating special points")
         self.access_points = list(access_points)
         self.interaction_points = list(interaction_points)
         current_points = list(dict.fromkeys(self.access_points + self.interaction_points))
+        if progress is not None:
+            total_special_points = len(current_points)
+            progress.start(f"target: {total_special_points} special points")
+            processed_special_points = 0
 
         # determine which special points have been removed and remove their vertices and edges from the roadmap
         removed_points = set(self.special_vertices).difference(current_points)
@@ -381,13 +390,10 @@ class DRM:
         self._remove_vertices(removed_indices)
 
         # add new special points to the roadmap
-        count = 0
-        total = len(current_points)
         new_vertices = set()
         for point in current_points:
             index = self.special_vertices.get(point)
             if index is None:
-                print(f"Adding special points to roadmap: {count + 1}/{total} ({(count + 1) / total * 100:.2f}%) ({point})", end="\r", flush=True)
                 candidate_indices = self._get_candidate_neighbors(point)
                 index = self._add_vertex(point)
                 for neighbour_index in candidate_indices:
@@ -395,10 +401,21 @@ class DRM:
                 self._rebuild_kdtree()
                 self.special_vertices[point] = index
                 new_vertices.add(index)
-                count += 1
+            if progress is not None:
+                processed_special_points += 1
+                if (processed_special_points % 10 == 0
+                        or processed_special_points == total_special_points):
+                    progress.update(processed_special_points, total_special_points)
         if map_new:
             new_edges = self._get_incident_edges(new_vertices)
             self._map_roadmap_elements(new_vertices, new_edges)
+        if progress is not None:
+            progress.finish(
+                True,
+                f"vertices: {sum(self.vertex_present)} | edges: {len(self.edges)}",
+                completed=total_special_points,
+                total=total_special_points,
+            )
 
     def _get_vertex_footprint_cells(self, index):
         """Return the set of cells that intersect the given roadmap vertex's footprint."""
@@ -462,20 +479,30 @@ class DRM:
         """Build the initial roadmap and map all vertices and edges to their occupancy cells."""
         self.affected_vertices.clear()
         self.affected_edges.clear()
+        progress = self._create_progress("Preprocessing roadmap")
+        if progress is not None:
+            preprocessing_steps = 4
+            progress.start(f"target: {preprocessing_steps} stages")
         
         self._build_wall_graph()
-        print("WALL GRAPH BUILT")
+        if progress is not None:
+            progress.update(1, preprocessing_steps, "wall graph built")
         # self._repair_active_connectivity()
         self._update_special_points(self.access_points, self.interaction_points, map_new=False)
-        print("SPECIAL POINTS ADDED", flush=True)
+        if progress is not None:
+            progress.update(2, preprocessing_steps, "special points updated")
         self._build_workspace_to_roadmap_mapping()
-        print("WORKSPACE MAPPED TO ROADMAP", flush=True)
+        if progress is not None:
+            progress.update(3, preprocessing_steps, "workspace mapped to roadmap")
 
         repair_vertices, repair_edges = self._repair_active_connectivity(min_num_vertices)
-        print(f"REPAIRED CONNECTIVITY")
         self._map_roadmap_elements(repair_vertices, repair_edges)
+        if progress is not None:
+            progress.update(4, preprocessing_steps, "connectivity repaired")
 
         self.record_graph(phase="preprocessing")
+        if progress is not None:
+            progress.finish(True, completed=preprocessing_steps, total=preprocessing_steps)
 
     def _refresh_active_status(self, vertices, edges):
         """Refresh roadmap status using the circular robot footprint against raw obstacles."""
@@ -580,8 +607,9 @@ class DRM:
 
         vertices = (np.asarray(self.vertices, dtype=np.float64) if self.vertices else np.empty((0, 2), dtype=np.float64))
 
-        save_progress = GenerationProgress("DRM", f"Saving graph to disk ({phase})", self.iteration)
-        save_progress.start()
+        save_progress = self._create_progress(f"Saving graph to disk ({phase})")
+        if save_progress is not None:
+            save_progress.start()
         try:
             saved_artifacts = self.recorder.save(
                 data_type="drm_graph",
@@ -608,12 +636,15 @@ class DRM:
                 iteration=self.iteration,
             )
         except Exception as error:
-            save_progress.finish(False, f"could not save graph: {error}")
+            if save_progress is not None:
+                save_progress.finish(False, f"could not save graph: {error}")
             raise
 
         if saved_artifacts is None:
-            save_progress.finish(True, "skipped; recorder returned no artifact")
+            if save_progress is not None:
+                save_progress.finish(True, "skipped; recorder returned no artifact")
             return None
 
-        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        if save_progress is not None:
+            save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
         return saved_artifacts

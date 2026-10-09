@@ -3,11 +3,11 @@ from matplotlib.colors import ListedColormap
 from itertools import combinations
 import networkx as nx
 import geopandas as gpd
-from artifacts.progress import GenerationProgress
+from artifacts.progress import ProgressReportingAlgorithm
 from algorithms.geometry import navigation_space
 from shapely.geometry import LineString
 
-class VGraph:
+class VGraph(ProgressReportingAlgorithm):
     """
     "An Algorithm for Planning Collision-Free Paths Among Polyhedral Obstacles", Thomas Lozano-Perez (1983)
     
@@ -16,8 +16,11 @@ class VGraph:
     
     # TODO use the same corner translation method as in the paper
     
+    progress_name = "Visibility graph"
+
     def __init__(self, width, height, occupancy, agv_radius,
-                 access_points, interaction_points, num_buffer_segments, recorder=None):
+                 access_points, interaction_points, num_buffer_segments, recorder=None,
+                 print_progress=True):
         self.width = width
         self.height = height
         self.occupancy = occupancy
@@ -27,6 +30,7 @@ class VGraph:
         self.interaction_points = interaction_points
         self.recorder = recorder
         self.iteration = 0
+        self.print_progress = bool(print_progress)
 
         self.G = nx.Graph()
 
@@ -59,8 +63,9 @@ class VGraph:
 
     def create_visibility_graph(self):
 
-        vertex_progress = GenerationProgress("Visibility graph", "Collecting vertices", self.iteration)
-        vertex_progress.start()
+        vertex_progress = self._create_progress("Collecting vertices")
+        if vertex_progress is not None:
+            vertex_progress.start()
 
         free_space, obstacle_space = navigation_space(self.occupancy, self.agv_radius, self.num_buffer_segments)
 
@@ -93,30 +98,45 @@ class VGraph:
             # print(f"Added access point node {i} at position {(x, y)}")
     
         num_vertices_total = len(vertices) + len(self.interaction_points) + len(self.access_points)
-        vertex_progress.finish(True,
-            f"collected {len(vertices)} obstacle vertices | total vertices: {num_vertices_total}")
+        if vertex_progress is not None:
+            vertex_progress.finish(True,
+                f"collected {len(vertices)} obstacle vertices | total vertices: {num_vertices_total}")
         
-        total_pairs = num_vertices_total * (num_vertices_total - 1) // 2
-        visibility_progress = GenerationProgress("Visibility graph", "Checking visibility", self.iteration)
-        visibility_progress.start(f"target: {total_pairs} node pairs")
-        # check visibility
-        for pair_number, (i, j) in enumerate(combinations(range(num_vertices_total), 2), start=1):
-            if pair_number % 100 == 0 or pair_number == total_pairs:
-                visibility_progress.update(pair_number, total_pairs, f"checking vertices {i} and {j}")
-            
-            line = LineString([self.G.nodes[i]['pos'], self.G.nodes[j]['pos']])
-            if free_space.covers(line):
-                self.G.add_edge(i, j)
+        visibility_progress = self._create_progress("Checking visibility")
+        if visibility_progress is not None:
+            total_pairs = num_vertices_total * (num_vertices_total - 1) // 2
+            visibility_progress.start(f"target: {total_pairs} node pairs")
+        # Keep the uninstrumented path free of progress counters and checks.
+        if visibility_progress is not None:
+            for pair_number, (i, j) in enumerate(combinations(range(num_vertices_total), 2), start=1):
+                if pair_number % 100 == 0 or pair_number == total_pairs:
+                    visibility_progress.update(pair_number, total_pairs, f"checking vertices {i} and {j}")
 
-        visibility_progress.finish(True, f"generated {self.G.number_of_nodes()} vertices and {self.G.number_of_edges()} edges")
+                line = LineString([self.G.nodes[i]['pos'], self.G.nodes[j]['pos']])
+                if free_space.covers(line):
+                    self.G.add_edge(i, j)
+        else:
+            for i, j in combinations(range(num_vertices_total), 2):
+                line = LineString([self.G.nodes[i]['pos'], self.G.nodes[j]['pos']])
+                if free_space.covers(line):
+                    self.G.add_edge(i, j)
+
+        if visibility_progress is not None:
+            visibility_progress.finish(
+                True,
+                f"generated {self.G.number_of_nodes()} vertices and {self.G.number_of_edges()} edges",
+                completed=total_pairs,
+                total=total_pairs,
+            )
 
     def record_graph(self):
         """Record the visibility graph using via recorder if available."""
         if self.recorder is None:
             return None
 
-        save_progress = GenerationProgress("Visibility graph", "Saving graph to disk", self.iteration)
-        save_progress.start()
+        save_progress = self._create_progress("Saving graph to disk")
+        if save_progress is not None:
+            save_progress.start()
         try:
             saved_artifacts = self.recorder.save(
                 data_type="vgraph",
@@ -138,12 +158,15 @@ class VGraph:
                 plot=True,
             )
         except Exception as error:
-            save_progress.finish(False, f"could not save graph: {error}")
+            if save_progress is not None:
+                save_progress.finish(False, f"could not save graph: {error}")
             raise
 
         if saved_artifacts is None:
-            save_progress.finish(True, "skipped; recorder returned no artifact")
+            if save_progress is not None:
+                save_progress.finish(True, "skipped; recorder returned no artifact")
             return None
 
-        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        if save_progress is not None:
+            save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
         return saved_artifacts

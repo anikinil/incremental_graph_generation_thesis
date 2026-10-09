@@ -7,7 +7,7 @@ import geopandas as gpd
 import numpy as np
 from scipy.spatial import KDTree
 from collections import defaultdict
-from artifacts.progress import GenerationProgress
+from artifacts.progress import ProgressReportingAlgorithm
 from algorithms.geometry import navigation_space
 
 
@@ -73,15 +73,17 @@ class UnionFind:
         return len(roots)
 
 
-class PRM:
+class PRM(ProgressReportingAlgorithm):
     """
     "Probabilistic Roadmaps for Path Planning in High-Dimensional Configuration Spaces",
     Lydia E. Kavraki, Petr Svestka, Jean-Claude Latombe and Mark H. Overmars (1996)
     """
     
+    progress_name = "PRM"
+
     def __init__(self, rng, occupancy, access_points, interaction_points, height, width,
                  eps, max_dist, max_neighbors, agv_radius,
-                 num_buffer_segments, recorder=None):
+                 num_buffer_segments, recorder=None, print_progress=True):
 
         self.rng = rng # random number generator
         self.occupancy = occupancy # occupancy grid: 0 = free, 1 = simple obstacle, 2 = unit load
@@ -100,6 +102,8 @@ class PRM:
         self.buffer = agv_radius # radius of the AGV for collision costraints
         self.num_buffer_segments = num_buffer_segments # segments per rounded-corner quadrant
         self.recorder = recorder
+        self.print_progress = bool(print_progress)
+        self.iteration = 0
         
         # initialize with empty vertices (pre-allocate capacity)
         self.vertices = np.empty((100, 2), dtype=np.float64)
@@ -264,9 +268,9 @@ class PRM:
     def construction_step(self, min_num_vertices, avoid_cycles):
         """Builds initial roadmap without special points."""
         
-        # progress tracking
-        progress = GenerationProgress("PRM", "Generating initial roadmap")
-        progress.start(f"target: {min_num_vertices} sampling attempts after wall graph")
+        progress = self._create_progress("Generating initial roadmap")
+        if progress is not None:
+            progress.start(f"target: {min_num_vertices} sampling attempts after wall graph")
 
         # get free space as shapely Polygon for sampling and local planner checks
         self.free_space, _ = navigation_space(self.occupancy, self.buffer, self.num_buffer_segments)
@@ -312,14 +316,15 @@ class PRM:
             self._update_kdtree()
             num_components = self._num_components()
 
-            if added_vertices_num % 100 == 0:
+            if progress is not None and added_vertices_num % 100 == 0:
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
                 progress.update(added_vertices_num, details=(f"components: {num_components} | vertices: {self.num_vertices} | "
                                                          f"edges: {num_edges}"))
         
-        num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-        progress.finish(True, (f"added vertices: {added_vertices_num} | vertices: {self.num_vertices} | "
-                               f"edges: {num_edges} | components: {num_components}"))
+        if progress is not None:
+            num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+            progress.finish(True, (f"added vertices: {added_vertices_num} | vertices: {self.num_vertices} | "
+                                   f"edges: {num_edges} | components: {num_components}"))
 
     
     # def _random_bounce_walk(self, start_config, walk_length, max_bounces):
@@ -373,13 +378,14 @@ class PRM:
     def _connect_special_points(self, avoid_cycles=True):
         """Attempts to connect special points (access + interaction points) to the roadmap."""
 
-        # progress tracking
-        total_special_points = len(self.special_points)
-        progress = GenerationProgress("PRM", "Connecting special points")
-        progress.start(f"target: {total_special_points} special points")
+        progress = self._create_progress("Connecting special points")
+        if progress is not None:
+            total_special_points = len(self.special_points)
+            progress.start(f"target: {total_special_points} special points")
+            processed_special_points = 0
 
         # for each special point
-        for point_number, config in enumerate(self.special_points, start=1):
+        for config in self.special_points:
 
             # get candidate neighbors of the special point
             candidate_indices = self._get_candidate_neighbors(config)
@@ -405,12 +411,25 @@ class PRM:
 
             self._update_kdtree()
 
-            if point_number % 10 == 0 or point_number == total_special_points:
-                num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-                progress.update(point_number, total_special_points, f"vertices: {self.num_vertices} | edges: {num_edges}")
+            if progress is not None:
+                processed_special_points += 1
+                if (processed_special_points % 10 == 0
+                        or processed_special_points == total_special_points):
+                    num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+                    progress.update(
+                        processed_special_points,
+                        total_special_points,
+                        f"vertices: {self.num_vertices} | edges: {num_edges}",
+                    )
 
-        num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-        progress.finish(True, f"processed {total_special_points} special points | vertices: {self.num_vertices} | edges: {num_edges}")
+        if progress is not None:
+            num_edges = sum(len(v) for v in self.adjacency.values()) // 2
+            progress.finish(
+                True,
+                f"processed {total_special_points} special points | vertices: {self.num_vertices} | edges: {num_edges}",
+                completed=total_special_points,
+                total=total_special_points,
+            )
 
         
     def smoothing_step(self):
@@ -481,8 +500,9 @@ class PRM:
             return None
 
         vertices, edges = self._expanded_graph_snapshot()
-        save_progress = GenerationProgress("PRM", "Saving graph to disk")
-        save_progress.start()
+        save_progress = self._create_progress("Saving graph to disk")
+        if save_progress is not None:
+            save_progress.start()
         try:
             saved_artifacts = self.recorder.save(
                 data_type="prm_graph",
@@ -501,12 +521,15 @@ class PRM:
                 plot=True,
             )
         except Exception as error:
-            save_progress.finish(False, f"could not save graph: {error}")
+            if save_progress is not None:
+                save_progress.finish(False, f"could not save graph: {error}")
             raise
 
         if saved_artifacts is None:
-            save_progress.finish(True, "skipped; recorder returned no artifact")
+            if save_progress is not None:
+                save_progress.finish(True, "skipped; recorder returned no artifact")
             return None
 
-        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        if save_progress is not None:
+            save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
         return saved_artifacts

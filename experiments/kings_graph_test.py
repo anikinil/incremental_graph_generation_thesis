@@ -36,6 +36,7 @@ if __name__ == "__main__":
         simple_obstacle_rate=0.1,
         agv_radius=agv_radius,
         recorder=recorder,
+        print_progress=True,
         
         # ordered_aisle_widths = (2, 1),
         # ordered_aisle_spacing = (3, 5),
@@ -55,6 +56,7 @@ if __name__ == "__main__":
         bounds=(0, 0, height, width),
         agv_radius=scenario.agv_radius,
         recorder=recorder,
+        print_progress=True,
     )
     kings_grid.build_graph()
     kings_grid.record_graph()

@@ -1,11 +1,11 @@
 import numpy as np
 from math import ceil
 
-from artifacts.progress import GenerationProgress
+from artifacts.progress import ProgressReportingAlgorithm
 from algorithms.geometry import buffered_edge_cells, navigation_space
 
 
-class DynamicVGraph:
+class DynamicVGraph(ProgressReportingAlgorithm):
     """
     Dynamic Visibility Graph, with the method of activating/deactivating edges affected by dynamic obstacles, partially based on:
     
@@ -14,7 +14,10 @@ class DynamicVGraph:
     """
     
     
-    def __init__(self, height, width, occupancy, agv_radius, access_points, interaction_points, recorder=None):
+    progress_name = "Dynamic visibility graph"
+
+    def __init__(self, height, width, occupancy, agv_radius, access_points, interaction_points,
+                 recorder=None, print_progress=True):
         
         self.height = height
         self.width = width
@@ -24,6 +27,7 @@ class DynamicVGraph:
         self.access_points = access_points
         self.interaction_points = interaction_points
         self.recorder = recorder
+        self.print_progress = bool(print_progress)
         
         self.vertices = []
         self.edges = []
@@ -100,22 +104,26 @@ class DynamicVGraph:
 
     def preprocessing(self):
 
-        vertex_progress = GenerationProgress("Dynamic visibility graph", "Collecting vertices")
-        vertex_progress.start()
+        vertex_progress = self._create_progress("Collecting vertices")
+        if vertex_progress is not None:
+            vertex_progress.start()
 
         # get all convex vertices of the obstacle polygons
         _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
         vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
 
-        vertex_progress.finish(True, f"collected {len(vertices)} visibility vertices")
+        if vertex_progress is not None:
+            vertex_progress.finish(True, f"collected {len(vertices)} visibility vertices")
 
-        total_pairs = len(vertices) * (len(vertices) - 1) // 2
-        edge_progress = GenerationProgress("Dynamic visibility graph", "Mapping candidate edges")
-        edge_progress.start(f"target: {total_pairs} vertex pairs")
+        edge_progress = self._create_progress("Mapping candidate edges")
+        if edge_progress is not None:
+            total_pairs = len(vertices) * (len(vertices) - 1) // 2
+            edge_progress.start(f"target: {total_pairs} vertex pairs")
                 
         # for each vertex pair determine which cells the edge between them crosses
         # store mappings between cells and edges in dictionaries for fast lookup
-        pair_number = 0
+        if edge_progress is not None:
+            pair_number = 0
         for i in range(len(vertices)):
             for j in range(i + 1, len(vertices)): # order vertices by index to avoid duplicate edges
                 edge = (vertices[i], vertices[j])
@@ -131,10 +139,10 @@ class DynamicVGraph:
                     self.cell_to_edge[cell].add(edge)
                 self.edge_active_status[edge] = True # initialize edge as active
 
-                # update progress
-                pair_number += 1
-                if pair_number % 100 == 0:
-                    edge_progress.update(pair_number, total_pairs)
+                if edge_progress is not None:
+                    pair_number += 1
+                    if pair_number % 100 == 0 or pair_number == total_pairs:
+                        edge_progress.update(pair_number, total_pairs)
 
         # mark edges that cross obstacle cells as inactive in edge_active_status
         self._deactivate_edges_in_obstacle_cells()
@@ -146,10 +154,20 @@ class DynamicVGraph:
             if self.edge_active_status[edge]:
                 self.edges.append(edge)
 
-        edge_progress.finish(True, f"mapped {len(self.edge_to_cells)} candidate edges | active: {len(self.edges)}")
+        if edge_progress is not None:
+            edge_progress.finish(
+                True,
+                f"mapped {len(self.edge_to_cells)} candidate edges | active: {len(self.edges)}",
+                completed=total_pairs,
+                total=total_pairs,
+            )
 
     def apply_layout_updates(self, obstacle_updates, new_access_points, new_interaction_points):
         """Apply layout updates and update the visibility graph."""
+        progress = self._create_progress("Updating roadmap")
+        if progress is not None:
+            update_steps = 5
+            progress.start(f"target: {update_steps} stages")
 
         # update the occupancy grid and collect added and removed obstacle cells
         added_cells = set()
@@ -172,7 +190,8 @@ class DynamicVGraph:
                 removed_cells.add(cell_from)
                 added_cells.add(cell_to)
                 
-        print("APPLIED LAYOUT UPDATES")
+        if progress is not None:
+            progress.update(1, update_steps, "layout updates applied")
 
         # activate edges affected by removed obstacle cells, if no remaining obstacle blocks them
         for cell in removed_cells:
@@ -180,11 +199,14 @@ class DynamicVGraph:
                 for edge in self.cell_to_edge[cell]:
                     if all(self.occupancy[edge_cell] == 0 for edge_cell in self.edge_to_cells[edge]):
                         self.edge_active_status[edge] = True
+        if progress is not None:
+            progress.update(2, update_steps, "released edges activated")
 
         self.access_points = new_access_points
         self.interaction_points = new_interaction_points
 
-        print("UPDATED SPECIAL POINTS")
+        if progress is not None:
+            progress.update(3, update_steps, "special points updated")
 
         # TODO make incremental, only look at relebvant parts instead of recomputing whole obstacle space
         # get all vertices of the updated obstacle space and special points
@@ -194,7 +216,6 @@ class DynamicVGraph:
         # remove vertices that are no longer part of the obstacle space or special points
         new_vertex_set = set(new_vertices)
         removed_vertices = set(self.vertices) - new_vertex_set
-        print(f"REMOVING {len(removed_vertices)} VERTICES")
         removed_edges = set()
         for vertex in removed_vertices:
             removed_edges.update(self.vertex_to_edges.get(vertex, set()))
@@ -213,7 +234,8 @@ class DynamicVGraph:
 
         self.vertices = [vertex for vertex in self.vertices if vertex not in removed_vertices]
 
-        print("REMOVED VERTICES")
+        if progress is not None:
+            progress.update(4, update_steps, f"removed {len(removed_vertices)} vertices")
 
         # add new obstacle and special point vertices with edges to all existing vertices
         current_vertex_set = set(self.vertices)
@@ -236,8 +258,6 @@ class DynamicVGraph:
                     self.cell_to_edge[cell].add(edge)
             self.vertices.append(vertex)
             
-        print("ADDED VERTICES AND EDGES")
-
         # deactivate new edges that cross an existing obstacle cell
         for edge in added_edges:
             if any(self.occupancy[cell] != 0 for cell in self.edge_to_cells[edge]):
@@ -251,13 +271,21 @@ class DynamicVGraph:
 
         self.edges = [edge for edge in self.edge_to_cells if self.edge_active_status[edge]]
 
-        print("UPDATED EDGE STATUS")
+        if progress is not None:
+            progress.update(5, update_steps, "edge status updated")
 
         self.iteration += 1
         if self.recorder is not None:
             self.recorder.new_iteration(self.iteration)
 
         self.record_graph(phase="online_update")
+        if progress is not None:
+            progress.finish(
+                True,
+                f"vertices: {len(self.vertices)} | active edges: {len(self.edges)}",
+                completed=update_steps,
+                total=update_steps,
+            )
     
     def record_graph(self, phase="manual"):
         """Record all visibility candidates and their current active status."""
@@ -265,10 +293,9 @@ class DynamicVGraph:
             return None
 
         edges = sorted(self.edge_to_cells)
-        save_progress = GenerationProgress(
-            "Dynamic visibility graph", f"Saving graph to disk ({phase})", self.iteration
-        )
-        save_progress.start(f"edges: {len(edges)}")
+        save_progress = self._create_progress(f"Saving graph to disk ({phase})")
+        if save_progress is not None:
+            save_progress.start(f"edges: {len(edges)}")
         try:
             saved_artifacts = self.recorder.save(
                 data_type="dynamic_vgraph",
@@ -292,14 +319,17 @@ class DynamicVGraph:
                 plot=False,
             )
         except Exception as error:
-            save_progress.finish(False, f"could not save graph: {error}")
+            if save_progress is not None:
+                save_progress.finish(False, f"could not save graph: {error}")
             raise
 
         if saved_artifacts is None:
-            save_progress.finish(True, "skipped; recorder returned no artifact")
+            if save_progress is not None:
+                save_progress.finish(True, "skipped; recorder returned no artifact")
             return None
 
-        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        if save_progress is not None:
+            save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
         return saved_artifacts
 
         

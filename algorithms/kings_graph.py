@@ -1,10 +1,10 @@
 import networkx as nx
 
-from artifacts.progress import GenerationProgress
+from artifacts.progress import ProgressReportingAlgorithm
 from algorithms.geometry import offset_access_points
 
 
-class IncrementalKingsGraph:
+class IncrementalKingsGraph(ProgressReportingAlgorithm):
     """
     "Continuous-Space Roadmap Generation for Mobile Robot Fleets with Distance Constraints and Geometry-Aware Discretization"
     Rüdt, Enke and Furmans (2026)
@@ -14,7 +14,10 @@ class IncrementalKingsGraph:
     Cáp, Vokrínek and Kleiner (2015)
     """
 
-    def __init__(self, bounds, agv_radius, occupancy, access_points, interaction_points, recorder):
+    progress_name = "Incremental King's grid"
+
+    def __init__(self, bounds, agv_radius, occupancy, access_points, interaction_points,
+                 recorder=None, print_progress=True):
         self.bounds = bounds
         self.agv_radius = agv_radius
         self.occupancy = occupancy.copy() # make a copy to avoid mutating the original occupancy grid
@@ -24,6 +27,7 @@ class IncrementalKingsGraph:
 
         self.iteration = 0
         self.recorder = recorder
+        self.print_progress = bool(print_progress)
 
         self.G = None
 
@@ -134,24 +138,31 @@ class IncrementalKingsGraph:
 
     def _connect_special_points_to_graph(self, G, new_interaction_points, new_access_points):
         """Add a vertex for each special point and connect it to the closest grid vertex in the graph."""
-        special_progress = GenerationProgress("Incremental King's grid", "Connecting special points", self.iteration)
-        total_special_points = len(new_interaction_points) + len(new_access_points)
-        special_progress.start(f"target: {total_special_points} special points")
+        special_progress = self._create_progress("Connecting special points")
+        if special_progress is not None:
+            total_special_points = len(new_interaction_points) + len(new_access_points)
+            special_progress.start(f"target: {total_special_points} special points")
+            processed_special_points = 0
 
-        for point_number, (row, col) in enumerate(new_interaction_points, start=1):
+        for row, col in new_interaction_points:
             G.add_node((row, col), pos=(col, row))
             closest_grid_vertex = (int(row), int(col))
             if G.has_node(closest_grid_vertex):
                 G.add_edge((row, col), closest_grid_vertex)
             else:
-                print(f"closest_grid_vertex: {closest_grid_vertex}")
-                print(f"occupancy: {self.occupancy[closest_grid_vertex]}")
-                message = (f"Special point {row, col} is not adjacent to any free grid vertex.")
+                message = f"Special point {row, col} is not adjacent to free grid vertex {closest_grid_vertex}."
                 raise ValueError(message)
-            if point_number % 10 == 0 or point_number == total_special_points:
-                special_progress.update(point_number, total_special_points, f"connected: {point_number}/{total_special_points}")
+            if special_progress is not None:
+                processed_special_points += 1
+                if (processed_special_points % 10 == 0
+                        or processed_special_points == total_special_points):
+                    special_progress.update(
+                        processed_special_points,
+                        total_special_points,
+                        f"connected: {processed_special_points}/{total_special_points}",
+                    )
 
-        for point_number, (row, col, direction) in enumerate(new_access_points, start = len(new_interaction_points) + 1):
+        for row, col, direction in new_access_points:
             G.add_node((row, col), pos=(col, row))
             
             # if the special point is an access point, connect it to the grid vertex that is directed towards the access point's direction
@@ -164,31 +175,44 @@ class IncrementalKingsGraph:
             if G.has_node(closest_grid_vertex):
                 G.add_edge((row, col), closest_grid_vertex)
             else:
-                print(f"closest_grid_vertex: {closest_grid_vertex}")
-                print(f"occupancy: {self.occupancy[closest_grid_vertex]}")
-                message = (f"Special point {row, col} is not adjacent to any free grid vertex.")
+                message = f"Special point {row, col} is not adjacent to free grid vertex {closest_grid_vertex}."
                 raise ValueError(message)
-            if point_number % 10 == 0 or point_number == total_special_points:
-                special_progress.update(point_number, total_special_points, f"connected: {point_number}/{total_special_points}")
+            if special_progress is not None:
+                processed_special_points += 1
+                if (processed_special_points % 10 == 0
+                        or processed_special_points == total_special_points):
+                    special_progress.update(
+                        processed_special_points,
+                        total_special_points,
+                        f"connected: {processed_special_points}/{total_special_points}",
+                    )
 
-        special_progress.finish(True, f"connected: {total_special_points}/{total_special_points} | " f"nodes: {G.number_of_nodes()} | edges: {G.number_of_edges()}")
+        if special_progress is not None:
+            special_progress.finish(
+                True,
+                f"connected: {total_special_points}/{total_special_points} | "
+                f"nodes: {G.number_of_nodes()} | edges: {G.number_of_edges()}",
+                completed=total_special_points,
+                total=total_special_points,
+            )
 
     def build_graph(self):
         G = nx.Graph()
-        grid_height = self.bounds[2] - self.bounds[0]
-        grid_width = self.bounds[3] - self.bounds[1]
-        total_cells = grid_height * grid_width
-        processed_cells = 0
-        grid_vertices = 0
-
-        graph_progress = GenerationProgress("Incremental King's grid", "Building King's-grid graph", self.iteration)
-        graph_progress.start(f"grid: {grid_height}x{grid_width}")
+        graph_progress = self._create_progress("Building King's-grid graph")
+        if graph_progress is not None:
+            grid_height = self.bounds[2] - self.bounds[0]
+            grid_width = self.bounds[3] - self.bounds[1]
+            total_cells = grid_height * grid_width
+            processed_cells = 0
+            grid_vertices = 0
+            graph_progress.start(f"grid: {grid_height}x{grid_width}")
 
         # add grid vertices and edges
         for row in range(self.bounds[0], self.bounds[2]):
             for col in range(self.bounds[1], self.bounds[3]):
                 if self.occupancy[row, col] == 0:
-                    grid_vertices += 1
+                    if graph_progress is not None:
+                        grid_vertices += 1
                     G.add_node((row, col), pos=(col + 0.5, row + 0.5), type="grid")
                     for dr, dc in ((0, 1), (1, -1), (1, 0), (1, 1)): # right, bottom-left, bottom, bottom-right
                         neighbor_row = row + dr
@@ -204,11 +228,18 @@ class IncrementalKingsGraph:
                             else: # orthogonal neighbor
                                 G.add_edge((row, col), (neighbor_row, neighbor_col))
 
-                processed_cells += 1
-                if processed_cells % 1000 == 0 or processed_cells == total_cells:
-                    graph_progress.update(processed_cells, total_cells, f"vertices: {grid_vertices} | edges: {G.number_of_edges()}")
+                if graph_progress is not None:
+                    processed_cells += 1
+                    if processed_cells % 1000 == 0 or processed_cells == total_cells:
+                        graph_progress.update(processed_cells, total_cells, f"vertices: {grid_vertices} | edges: {G.number_of_edges()}")
 
-        graph_progress.finish(True, f"vertices: {grid_vertices} | edges: {G.number_of_edges()}")
+        if graph_progress is not None:
+            graph_progress.finish(
+                True,
+                f"vertices: {grid_vertices} | edges: {G.number_of_edges()}",
+                completed=total_cells,
+                total=total_cells,
+            )
 
         # add special points as nodes (with labels) and connect them to the closest grid vertex
         self._connect_special_points_to_graph(G, self.interaction_points, self.access_points)
@@ -222,8 +253,9 @@ class IncrementalKingsGraph:
         if self.G is None:
             self.build_graph()
 
-        save_progress = GenerationProgress("Incremental King's grid", "Saving graph to disk", self.iteration)
-        save_progress.start()
+        save_progress = self._create_progress("Saving graph to disk")
+        if save_progress is not None:
+            save_progress.start()
         try:
             saved_artifacts = self.recorder.save(
                 data_type="incremental_kings_grid",
@@ -245,12 +277,15 @@ class IncrementalKingsGraph:
                 plot=True,
             )
         except Exception as error:
-            save_progress.finish(False, f"could not save graph: {error}")
+            if save_progress is not None:
+                save_progress.finish(False, f"could not save graph: {error}")
             raise
 
         if saved_artifacts is None:
-            save_progress.finish(True, "skipped; recorder returned no artifact")
+            if save_progress is not None:
+                save_progress.finish(True, "skipped; recorder returned no artifact")
             return None
 
-        save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
+        if save_progress is not None:
+            save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
         return saved_artifacts
