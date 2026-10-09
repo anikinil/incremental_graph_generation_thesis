@@ -82,7 +82,7 @@ class PRM(ProgressReportingAlgorithm):
     progress_name = "PRM"
 
     def __init__(self, rng, occupancy, access_points, interaction_points, height, width,
-                 eps, max_dist, max_neighbors, agv_radius,
+                 eps, max_dist, max_neighbors, robot_radius,
                  num_buffer_segments, recorder=None, print_progress=True):
 
         self.rng = rng # random number generator
@@ -96,10 +96,10 @@ class PRM(ProgressReportingAlgorithm):
         self.special_points = np.asarray([*interaction_points, *access_points], dtype=float) # interaction points ++ access points
         self.max_dist = max_dist # maximum distance to consider for neighbors
         self.max_neighbors = max_neighbors # maximum number of neighbors to consider for connection
-        self.agv_radius = agv_radius # radius of the AGV for collision costraints
-        if self.agv_radius >= 0.5:
-            raise ValueError(f"AGV radius {self.agv_radius} is too large for the occupancy grid (max 0.5).")
-        self.buffer = agv_radius # radius of the AGV for collision costraints
+        self.robot_radius = robot_radius # radius of the robot for collision costraints
+        if self.robot_radius >= 0.5:
+            raise ValueError(f"Robot's radius {self.robot_radius} is too large for the occupancy grid (max 0.5).")
+        self.buffer = robot_radius # radius of the robot for collision costraints
         self.num_buffer_segments = num_buffer_segments # segments per rounded-corner quadrant
         self.recorder = recorder
         self.print_progress = bool(print_progress)
@@ -508,7 +508,7 @@ class PRM(ProgressReportingAlgorithm):
                 data_type="prm_graph",
                 data={
                     "occupancy": self.occupancy,
-                    "agv_radius": self.agv_radius,
+                    "robot_radius": self.robot_radius,
                     "num_buffer_segments": self.num_buffer_segments,
                     "access_points": self.access_points,
                     "interaction_points": self.interaction_points,

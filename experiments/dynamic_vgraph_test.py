@@ -8,7 +8,7 @@ from scenario.scenario_generation import Scenario
 
 def _apply_scenario_updates(vgraph, scenario):
 
-    access_points, interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.agv_radius)
+    access_points, interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.robot_radius)
 
     vgraph.apply_layout_updates(scenario.consume_updates(), new_access_points=access_points, new_interaction_points=interaction_points)
 
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     height = 6
     width = 9
     
-    agv_radius = 0.3
+    robot_radius = 0.3
     
     occupancy_rate = 0.4
 
@@ -50,7 +50,7 @@ if __name__ == "__main__":
         interaction_points=interaction_points,
         interaction_points_radius=3,
         simple_obstacle_rate=0.1,
-        agv_radius=agv_radius,
+        robot_radius=robot_radius,
         recorder=recorder,
         print_progress=True,
     )
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     access_points, continuous_interaction_points = continuous_special_points(
         scenario.access_points,
         scenario.interaction_points,
-        scenario.agv_radius,
+        scenario.robot_radius,
     )
 
     recorder.set_algorithm("dynamic_vgraph", use_iterations=True, plot=True)
@@ -69,7 +69,7 @@ if __name__ == "__main__":
         height=height,
         width=width,
         occupancy=scenario.occupancy,
-        agv_radius=agv_radius,
+        robot_radius=robot_radius,
         access_points=access_points,
         interaction_points=continuous_interaction_points,
         recorder=recorder,

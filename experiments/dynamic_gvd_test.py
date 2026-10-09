@@ -23,7 +23,7 @@ if __name__ == "__main__":
     height = 25
     width = 25
     
-    agv_radius = 0.49
+    robot_radius = 0.49
 
     occupancy_rate = 0.4
 
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         interaction_points=interaction_points,
         interaction_points_radius=3,
         simple_obstacle_rate=0.1,
-        agv_radius=agv_radius,
+        robot_radius=robot_radius,
         recorder=recorder,
         print_progress=True,
     )
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         scale_factor=3,
         access_points=scenario.access_points,
         interaction_points=scenario.interaction_points,
-        agv_radius=agv_radius,
+        robot_radius=robot_radius,
         recorder=recorder,
         print_progress=True,
     )

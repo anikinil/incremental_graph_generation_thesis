@@ -19,7 +19,7 @@ if __name__ == "__main__":
     height = 15
     width = 20
     
-    agv_radius = 0.3
+    robot_radius = 0.3
     
     occupancy_rate = 0.3
 
@@ -44,7 +44,7 @@ if __name__ == "__main__":
         interaction_points=interaction_points,
         interaction_points_radius=3,
         simple_obstacle_rate=0.1,
-        agv_radius=agv_radius,
+        robot_radius=robot_radius,
         recorder=recorder,
         print_progress=True,
         
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     scenario_success = scenario.generate()
     print()
 
-    continuous_access_points, continuous_interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.agv_radius)
+    continuous_access_points, continuous_interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.robot_radius)
     bounds = (0, 0, width, height)
 
 
@@ -66,7 +66,7 @@ if __name__ == "__main__":
         width=width,
         height=height,
         occupancy=scenario.occupancy,
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         access_points=continuous_access_points,
         interaction_points=continuous_interaction_points,
         num_buffer_segments=num_buffer_segments,

@@ -24,7 +24,7 @@ from artifacts.presentation import (
 
 # color palette
 
-AGV_RADIUS_BUFFER_COLOR = (0.8, 0.8, 0.8, 1)      # light grey
+ROBOT_RADIUS_BUFFER_COLOR = (0.8, 0.8, 0.8, 1)      # light grey
 
 SIMPLE_OBSTACLE_COLOR = (0.3, 0.3, 0.3, 1)        # dark grey
 UNIT_LOAD_COLOR = (0.5, 0.5, 0.5, 1)              # grey
@@ -198,7 +198,7 @@ _BUFFER_ZONE_LEGEND_HANDLER = _ZoneLegendHandler(height_scale=1)
 def _buffer_zone_legend_handle():
     """Return the shared, thinner legend proxy for robot-radius buffers."""
     return _BufferZoneLegendPatch(
-        facecolor=AGV_RADIUS_BUFFER_COLOR,
+        facecolor=ROBOT_RADIUS_BUFFER_COLOR,
         edgecolor="none",
         label="Robot radius buffer",
     )
@@ -366,12 +366,12 @@ def _mask_from_cells(cells, height, width):
 
 
 
-def _build_buffer_patch(occupancy, agv_radius, num_buffer_segments, *, color=AGV_RADIUS_BUFFER_COLOR):
+def _build_buffer_patch(occupancy, robot_radius, num_buffer_segments, *, color=ROBOT_RADIUS_BUFFER_COLOR):
     """
     Builds vector patches for polygonal obstacle buffer used by PRM and VGraph.
     """
     # get approximation of buffered obstacle space as a Shapely geometry
-    buffer_space = buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments)
+    buffer_space = buffered_obstacle_space(occupancy, robot_radius, num_buffer_segments)
 
     # convert to matplotlib PatchCollection for plotting
     polygons = ([buffer_space] if buffer_space.geom_type == "Polygon" else list(buffer_space.geoms))
@@ -387,17 +387,17 @@ def _build_buffer_patch(occupancy, agv_radius, num_buffer_segments, *, color=AGV
     return PatchCollection(patches, facecolor=color, edgecolor="none", zorder=0)
 
 
-def _build_smooth_buffer_patch(occupancy, agv_radius):
+def _build_smooth_buffer_patch(occupancy, robot_radius):
     """Build a smooth visual buffer for GVD plots (as they don't rely on polygonal approximation)."""
     rows, columns = np.where(occupancy > 0)
     patches = [
-        FancyBboxPatch((column - agv_radius, row - agv_radius), 
-                       1 + 2 * agv_radius,
-                       1 + 2 * agv_radius,
-                       boxstyle=f"round,pad=0,rounding_size={agv_radius}")
+        FancyBboxPatch((column - robot_radius, row - robot_radius), 
+                       1 + 2 * robot_radius,
+                       1 + 2 * robot_radius,
+                       boxstyle=f"round,pad=0,rounding_size={robot_radius}")
         for row, column in zip(rows, columns)
     ]
-    return PatchCollection(patches, facecolor=AGV_RADIUS_BUFFER_COLOR, edgecolor="none", zorder=0)
+    return PatchCollection(patches, facecolor=ROBOT_RADIUS_BUFFER_COLOR, edgecolor="none", zorder=0)
 
 
 def _occupancy_cell_image(occupancy):
@@ -457,14 +457,14 @@ def _setup_continuous_axes(ax, bounds):
     ax.margins(0)
 
 
-def _draw_continuous_environment(ax, occupancy, bounds, *, agv_radius=None,
+def _draw_continuous_environment(ax, occupancy, bounds, *, robot_radius=None,
                                  num_buffer_segments=None):
-    """Draw the occupancy grid plus an optional AGV-radius obstacle buffer."""
+    """Draw the occupancy grid plus an optional robot-radius obstacle buffer."""
 
     min_x, min_y, max_x, max_y = bounds
 
     if num_buffer_segments is not None:
-        buffer = _build_buffer_patch(occupancy, agv_radius, num_buffer_segments)
+        buffer = _build_buffer_patch(occupancy, robot_radius, num_buffer_segments)
         if buffer is not None:
             ax.add_collection(buffer)
 
@@ -688,7 +688,7 @@ class _GVDGridPlotter(BasePlotter):
         """Return the GVD context for plotting."""
         
         occupancy = np.asarray(data["occupancy"])
-        agv_radius = data.get("agv_radius", 0)
+        robot_radius = data.get("robot_radius", 0)
         scale_factor = data.get("scale_factor", 1)
         access_points = data.get("access_points", [])
         interaction_points = data.get("interaction_points", [])
@@ -700,7 +700,7 @@ class _GVDGridPlotter(BasePlotter):
 
         return {
             "occupancy": occupancy,
-            "agv_radius": agv_radius,
+            "robot_radius": robot_radius,
             "scale_factor": scale_factor,
             "height": height,
             "width": width,
@@ -714,12 +714,12 @@ class _GVDGridPlotter(BasePlotter):
     def setup_figure(self):
         return plt.subplots(figsize=(16, 10))
 
-    def _draw_obstacles(self, ax, occupancy, agv_radius):
+    def _draw_obstacles(self, ax, occupancy, robot_radius):
         """Draw occupancy cells and the buffer zone."""
         height, width = occupancy.shape
 
         # obstacle buffer
-        buffer_patch = _build_smooth_buffer_patch(occupancy, agv_radius)
+        buffer_patch = _build_smooth_buffer_patch(occupancy, robot_radius)
         ax.add_collection(buffer_patch)
 
         # occupancy cells
@@ -744,7 +744,7 @@ class DistanceMapPlotter(_GVDGridPlotter):
         height = ctx["height"]
         width = ctx["width"]
 
-        self._draw_obstacles(ax, occupancy, ctx["agv_radius"])
+        self._draw_obstacles(ax, occupancy, ctx["robot_radius"])
 
         D = data["D"] if isinstance(data, dict) else data
         D = np.asarray(D)
@@ -814,7 +814,7 @@ class VoronoiSkeletonPlotter(_GVDGridPlotter):
     def draw(self, ax, data):
         ctx = self._context(data)
 
-        self._draw_obstacles(ax, ctx["occupancy"], ctx["agv_radius"])
+        self._draw_obstacles(ax, ctx["occupancy"], ctx["robot_radius"])
 
         height = ctx["height"]
         width = ctx["width"]
@@ -849,7 +849,7 @@ class VoronoiSkeletonWithBridgeCells(_GVDGridPlotter):
         height = ctx["height"]
         width = ctx["width"]
 
-        self._draw_obstacles(ax, occupancy, ctx["agv_radius"])
+        self._draw_obstacles(ax, occupancy, ctx["robot_radius"])
 
         # voronoi skeleton
         voro = np.asarray(data["voro"])
@@ -881,7 +881,7 @@ class GraphPlotter(_GVDGridPlotter):
         occupancy = ctx["occupancy"]
         height, width = occupancy.shape
 
-        self._draw_obstacles(ax, occupancy, ctx["agv_radius"])
+        self._draw_obstacles(ax, occupancy, ctx["robot_radius"])
 
         vis_map = np.zeros((height, width, 4), dtype=np.float32)
 
@@ -946,7 +946,7 @@ class _ContinuousGraphPlotter(BasePlotter):
         return plt.subplots(figsize=(16, 12))
 
     def _context(self, data):
-        required = ("occupancy", "agv_radius", "access_points", "interaction_points", "height", "width")
+        required = ("occupancy", "robot_radius", "access_points", "interaction_points", "height", "width")
         if self.requires_buffer_segments:
             required += ("num_buffer_segments",)
         missing = [field for field in required if field not in data]
@@ -962,7 +962,7 @@ class _ContinuousGraphPlotter(BasePlotter):
             ax,
             occupancy,
             bounds=(min_x, min_y, max_x, max_y),
-            agv_radius=context["agv_radius"],
+            robot_radius=context["robot_radius"],
             num_buffer_segments=context["num_buffer_segments"],
         )
 
@@ -1152,7 +1152,7 @@ class IncrementalKingsGridPlotter(_GVDGridPlotter):
         height = ctx["height"]
         width = ctx["width"]
 
-        self._draw_obstacles(ax, occupancy, ctx["agv_radius"])
+        self._draw_obstacles(ax, occupancy, ctx["robot_radius"])
 
         vertices = data["vertices"]
         edges = data["edges"]

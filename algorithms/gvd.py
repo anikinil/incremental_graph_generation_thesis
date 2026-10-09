@@ -58,7 +58,7 @@ class GVD(ProgressReportingAlgorithm):
     progress_name = "GVD"
     
     def __init__(self, rng, occupancy_grid, scale_factor, access_points, interaction_points,
-                 agv_radius, recorder, print_progress=True):
+                 robot_radius, recorder, print_progress=True):
         self.rng = rng
 
         self.occupancy_grid = occupancy_grid.copy()
@@ -68,7 +68,7 @@ class GVD(ProgressReportingAlgorithm):
         self.access_points = access_points
         self.interaction_points = interaction_points
         
-        self.agv_radius = agv_radius
+        self.robot_radius = robot_radius
         
         self.scale_factor = 1
 
@@ -122,7 +122,7 @@ class GVD(ProgressReportingAlgorithm):
             "occupancy": self.occupancy_grid,
             "access_points": self.access_points,
             "interaction_points": self.interaction_points,
-            "agv_radius": self.agv_radius,
+            "robot_radius": self.robot_radius,
             "scale_factor": self.scale_factor,
             "iteration": self.iteration,
             "affected_distance_cells": self.affected_distance_cells,
@@ -161,12 +161,12 @@ class GVD(ProgressReportingAlgorithm):
         # scale and translate special points to match the new resolution and offset access points to account for obstacle buffer
         self.access_points = [
             (y * self.scale_factor, x * self.scale_factor, direction)
-            for y, x, direction in offset_access_points(self.access_points, self.agv_radius)
+            for y, x, direction in offset_access_points(self.access_points, self.robot_radius)
         ]
         self.interaction_points = [(y * self.scale_factor, x * self.scale_factor) for y, x in self.interaction_points]
         
-        # scale agv_radius
-        self.agv_radius *= self.scale_factor
+        # scale robot_radius
+        self.robot_radius *= self.scale_factor
         
     
     def add_outer_walls(self):
@@ -272,8 +272,8 @@ class GVD(ProgressReportingAlgorithm):
                     
                     self.affected_distance_cells.add(n) # track affected cells for visualization
                 else:
-                    # threshold = max(self.agv_radius, 1)
-                    threshold = self.agv_radius
+                    # threshold = max(self.robot_radius, 1)
+                    threshold = self.robot_radius
                     self.checkVoro(s, n, threshold=threshold)  # check Voronoi condition between current cell and neighbors
     
     def setObstacle(self, s, value):
@@ -454,9 +454,9 @@ class GVD(ProgressReportingAlgorithm):
                 self.setObstacle(s_to, value)
                 
         # the same transformations of special points like during initialization
-        source_agv_radius = self.agv_radius / self.scale_factor
+        source_robot_radius = self.robot_radius / self.scale_factor
         self.access_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1, direction)
-            for y, x, direction in offset_access_points(new_access_points, source_agv_radius)
+            for y, x, direction in offset_access_points(new_access_points, source_robot_radius)
         ]
         self.interaction_points = [(y * self.scale_factor + 1, x * self.scale_factor + 1) for y, x in new_interaction_points]
 

@@ -43,7 +43,7 @@ DYNAMIC_KINGS_GRAPH_SEED = 46
 FIGURE_DIRECTORY = Path("artifacts/visualization/thesis_figures")
 RUN_DIRECTORY = FIGURE_DIRECTORY / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-PRINT_PROGRESS = False
+PRINT_PROGRESS = True
 
 def _lower_left_interaction_points(height, width):
     """Return three interaction points on the lower-left edge."""
@@ -202,8 +202,8 @@ def _large_layout_parameters(rng, *, with_aisles):
     Wall clearance is intentionally retained in both variants.  The only
     distinction between the two figures is whether the ordered aisles exist.
     """
-    height = 40
-    width = 60
+    height = 20
+    width = 30
 
     return {
         "rng": rng,
@@ -226,7 +226,7 @@ def _large_layout_parameters(rng, *, with_aisles):
         },
         "interaction_points_radius": 3,
         "simple_obstacle_rate": 1,
-        "agv_radius": 0.1,
+        "robot_radius": 0.1,
     }
 
 
@@ -260,14 +260,14 @@ def _roadmap_scenario_parameters(rng, height, width, occupancy_rate, interaction
         "interaction_points": interaction_points,
         "interaction_points_radius": 3,
         "simple_obstacle_rate": 0.1,
-        "agv_radius": 0.3,
+        "robot_radius": 0.3,
     }
 
 
 def generate_vgraph_figure():
     """Generate the requested 15 x 20 static visibility-graph figure."""
-    height = 40
-    width = 60
+    height = 20
+    width = 30
     rng = np.random.default_rng(VGRAPH_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -284,14 +284,14 @@ def generate_vgraph_figure():
     access_points, interaction_points = continuous_special_points(
         scenario.access_points,
         scenario.interaction_points,
-        scenario.agv_radius,
+        scenario.robot_radius,
     )
     recorder.set_algorithm("vgraph", use_iterations=False, plot=True)
     graph = VGraph(
         width=width,
         height=height,
         occupancy=scenario.occupancy,
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         access_points=access_points,
         interaction_points=interaction_points,
         num_buffer_segments=0,
@@ -307,7 +307,7 @@ def _apply_dynamic_update(graph, scenario):
     access_points, interaction_points = continuous_special_points(
         scenario.access_points,
         scenario.interaction_points,
-        scenario.agv_radius,
+        scenario.robot_radius,
     )
     graph.apply_layout_updates(
         scenario.consume_updates(),
@@ -318,8 +318,8 @@ def _apply_dynamic_update(graph, scenario):
 
 def generate_dynamic_vgraph_figures():
     """Generate the initial dynamic graph and one updated iteration."""
-    height = 40
-    width = 60
+    height = 20
+    width = 30
     rng = np.random.default_rng(DYNAMIC_VGRAPH_SEED)
     recorder = _recorder(None, plot_buffer_segments=0)
     scenario = _generate_scenario(
@@ -336,14 +336,14 @@ def generate_dynamic_vgraph_figures():
     access_points, interaction_points = continuous_special_points(
         scenario.access_points,
         scenario.interaction_points,
-        scenario.agv_radius,
+        scenario.robot_radius,
     )
     recorder.set_algorithm("dynamic_vgraph", use_iterations=True, plot=True)
     graph = DynamicVGraph(
         height=height,
         width=width,
         occupancy=scenario.occupancy,
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         access_points=access_points,
         interaction_points=interaction_points,
         recorder=recorder,
@@ -407,7 +407,7 @@ def _apply_drm_updates(graph, scenario):
     access_points, interaction_points = continuous_special_points(
         scenario.access_points,
         scenario.interaction_points,
-        scenario.agv_radius,
+        scenario.robot_radius,
     )
     graph.apply_layout_updates(
         scenario.consume_updates(),
@@ -418,8 +418,8 @@ def _apply_drm_updates(graph, scenario):
 
 def generate_drm_figures():
     """Generate the initial and manually changed 10 x 15 dynamic-roadmap figures."""
-    height = 40
-    width = 60
+    height = 20
+    width = 30
     rng = np.random.default_rng(DRM_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -436,7 +436,7 @@ def generate_drm_figures():
     access_points, interaction_points = continuous_special_points(
         scenario.access_points,
         scenario.interaction_points,
-        scenario.agv_radius,
+        scenario.robot_radius,
     )
     recorder.set_algorithm("drm", use_iterations=True, plot=True)
     graph = DRM(
@@ -448,7 +448,7 @@ def generate_drm_figures():
         width=width,
         max_dist=5,
         max_neighbors=10,
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         num_buffer_segments=5,
         recorder=recorder,
         print_progress=PRINT_PROGRESS,
@@ -467,7 +467,7 @@ def _build_gvd(rng, scenario, recorder):
         scale_factor=1,
         access_points=scenario.access_points,
         interaction_points=scenario.interaction_points,
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         recorder=recorder,
         print_progress=PRINT_PROGRESS,
     )
@@ -501,8 +501,8 @@ def _gvd_roadmap_without_special_connections(roadmap):
 
 def generate_gvd_figure():
     """Generate the static GVD construction sequence for the thesis."""
-    height = 40
-    width = 60
+    height = 20
+    width = 30
     rng = np.random.default_rng(GVD_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -598,8 +598,8 @@ def _add_gvd_l_shape_above_interaction_points(scenario, *, distance=4):
 
 def generate_dynamic_gvd_figures():
     """Generate the initial and changed-layout GVD roadmap figures."""
-    height = 40
-    width = 60
+    height = 20
+    width = 30
     rng = np.random.default_rng(DYNAMIC_GVD_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -633,7 +633,7 @@ def _build_kings_graph(scenario, recorder):
         access_points=scenario.access_points,
         interaction_points=scenario.interaction_points,
         bounds=(0, 0, scenario.height, scenario.width),
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         recorder=recorder,
         print_progress=PRINT_PROGRESS,
     )
@@ -641,8 +641,8 @@ def _build_kings_graph(scenario, recorder):
 
 def generate_kings_graph_figure():
     """Generate the initial, static King's-graph figure."""
-    height = 40
-    width = 60
+    height = 20
+    width = 30
     rng = np.random.default_rng(KINGS_GRAPH_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -674,8 +674,8 @@ def _apply_kings_graph_update(graph, scenario):
 
 def generate_dynamic_kings_graph_figures():
     """Generate the initial and changed-layout King's-graph figures."""
-    height = 40
-    width = 60
+    height = 20
+    width = 30
     rng = np.random.default_rng(DYNAMIC_KINGS_GRAPH_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -703,8 +703,8 @@ def generate_dynamic_kings_graph_figures():
 
 def generate_prm_figure():
     """Generate a PRM on the same compact scenario used for the VGraph."""
-    height = 40
-    width = 60
+    height = 20
+    width = 30
     rng = np.random.default_rng(VGRAPH_SEED)
     recorder = _recorder(None)
     scenario = _generate_scenario(
@@ -721,7 +721,7 @@ def generate_prm_figure():
     access_points, interaction_points = continuous_special_points(
         scenario.access_points,
         scenario.interaction_points,
-        scenario.agv_radius,
+        scenario.robot_radius,
     )
     recorder.set_algorithm("prm", use_iterations=False, plot=True)
     graph = PRM(
@@ -734,7 +734,7 @@ def generate_prm_figure():
         eps=0.05,
         max_dist=5,
         max_neighbors=10,
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         num_buffer_segments=5,
         recorder=recorder,
         print_progress=PRINT_PROGRESS,

@@ -18,13 +18,13 @@ class VGraph(ProgressReportingAlgorithm):
     
     progress_name = "Visibility graph"
 
-    def __init__(self, width, height, occupancy, agv_radius,
+    def __init__(self, width, height, occupancy, robot_radius,
                  access_points, interaction_points, num_buffer_segments, recorder=None,
                  print_progress=True):
         self.width = width
         self.height = height
         self.occupancy = occupancy
-        self.agv_radius = agv_radius
+        self.robot_radius = robot_radius
         self.num_buffer_segments = num_buffer_segments
         self.access_points = access_points
         self.interaction_points = interaction_points
@@ -67,7 +67,7 @@ class VGraph(ProgressReportingAlgorithm):
         if vertex_progress is not None:
             vertex_progress.start()
 
-        free_space, obstacle_space = navigation_space(self.occupancy, self.agv_radius, self.num_buffer_segments)
+        free_space, obstacle_space = navigation_space(self.occupancy, self.robot_radius, self.num_buffer_segments)
 
         # check if obstacle_space is a MultiPolygon, else no .geoms attribute
         if obstacle_space.is_empty:
@@ -144,7 +144,7 @@ class VGraph(ProgressReportingAlgorithm):
                     "height": self.height,
                     "width": self.width,
                     "occupancy": self.occupancy,
-                    "agv_radius": self.agv_radius,
+                    "robot_radius": self.robot_radius,
                     "num_buffer_segments": self.num_buffer_segments,
                     "access_points": self.access_points,
                     "interaction_points": self.interaction_points,

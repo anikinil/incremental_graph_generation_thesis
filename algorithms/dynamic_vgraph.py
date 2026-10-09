@@ -16,13 +16,13 @@ class DynamicVGraph(ProgressReportingAlgorithm):
     
     progress_name = "Dynamic visibility graph"
 
-    def __init__(self, height, width, occupancy, agv_radius, access_points, interaction_points,
+    def __init__(self, height, width, occupancy, robot_radius, access_points, interaction_points,
                  recorder=None, print_progress=True):
         
         self.height = height
         self.width = width
         self.occupancy = occupancy.copy()
-        self.agv_radius = agv_radius
+        self.robot_radius = robot_radius
         self.num_buffer_segments = 0 # always 0, since it's the only way to avoid collisions (temporary)
         self.access_points = access_points
         self.interaction_points = interaction_points
@@ -87,7 +87,7 @@ class DynamicVGraph(ProgressReportingAlgorithm):
     def _determine_edge_cells(self, vertex1, vertex2):
         """Returns grid cells crossed by the buffered edge between two vertices."""
 
-        return buffered_edge_cells(vertex1, vertex2, self.agv_radius, self.height, self.width)
+        return buffered_edge_cells(vertex1, vertex2, self.robot_radius, self.height, self.width)
 
 
     def _deactivate_edges_in_obstacle_cells(self):
@@ -109,7 +109,7 @@ class DynamicVGraph(ProgressReportingAlgorithm):
             vertex_progress.start()
 
         # get all convex vertices of the obstacle polygons
-        _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
+        _, obstacle_space = navigation_space(self.occupancy, self.robot_radius, num_buffer_segments=self.num_buffer_segments)
         vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
 
         if vertex_progress is not None:
@@ -210,7 +210,7 @@ class DynamicVGraph(ProgressReportingAlgorithm):
 
         # TODO make incremental, only look at relebvant parts instead of recomputing whole obstacle space
         # get all vertices of the updated obstacle space and special points
-        _, obstacle_space = navigation_space(self.occupancy, self.agv_radius, num_buffer_segments=self.num_buffer_segments)
+        _, obstacle_space = navigation_space(self.occupancy, self.robot_radius, num_buffer_segments=self.num_buffer_segments)
         new_vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
 
         # remove vertices that are no longer part of the obstacle space or special points
@@ -301,7 +301,7 @@ class DynamicVGraph(ProgressReportingAlgorithm):
                 data_type="dynamic_vgraph",
                 data={
                     "occupancy": self.occupancy.copy(),
-                    "agv_radius": self.agv_radius,
+                    "robot_radius": self.robot_radius,
                     "access_points": sorted(self.access_points),
                     "interaction_points": sorted(self.interaction_points),
                     "height": self.height,

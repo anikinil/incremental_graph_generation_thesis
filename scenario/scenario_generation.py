@@ -11,7 +11,7 @@ class Scenario(ProgressReportingAlgorithm):
 
     def __init__(self, rng, height, width, occupancy_rate, sigma_coarse, sigma_fine,
                  noisy_aisles_num, noisy_aisle_sigma, interaction_points,
-                 interaction_points_radius, simple_obstacle_rate, agv_radius,
+                 interaction_points_radius, simple_obstacle_rate, robot_radius,
                  ordered_aisle_widths=(0, 0), ordered_aisle_spacing=(0, 0),
                  ordered_aisle_offset=(0, 0), wall_clearance=(0, 0, 0, 0),
                  recorder=None, print_progress=True):
@@ -33,7 +33,7 @@ class Scenario(ProgressReportingAlgorithm):
         self.interaction_points_radius = interaction_points_radius
         self.simple_obstacle_rate = simple_obstacle_rate # how many of the obstacles are simple (non-unit-load) obstacles
         
-        self.agv_radius = agv_radius
+        self.robot_radius = robot_radius
 
         self.ordered_aisle_widths = ordered_aisle_widths # (y, x): width of the ordered aisles in rows and columns (if both zero, no ordered aisles)
         self.ordered_aisle_spacing = ordered_aisle_spacing # (y, x): y rows between aisles, x columns between aisles
@@ -260,7 +260,7 @@ class Scenario(ProgressReportingAlgorithm):
             "interaction_points": list(self.interaction_points),
             "height": self.height,
             "width": self.width,
-            "agv_radius": self.agv_radius,
+            "robot_radius": self.robot_radius,
         # }, plot=True, 
         }, plot=False, 
         iteration=self.iteration)

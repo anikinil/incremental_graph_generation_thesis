@@ -10,7 +10,7 @@ from scenario.scenario_generation import Scenario
 
 def _apply_scenario_updates(drm, scenario, min_num_vertices=None):
     
-    access_points, interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.agv_radius)
+    access_points, interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.robot_radius)
     
     drm.apply_layout_updates(scenario.consume_updates(), new_access_points=access_points, new_interaction_points=interaction_points, min_num_vertices=min_num_vertices)
     drm.build_graph()
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     height = 30
     width = 30
     
-    agv_radius = 0.1
+    robot_radius = 0.1
     
     occupancy_rate = 0.4
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
         interaction_points=interaction_points,
         interaction_points_radius=3,
         simple_obstacle_rate=0.1,
-        agv_radius=agv_radius,
+        robot_radius=robot_radius,
         recorder=recorder,
         print_progress=True,
     )
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     access_points, continuous_interaction_points = continuous_special_points(
         scenario.access_points,
         scenario.interaction_points,
-        scenario.agv_radius,
+        scenario.robot_radius,
     )
 
     recorder.set_algorithm("drm", use_iterations=True, plot=True)
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         width=width,
         max_dist=5,
         max_neighbors=10,
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         num_buffer_segments=2,
         recorder=recorder,
         print_progress=True,

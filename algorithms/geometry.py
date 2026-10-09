@@ -17,7 +17,7 @@ def amanatides_woo_cells(start, end, height, width):
     https://gitlab.com/athilenius/fast-voxel-traversal-rs/-/blob/main/src/raycast_2d.rs?ref_type=heads
     """
     
-    # NOTE does NOT work for agv_radius = 0
+    # NOTE does NOT work for robot_radius = 0
 
     x0, y0 = start # starting point of the ray
     x1, y1 = end # ending point of the ray
@@ -105,7 +105,7 @@ def amanatides_woo_cells(start, end, height, width):
 
     return cells
 
-def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width):
+def buffered_edge_cells(vertex1, vertex2, robot_radius, height, width):
     """Returns grid cells crossed by the buffered edge between two vertices."""
 
     x1, y1 = vertex1
@@ -114,15 +114,15 @@ def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width):
     dy = y2 - y1
     length = hypot(dx, dy) # TODO: necessary?
 
-    if agv_radius == 0: # if robot is a point, only traverse the edge centerline
+    if robot_radius == 0: # if robot is a point, only traverse the edge centerline
         return amanatides_woo_cells(vertex1, vertex2, height, width)
 
     if length == 0:
         return amanatides_woo_cells(vertex1, vertex2, height, width)
 
-    # offset the vertices in the positive and negative directions of the edge normal by the AGV radius
-    offset_x = -dy / length * agv_radius
-    offset_y = dx / length * agv_radius
+    # offset the vertices in the positive and negative directions of the edge normal by the robot's radius
+    offset_x = -dy / length * robot_radius
+    offset_y = dx / length * robot_radius
 
     # get the grid cells crossed by the two offset edges using Amanatides-Woo traversal
     cells = amanatides_woo_cells((x1 + offset_x, y1 + offset_y), (x2 + offset_x, y2 + offset_y), height, width)
@@ -130,23 +130,23 @@ def buffered_edge_cells(vertex1, vertex2, agv_radius, height, width):
     return list(dict.fromkeys(cells))
 
 
-def buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments):
-    """Return the union of occupied cells, inflated by the AGV radius."""
+def buffered_obstacle_space(occupancy, robot_radius, num_buffer_segments):
+    """Return the union of occupied cells, inflated by the robot's radius."""
     
     occupied_cells = [box(c, r, c + 1, r + 1) for r, c in zip(*occupancy.nonzero())]
     
     if num_buffer_segments == 0: # 0 = 90°
-        union = unary_union(occupied_cells).buffer(agv_radius, cap_style=2, join_style=2)
+        union = unary_union(occupied_cells).buffer(robot_radius, cap_style=2, join_style=2)
     else:
-        union = unary_union(occupied_cells).buffer(agv_radius, quad_segs=num_buffer_segments, join_style="round")
+        union = unary_union(occupied_cells).buffer(robot_radius, quad_segs=num_buffer_segments, join_style="round")
         
     height, width = occupancy.shape
     world = box(0, 0, width, height)
     return union.intersection(world) # clip to world bounds
 
-def offset_access_points(access_points, agv_radius):
-    """Offset access points away from obstacles by the AGV radius plus a small margin."""
-    clearance = agv_radius + SPECIAL_POINT_CLEARANCE_MARGIN
+def offset_access_points(access_points, robot_radius):
+    """Offset access points away from obstacles by the robot's radius plus a small margin."""
+    clearance = robot_radius + SPECIAL_POINT_CLEARANCE_MARGIN
     offsets = {
         "n": (-clearance, 0.0),
         "s": (clearance, 0.0),
@@ -161,18 +161,18 @@ def offset_access_points(access_points, agv_radius):
     return offset_points
 
 
-def continuous_special_points(access_points, interaction_points, agv_radius):
-    """Convert grid special points to collision-free configurations via offsetting by the AGV radius."""
-    offset_access = offset_access_points(access_points, agv_radius)
+def continuous_special_points(access_points, interaction_points, robot_radius):
+    """Convert grid special points to collision-free configurations via offsetting by the robot's radius."""
+    offset_access = offset_access_points(access_points, robot_radius)
     # swap row and column for shapely coordinates (x, y)
     continuous_access_points = [(column, row) for row, column, _ in offset_access]
     continuous_interaction_points = [(column, row) for row, column in interaction_points]
     return continuous_access_points, continuous_interaction_points
 
-def navigation_space(occupancy, agv_radius, num_buffer_segments):
+def navigation_space(occupancy, robot_radius, num_buffer_segments):
     """
-    Return the free space and obstacle space as Shapely geometries, with obstacles buffered for AGV radius.
+    Return the free space and obstacle space as Shapely geometries, with obstacles buffered for robot's radius.
     """
     world = box(0, 0, occupancy.shape[1], occupancy.shape[0])
-    obstacle_space = buffered_obstacle_space(occupancy, agv_radius, num_buffer_segments)
+    obstacle_space = buffered_obstacle_space(occupancy, robot_radius, num_buffer_segments)
     return world.difference(obstacle_space), obstacle_space # free_space, obstacle_space

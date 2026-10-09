@@ -12,7 +12,7 @@ if __name__ == "__main__":
     height = 25
     width = 30
     
-    agv_radius = 0
+    robot_radius = 0
 
     interaction_points = {
         (height * 0.13, 0),
@@ -34,7 +34,7 @@ if __name__ == "__main__":
         interaction_points=interaction_points,
         interaction_points_radius=3,
         simple_obstacle_rate=0.1,
-        agv_radius=agv_radius,
+        robot_radius=robot_radius,
         recorder=recorder,
         print_progress=True,
         
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         access_points=scenario.access_points,
         interaction_points=scenario.interaction_points,
         bounds=(0, 0, height, width),
-        agv_radius=scenario.agv_radius,
+        robot_radius=scenario.robot_radius,
         recorder=recorder,
         print_progress=True,
     )

@@ -22,7 +22,7 @@ class DRM(ProgressReportingAlgorithm):
     progress_name = "DRM"
 
     def __init__(self, rng, occupancy, access_points, interaction_points, height, width,
-                 max_dist, max_neighbors, agv_radius, num_buffer_segments, recorder=None,
+                 max_dist, max_neighbors, robot_radius, num_buffer_segments, recorder=None,
                  print_progress=True):
 
         self.rng = rng
@@ -31,7 +31,7 @@ class DRM(ProgressReportingAlgorithm):
         self.width = width
         self.max_dist = float(max_dist)
         self.max_neighbors = int(max_neighbors)
-        self.agv_radius = float(agv_radius)
+        self.robot_radius = float(robot_radius)
         self.num_buffer_segments = int(num_buffer_segments)
         self.recorder = recorder
         self.iteration = 0
@@ -91,14 +91,14 @@ class DRM(ProgressReportingAlgorithm):
     def _is_config_collision_free(self, config):
         """Return whether the robot can occupy config without hitting an obstacle."""
         point = Point(config)
-        if self.agv_radius == 0: # if the robot is a point, check if it is in free space
+        if self.robot_radius == 0: # if the robot is a point, check if it is in free space
             return point.disjoint(self.obstacle_space)
         else: # else check if the distance from the robot's center to the nearest obstacle is at least the robot's radius
-            return point.distance(self.obstacle_space) >= self.agv_radius
+            return point.distance(self.obstacle_space) >= self.robot_radius
 
     def _is_path_collision_free(self, start, end):
         """Return whether the robot can traverse the path from start to end collision-free."""
-        crossed_cells = buffered_edge_cells(start, end, self.agv_radius, self.height, self.width)
+        crossed_cells = buffered_edge_cells(start, end, self.robot_radius, self.height, self.width)
         return all(self.occupancy[row, col] == 0 for row, col in crossed_cells)
 
     def _get_candidate_neighbors(self, config):
@@ -420,7 +420,7 @@ class DRM(ProgressReportingAlgorithm):
     def _get_vertex_footprint_cells(self, index):
         """Return the set of cells that intersect the given roadmap vertex's footprint."""
         x, y = self.vertices[index]
-        radius = self.agv_radius
+        radius = self.robot_radius
 
         # bounding box of the circular footprint
         first_row = max(0, int(np.floor(y - radius)))
@@ -440,7 +440,7 @@ class DRM(ProgressReportingAlgorithm):
     def _get_edge_footprint_cells(self, edge):
         """Return the set of cells that intersect the given roadmap edge's footprint."""
         # footprint = self._path_footprint(self.vertices[edge[0]], self.vertices[edge[1]])
-        cells = set(buffered_edge_cells(self.vertices[edge[0]], self.vertices[edge[1]], self.agv_radius, self.height, self.width))
+        cells = set(buffered_edge_cells(self.vertices[edge[0]], self.vertices[edge[1]], self.robot_radius, self.height, self.width))
         cells.difference_update(self._get_vertex_footprint_cells(edge[0]))
         cells.difference_update(self._get_vertex_footprint_cells(edge[1]))
         return cells
@@ -615,7 +615,7 @@ class DRM(ProgressReportingAlgorithm):
                 data_type="drm_graph",
                 data={
                     "occupancy": self.occupancy.copy(),
-                    "agv_radius": self.agv_radius,
+                    "robot_radius": self.robot_radius,
                     "num_buffer_segments": self.num_buffer_segments,
                     "access_points": sorted(self.access_points),
                     "interaction_points": sorted(self.interaction_points),

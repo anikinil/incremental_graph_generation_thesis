@@ -57,10 +57,10 @@ BUFFER_SPACE_OCCUPANCY = np.array(
     ],
     dtype=np.int8,
 )
-BUFFER_SPACE_AGV_RADIUS = 0.4
+BUFFER_SPACE_ROBOT_RADIUS = 0.4
 # Static VGraph uses square buffer corners when ``num_buffer_segments`` is 0.
 STATIC_VGRAPH_BUFFER_SEGMENTS = 0
-AGV_RADIUS_ARROW_COLOR = RADIUS_OFFSET_COLOR
+ROBOT_RADIUS_ARROW_COLOR = RADIUS_OFFSET_COLOR
 ORIGINAL_VERTEX_COLOR = to_rgba(OFFSET_VEC_COLOR, alpha=1)
 ORIGINAL_VERTEX_ZORDER = GRID_ZORDER + 2
 BUFFERED_VERTEX_ZORDER = GRID_ZORDER + 3
@@ -85,7 +85,7 @@ def _vertex_offset_pairs(occupancy):
     }
     buffer_space = buffered_obstacle_space(
         occupancy,
-        BUFFER_SPACE_AGV_RADIUS,
+        BUFFER_SPACE_ROBOT_RADIUS,
         STATIC_VGRAPH_BUFFER_SEGMENTS,
     )
     buffer_polygons = (
@@ -122,7 +122,7 @@ def _visibility_edges(occupancy, vertices):
     """Return the static VGraph edges between mutually visible vertices."""
     free_space, _ = navigation_space(
         occupancy,
-        BUFFER_SPACE_AGV_RADIUS,
+        BUFFER_SPACE_ROBOT_RADIUS,
         STATIC_VGRAPH_BUFFER_SEGMENTS,
     )
     return [
@@ -182,7 +182,7 @@ def _random_buffer_offsets(occupancy):
         offsets = []
         for direction in (np.array((0, -1)), np.array((-1, 0))):
             start = centre + direction / 2
-            end = start + direction * BUFFER_SPACE_AGV_RADIUS
+            end = start + direction * BUFFER_SPACE_ROBOT_RADIUS
             offsets.append((start, end))
         candidates.append(offsets)
 
@@ -246,7 +246,7 @@ def plot_buffer_space():
         ax,
         occupancy,
         bounds=(0, 0, width, height),
-        agv_radius=BUFFER_SPACE_AGV_RADIUS,
+        robot_radius=BUFFER_SPACE_ROBOT_RADIUS,
         num_buffer_segments=STATIC_VGRAPH_BUFFER_SEGMENTS,
     )
     ax.tick_params(labelsize=FONT_SIZE)
@@ -277,7 +277,7 @@ def plot_buffer_space():
             ax,
             radius_start,
             radius_end,
-            color=AGV_RADIUS_ARROW_COLOR,
+            color=ROBOT_RADIUS_ARROW_COLOR,
             zorder=GRID_ZORDER + 1,
         )
     ax.scatter(
@@ -299,7 +299,7 @@ def plot_buffer_space():
         _free_cell_legend_handle(),
         _obstacle_legend_handle(SIMPLE_OBSTACLE_COLOR, "Obstacle"),
         _buffer_zone_legend_handle(),
-        _arrow_legend_handle("Obstacle buffer offset = robot radius", AGV_RADIUS_ARROW_COLOR),
+        _arrow_legend_handle("Obstacle buffer offset = robot radius", ROBOT_RADIUS_ARROW_COLOR),
         _vertex_legend_handle(
             "Original obstacle node",
             ORIGINAL_VERTEX_COLOR,

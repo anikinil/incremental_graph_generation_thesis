@@ -16,13 +16,13 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
 
     progress_name = "Incremental King's grid"
 
-    def __init__(self, bounds, agv_radius, occupancy, access_points, interaction_points,
+    def __init__(self, bounds, robot_radius, occupancy, access_points, interaction_points,
                  recorder=None, print_progress=True):
         self.bounds = bounds
-        self.agv_radius = agv_radius
+        self.robot_radius = robot_radius
         self.occupancy = occupancy.copy() # make a copy to avoid mutating the original occupancy grid
 
-        self.access_points = list(offset_access_points(access_points, agv_radius))
+        self.access_points = list(offset_access_points(access_points, robot_radius))
         self.interaction_points = list(interaction_points)
 
         self.iteration = 0
@@ -52,7 +52,7 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
                 self.occupancy[cell_to] = value
                 changed_cells.update((cell_from, cell_to))
 
-        new_access_points = offset_access_points(new_access_points, self.agv_radius)
+        new_access_points = offset_access_points(new_access_points, self.robot_radius)
 
         self._refresh_local_grid_topology(changed_cells)
         self._update_special_points(new_access_points, list(new_interaction_points))
@@ -166,10 +166,10 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
             G.add_node((row, col), pos=(col, row))
             
             # if the special point is an access point, connect it to the grid vertex that is directed towards the access point's direction
-            closest_grid_vertex = (int(row), int(col)) # for east and south always the case (for north and west, need to check if the special point is on the grid line (agv_radius == 0))
-            if direction == "n" and row == int(row): # for agv_radius == 0: needs to move one cell north
+            closest_grid_vertex = (int(row), int(col)) # for east and south always the case (for north and west, need to check if the special point is on the grid line (robot_radius == 0))
+            if direction == "n" and row == int(row): # for robot_radius == 0: needs to move one cell north
                 closest_grid_vertex = (closest_grid_vertex[0] - 1, closest_grid_vertex[1])
-            elif direction == "w" and col == int(col): # for agv_radius == 0: needs to move one cell west
+            elif direction == "w" and col == int(col): # for robot_radius == 0: needs to move one cell west
                 closest_grid_vertex = (closest_grid_vertex[0], closest_grid_vertex[1] - 1)
 
             if G.has_node(closest_grid_vertex):
@@ -261,7 +261,7 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
                 data_type="incremental_kings_grid",
                 data={
                     "occupancy": self.occupancy,
-                    "agv_radius": self.agv_radius,
+                    "robot_radius": self.robot_radius,
                     "access_points": self.access_points,
                     "interaction_points": self.interaction_points,
                     "bounds": self.bounds,
