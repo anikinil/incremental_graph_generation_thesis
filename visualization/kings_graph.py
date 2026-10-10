@@ -21,11 +21,11 @@ SINGLE_FIGURE_SIZE = (9, 5.5)
 
 # Shared thesis-visualization palette.
 SIMPLE_OBSTACLE_COLOR = (0.3, 0.3, 0.3, 1)
-GRAPH_VERTEX_COLOR = (0.1, 0.4, 0.7, 1)
+GRAPH_NODE_COLOR = (0.1, 0.4, 0.7, 1)
 GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 1)
 GRID_COLOR = (0, 0, 0, 1)
 GRID_ZORDER = 4
-GRAPH_VERTEX_ZORDER = GRID_ZORDER + 1
+GRAPH_NODE_ZORDER = GRID_ZORDER + 1
 GRAPH_NODE_SIZE_SCALE = 2
 SHORTEST_PATH_COLOR = (0, 0, 0, 1)
 TERMINAL_COLOR = (0, 0, 0, 1)
@@ -51,16 +51,16 @@ OCCUPANCY = np.array(
 
 
 def _build_kings_graph(occupancy):
-    """Return free-cell vertices and valid 8-connected edges without corner cutting."""
+    """Return free-cell nodes and valid 8-connected edges without corner cutting."""
     height, width = occupancy.shape
-    vertices = [
+    nodes = [
         (row, column)
         for row in range(height)
         for column in range(width)
         if occupancy[row, column] == 0
     ]
     edges = []
-    for row, column in vertices:
+    for row, column in nodes:
         for row_offset, column_offset in ((0, 1), (1, -1), (1, 0), (1, 1)):
             neighbour_row = row + row_offset
             neighbour_column = column + column_offset
@@ -72,20 +72,20 @@ def _build_kings_graph(occupancy):
                 if occupancy[row, neighbour_column] or occupancy[neighbour_row, column]:
                     continue
             edges.append(((row, column), (neighbour_row, neighbour_column)))
-    return vertices, edges
+    return nodes, edges
 
 
 def _draw_terminals(axis, positions):
-    """Draw terminals, their closest grid vertices, and return those vertices."""
-    terminal_vertices = {}
+    """Draw terminals, their closest grid nodes, and return those nodes."""
+    terminal_nodes = {}
     for configuration, label in ((START_CONFIGURATION, "S"), (GOAL_CONFIGURATION, "G")):
         closest_index = np.argmin(np.sum((positions - configuration) ** 2, axis=1))
-        closest_vertex = positions[closest_index]
-        terminal_vertices[label] = tuple(closest_vertex)
+        closest_node = positions[closest_index]
+        terminal_nodes[label] = tuple(closest_node)
         axis.plot(
-            (configuration[0], closest_vertex[0]),
-            (configuration[1], closest_vertex[1]),
-            color=GRAPH_VERTEX_COLOR,
+            (configuration[0], closest_node[0]),
+            (configuration[1], closest_node[1]),
+            color=GRAPH_NODE_COLOR,
             linewidth=1.15,
             solid_capstyle="round",
             zorder=5,
@@ -109,11 +109,11 @@ def _draw_terminals(axis, positions):
             va="center",
             zorder=8,
         )
-    return terminal_vertices
+    return terminal_nodes
 
 
 def _shortest_grid_path(edges, start, goal):
-    """Find the Euclidean-length shortest path between two King's-grid vertices."""
+    """Find the Euclidean-length shortest path between two King's-grid nodes."""
     adjacency = {}
     for left, right in edges:
         left = (left[1] + 0.5, left[0] + 0.5)
@@ -126,16 +126,16 @@ def _shortest_grid_path(edges, start, goal):
     predecessors = {}
     queue = [(0.0, start)]
     while queue:
-        distance, vertex = heappop(queue)
-        if distance != distances[vertex]:
+        distance, node = heappop(queue)
+        if distance != distances[node]:
             continue
-        if vertex == goal:
+        if node == goal:
             break
-        for neighbour, weight in adjacency[vertex]:
+        for neighbour, weight in adjacency[node]:
             candidate_distance = distance + weight
             if candidate_distance < distances.get(neighbour, float("inf")):
                 distances[neighbour] = candidate_distance
-                predecessors[neighbour] = vertex
+                predecessors[neighbour] = node
                 heappush(queue, (candidate_distance, neighbour))
 
     if goal not in distances:
@@ -147,9 +147,9 @@ def _shortest_grid_path(edges, start, goal):
     return list(reversed(path))
 
 
-def _draw_shortest_path(axis, edges, terminal_vertices):
+def _draw_shortest_path(axis, edges, terminal_nodes):
     """Highlight the complete shortest start-to-goal route over the roadmap."""
-    grid_path = _shortest_grid_path(edges, terminal_vertices["S"], terminal_vertices["G"])
+    grid_path = _shortest_grid_path(edges, terminal_nodes["S"], terminal_nodes["G"])
     path = [START_CONFIGURATION, *grid_path, GOAL_CONFIGURATION]
     axis.add_collection(
         LineCollection(
@@ -166,7 +166,7 @@ def plot_kings_graph():
     """Draw the obstacle grid and the corresponding King's-grid graph."""
     occupancy = OCCUPANCY
     height, width = occupancy.shape
-    vertices, edges = _build_kings_graph(occupancy)
+    nodes, edges = _build_kings_graph(occupancy)
     figure, axis = plt.subplots(figsize=SINGLE_FIGURE_SIZE)
 
     for row, column in zip(*np.where(occupancy)):
@@ -193,14 +193,14 @@ def plot_kings_graph():
             zorder=2,
         )
     )
-    positions = np.array([(column + 0.5, row + 0.5) for row, column in vertices])
+    positions = np.array([(column + 0.5, row + 0.5) for row, column in nodes])
     axis.scatter(
         positions[:, 0],
         positions[:, 1],
         s=18 * GRAPH_NODE_SIZE_SCALE,
-        color=GRAPH_VERTEX_COLOR,
+        color=GRAPH_NODE_COLOR,
         edgecolors="none",
-        zorder=GRAPH_VERTEX_ZORDER,
+        zorder=GRAPH_NODE_ZORDER,
     )
 
     grid_segments = (
@@ -210,8 +210,8 @@ def plot_kings_graph():
     axis.add_collection(
         LineCollection(grid_segments, colors=[GRID_COLOR], linewidths=0.55, zorder=GRID_ZORDER)
     )
-    terminal_vertices = _draw_terminals(axis, positions)
-    _draw_shortest_path(axis, edges, terminal_vertices)
+    terminal_nodes = _draw_terminals(axis, positions)
+    _draw_shortest_path(axis, edges, terminal_nodes)
     axis.set_xlim(0, width)
     axis.set_ylim(height, 0)
     axis.set_aspect("equal")

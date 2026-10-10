@@ -103,7 +103,7 @@ def run_static_algorithm(name, params, scenario_data, seed, recorder):
     elif name == "prm":
         access_points, interaction_points = continuous_special_points(access_points, interaction_points, robot_radius)
         roadmap = PRM(np.random.default_rng(seed), occupancy, access_points, interaction_points, height, width, params["eps"], params["max_dist"], params["max_neighbors"], robot_radius, params.get("num_buffer_segments", 0), recorder, False)
-        roadmap.construction_step(params["min_num_vertices"], params.get("avoid_cycles", False))
+        roadmap.construction_step(params["min_num_nodes"], params.get("avoid_cycles", False))
         roadmap.record_graph()
 
     elif name == "gvd":
@@ -156,7 +156,7 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
     elif name == "drm":
         access_points, interaction_points = continuous_special_points(access_points, interaction_points, robot_radius)
         roadmap = DRM(np.random.default_rng(seed), occupancy, access_points, interaction_points, height, width, params["max_dist"], params["max_neighbors"], robot_radius, params.get("num_buffer_segments", 0), recorder, False)
-        roadmap.preprocessing_step(params["min_num_vertices"])
+        roadmap.preprocessing_step(params["min_num_nodes"])
 
     elif name == "dynamic_gvd":
         roadmap = GVD(np.random.default_rng(seed), occupancy, params.get("scale_factor", 1), access_points, interaction_points, robot_radius, recorder, False)
@@ -184,7 +184,7 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
 
         elif name == "drm":
             access_points, interaction_points = continuous_special_points(scenario_data["access_points"], scenario_data["interaction_points"], scenario_data["robot_radius"])
-            roadmap.apply_layout_updates(obstacle_updates, access_points, interaction_points, params["min_num_vertices"])
+            roadmap.apply_layout_updates(obstacle_updates, access_points, interaction_points, params["min_num_nodes"])
 
         elif name == "dynamic_gvd":
             roadmap.apply_layout_updates(obstacle_updates, scenario_data["access_points"], scenario_data["interaction_points"])

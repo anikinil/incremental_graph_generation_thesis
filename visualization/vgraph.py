@@ -33,7 +33,7 @@ from artifacts.plot import (
 from visualization.meta import (
     FONT_SIZE,
     GRAPH_NODE_SIZE_SCALE,
-    GRAPH_VERTEX_COLOR,
+    GRAPH_NODE_COLOR,
     GRID_ZORDER,
     LEGEND_POSITION,
     LEGEND_RIGHT,
@@ -69,7 +69,7 @@ OUTPUT_DIRECTORY = Path("artifacts/visualization")
 
 
 def _vertex_offset_pairs(occupancy):
-    """Pair each static-VGraph vertex with its nearest unbuffered obstacle corner."""
+    """Pair each static-VGraph node with its nearest unbuffered obstacle corner."""
     height, width = occupancy.shape
     rows, columns = np.nonzero(occupancy)
     obstacle_space = unary_union(
@@ -290,7 +290,7 @@ def plot_buffer_space():
     ax.scatter(
         *zip(*buffered_vertices),
         s=32 * GRAPH_NODE_SIZE_SCALE,
-        color=GRAPH_VERTEX_COLOR,
+        color=GRAPH_NODE_COLOR,
         edgecolors="none",
         zorder=BUFFERED_VERTEX_ZORDER,
     )
@@ -301,14 +301,14 @@ def plot_buffer_space():
         _buffer_zone_legend_handle(),
         _arrow_legend_handle("Obstacle buffer offset = robot radius", ROBOT_RADIUS_ARROW_COLOR),
         _vertex_legend_handle(
-            "Original obstacle node",
+            "Original obstacle vertex",
             ORIGINAL_VERTEX_COLOR,
             30 * GRAPH_NODE_SIZE_SCALE,
         ),
         _arrow_legend_handle("Node offset", OFFSET_VEC_COLOR),
         _vertex_legend_handle(
             "Roadmap nodes",
-            GRAPH_VERTEX_COLOR,
+            GRAPH_NODE_COLOR,
             32 * GRAPH_NODE_SIZE_SCALE,
         ),
         Line2D(

@@ -36,18 +36,18 @@ BRIDGE_COLOR = (0.2, 0.5, 0.2, 0.7)               # green
 
 OFFSET_VEC_COLOR = (0.9, 0.2, 0.2, 0.8)  # red, semi-transparent
 
-GRAPH_VERTEX_COLOR = (0.1, 0.4, 0.7, 1)           # blue
+GRAPH_NODE_COLOR = (0.1, 0.4, 0.7, 1)           # blue
 GRAPH_EDGE_COLOR = (0.1, 0.4, 0.7, 0.8)           # blue
 PRM_EDGE_COLOR = (0.08, 0.34, 0.60, 1)            # darker blue
 PRM_EDGE_ALPHA = 0.65
 
-INACTIVE_GRAPH_VERTEX_COLOR = (0.4, 0.4, 0.4, 0.4)  # semi-transparent grey
+INACTIVE_GRAPH_NODE_COLOR = (0.4, 0.4, 0.4, 0.4)  # semi-transparent grey
 INACTIVE_GRAPH_EDGE_COLOR = (0.35, 0.35, 0.35, 0.45)  # darker, more visible grey
 
-AFFECTED_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 1)   # red
+AFFECTED_GRAPH_NODE_COLOR = (0.9, 0.2, 0.2, 1)   # red
 AFFECTED_GRAPH_EDGE_COLOR = (0.9, 0.2, 0.2, 0.8)   # red
 
-AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR = (0.9, 0.2, 0.2, 0.2) # red
+AFFECTED_INACTIVE_GRAPH_NODE_COLOR = (0.9, 0.2, 0.2, 0.2) # red
 AFFECTED_INACTIVE_GRAPH_EDGE_COLOR = (0.85, 0.18, 0.18, 0.2) # darker, more visible red
 
 # outline of affected region on the GVD distance map
@@ -905,15 +905,15 @@ class GraphPlotter(_GVDGridPlotter):
         _draw_grid_special_points(ax, ctx["access_points"], ctx["interaction_points"])
 
         graph = data.get("graph", data) if isinstance(data, dict) else None
-        if graph and graph.get("vertices"):
-            vertices = graph["vertices"]
+        if graph and graph.get("nodes"):
+            nodes = graph["nodes"]
             edges = graph["edges"]
 
-            edge_segments = [[(vertices[v1][1], vertices[v1][0]), (vertices[v2][1], vertices[v2][0])] for v1, v2 in edges]
+            edge_segments = [[(nodes[v1][1], nodes[v1][0]), (nodes[v2][1], nodes[v2][0])] for v1, v2 in edges]
             ax.add_collection(LineCollection(edge_segments, colors=[GRAPH_EDGE_COLOR], linewidths=1.6, capstyle="round", joinstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Roadmap edges"))
 
-            coords = np.asarray([(x, y) for y, x in vertices.values()], dtype=float)
-            ax.scatter(coords[:, 0], coords[:, 1], color=GRAPH_VERTEX_COLOR,
+            coords = np.asarray([(x, y) for y, x in nodes.values()], dtype=float)
+            ax.scatter(coords[:, 0], coords[:, 1], color=GRAPH_NODE_COLOR,
                        edgecolors="none", s=RESULT_ROADMAP_NODE_SIZE,
                        zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
@@ -990,19 +990,19 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
         context = self._context(data)
         self._draw_environment(ax, context)
 
-        vertices = np.asarray(data["vertices"])
+        nodes = np.asarray(data["nodes"])
         edges = data["edges"]
         if len(edges):
-            ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in edges],
+            ax.add_collection(LineCollection([[nodes[left], nodes[right]] for left, right in edges],
                                              colors=[PRM_EDGE_COLOR], linewidths=1.1, alpha=PRM_EDGE_ALPHA,
                                              capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Roadmap edges"))
 
-        adjacency = [set() for _ in range(len(vertices))]
+        adjacency = [set() for _ in range(len(nodes))]
         for left, right in edges:
             adjacency[left].add(right)
             adjacency[right].add(left)
         components = []
-        unseen = set(range(len(vertices)))
+        unseen = set(range(len(nodes)))
         while unseen:
             component = {unseen.pop()}
             frontier = list(component)
@@ -1015,8 +1015,8 @@ class PRMGraphPlotter(_ContinuousGraphPlotter):
             components.append(component)
 
         for component in components:
-            coordinates = vertices[list(component)]
-            ax.scatter(coordinates[:, 0], coordinates[:, 1], s=RESULT_ROADMAP_NODE_SIZE, color=GRAPH_VERTEX_COLOR, edgecolors="none", zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
+            coordinates = nodes[list(component)]
+            ax.scatter(coordinates[:, 0], coordinates[:, 1], s=RESULT_ROADMAP_NODE_SIZE, color=GRAPH_NODE_COLOR, edgecolors="none", zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
         self._draw_special_points(ax, context)
         handles, labels = ax.get_legend_handles_labels()
@@ -1035,11 +1035,11 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
         context = self._context(data)
         self._draw_environment(ax, context)
 
-        vertices = np.asarray(data["vertices"])
-        vertex_present = np.asarray(data.get("vertex_present", np.ones(len(vertices), dtype=bool)), dtype=bool)
-        vertex_active = np.asarray(data["vertex_active"], dtype=bool)
-        if len(vertex_present) != len(vertices) or len(vertex_active) != len(vertices):
-            raise ValueError("DRM snapshot has mismatched vertex labels")
+        nodes = np.asarray(data["nodes"])
+        node_present = np.asarray(data.get("node_present", np.ones(len(nodes), dtype=bool)), dtype=bool)
+        node_active = np.asarray(data["node_active"], dtype=bool)
+        if len(node_present) != len(nodes) or len(node_active) != len(nodes):
+            raise ValueError("DRM snapshot has mismatched node labels")
 
         active_edges = []
         inactive_edges = []
@@ -1047,30 +1047,30 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
         for left, right in data["edges"]:
             arc = (left, right) if left < right else (right, left)
             all_edges.add(arc)
-            if (data["edge_active"].get(arc, False) and vertex_present[left] and vertex_present[right]
-                and vertex_active[left] and vertex_active[right]):
+            if (data["edge_active"].get(arc, False) and node_present[left] and node_present[right]
+                and node_active[left] and node_active[right]):
                 active_edges.append((left, right))
             else:
                 inactive_edges.append((left, right))
 
         if inactive_edges:
-            ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in inactive_edges],
+            ax.add_collection(LineCollection([[nodes[left], nodes[right]] for left, right in inactive_edges],
                                              colors=[INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.75, capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Inactive roadmap edges"))
         if active_edges:
-            ax.add_collection(LineCollection([[vertices[left], vertices[right]] for left, right in active_edges],
+            ax.add_collection(LineCollection([[nodes[left], nodes[right]] for left, right in active_edges],
                                              colors=[GRAPH_EDGE_COLOR], linewidths=1.1, capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Active roadmap edges"))
 
-        inactive_vertex_mask = vertex_present & ~vertex_active
-        active_vertex_mask = vertex_present & vertex_active
-        if np.any(inactive_vertex_mask):
-            inactive_vertices = vertices[inactive_vertex_mask]
-            ax.scatter(inactive_vertices[:, 0], inactive_vertices[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
-                       color=INACTIVE_GRAPH_VERTEX_COLOR, edgecolors="none",
+        inactive_node_mask = node_present & ~node_active
+        active_node_mask = node_present & node_active
+        if np.any(inactive_node_mask):
+            inactive_nodes = nodes[inactive_node_mask]
+            ax.scatter(inactive_nodes[:, 0], inactive_nodes[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
+                       color=INACTIVE_GRAPH_NODE_COLOR, edgecolors="none",
                        zorder=ROADMAP_NODE_ZORDER, label="Inactive roadmap nodes")
-        if np.any(active_vertex_mask):
-            active_vertices = vertices[active_vertex_mask]
-            ax.scatter(active_vertices[:, 0], active_vertices[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
-                       color=GRAPH_VERTEX_COLOR, edgecolors="none",
+        if np.any(active_node_mask):
+            active_nodes = nodes[active_node_mask]
+            ax.scatter(active_nodes[:, 0], active_nodes[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
+                       color=GRAPH_NODE_COLOR, edgecolors="none",
                        zorder=ROADMAP_NODE_ZORDER, label="Active roadmap nodes")
 
         affected_edges = {
@@ -1078,38 +1078,38 @@ class DRMGraphPlotter(_ContinuousGraphPlotter):
         } & all_edges
         affected_active_edges = [
             edge for edge in affected_edges
-            if (data["edge_active"].get(edge, False) and vertex_present[edge[0]] and vertex_present[edge[1]]
-                and vertex_active[edge[0]] and vertex_active[edge[1]])
+            if (data["edge_active"].get(edge, False) and node_present[edge[0]] and node_present[edge[1]]
+                and node_active[edge[0]] and node_active[edge[1]])
         ]
         affected_inactive_edges = affected_edges.difference(affected_active_edges)
         if affected_active_edges:
             ax.add_collection(LineCollection(
-                [[vertices[left], vertices[right]] for left, right in affected_active_edges],
+                [[nodes[left], nodes[right]] for left, right in affected_active_edges],
                 colors=[AFFECTED_GRAPH_EDGE_COLOR], linewidths=1.1,
                 capstyle="round", zorder=ROADMAP_EDGE_ZORDER + 1, label="Affected active roadmap edges",
             ))
         if affected_inactive_edges:
             ax.add_collection(LineCollection(
-                [[vertices[left], vertices[right]] for left, right in affected_inactive_edges],
+                [[nodes[left], nodes[right]] for left, right in affected_inactive_edges],
                 colors=[AFFECTED_INACTIVE_GRAPH_EDGE_COLOR], linewidths=0.75,
                 capstyle="round", zorder=ROADMAP_EDGE_ZORDER + 1, label="Affected inactive roadmap edges",
             ))
 
-        affected_vertices = sorted({
-            int(index) for index in data.get("affected_vertices", ())
-            if 0 <= int(index) < len(vertices) and vertex_present[int(index)]
+        affected_nodes = sorted({
+            int(index) for index in data.get("affected_nodes", ())
+            if 0 <= int(index) < len(nodes) and node_present[int(index)]
         })
-        affected_active_vertices = [index for index in affected_vertices if vertex_active[index]]
-        affected_inactive_vertices = [index for index in affected_vertices if not vertex_active[index]]
-        if affected_active_vertices:
-            affected_coordinates = vertices[affected_active_vertices]
+        affected_active_nodes = [index for index in affected_nodes if node_active[index]]
+        affected_inactive_nodes = [index for index in affected_nodes if not node_active[index]]
+        if affected_active_nodes:
+            affected_coordinates = nodes[affected_active_nodes]
             ax.scatter(affected_coordinates[:, 0], affected_coordinates[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
-                       color=AFFECTED_GRAPH_VERTEX_COLOR, edgecolors="none",
+                       color=AFFECTED_GRAPH_NODE_COLOR, edgecolors="none",
                        zorder=ROADMAP_NODE_ZORDER + 1, label="Affected active roadmap nodes")
-        if affected_inactive_vertices:
-            affected_coordinates = vertices[affected_inactive_vertices]
+        if affected_inactive_nodes:
+            affected_coordinates = nodes[affected_inactive_nodes]
             ax.scatter(affected_coordinates[:, 0], affected_coordinates[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
-                       color=AFFECTED_INACTIVE_GRAPH_VERTEX_COLOR, edgecolors="none",
+                       color=AFFECTED_INACTIVE_GRAPH_NODE_COLOR, edgecolors="none",
                        zorder=ROADMAP_NODE_ZORDER + 1, label="Affected inactive roadmap nodes")
 
         self._draw_special_points(ax, context)
@@ -1154,17 +1154,17 @@ class IncrementalKingsGridPlotter(_GVDGridPlotter):
 
         self._draw_obstacles(ax, occupancy, ctx["robot_radius"])
 
-        vertices = data["vertices"]
+        nodes = data["nodes"]
         edges = data["edges"]
         if edges:
-            ax.add_collection(LineCollection([[vertices[left]["pos"], vertices[right]["pos"]] for left, right in edges],
+            ax.add_collection(LineCollection([[nodes[left]["pos"], nodes[right]["pos"]] for left, right in edges],
                                              colors=[GRAPH_EDGE_COLOR], linewidths=0.65, alpha=0.65, capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Roadmap edges",))
 
-        grid_vertices = [vertex["pos"] for vertex in vertices.values() if vertex["type"] == "grid"]
-        if grid_vertices:
-            vertices = np.asarray(grid_vertices, dtype=float)
-            ax.scatter(vertices[:, 0], vertices[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
-                       color=GRAPH_VERTEX_COLOR, edgecolors="none",
+        grid_nodes = [node["pos"] for node in nodes.values() if node["type"] == "grid"]
+        if grid_nodes:
+            nodes = np.asarray(grid_nodes, dtype=float)
+            ax.scatter(nodes[:, 0], nodes[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
+                       color=GRAPH_NODE_COLOR, edgecolors="none",
                        zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
         _setup_grid_axes(ax, height, width, ctx["scale_factor"])
@@ -1184,18 +1184,18 @@ class VisibilityGraphPlotter(_ContinuousGraphPlotter):
         context = self._context(data)
         self._draw_environment(ax, context)
 
-        vertices = data["vertices"]
+        nodes = data["nodes"]
         edges = data["edges"]
         if edges:
             ax.add_collection(LineCollection(
-                [[vertices[left]["pos"], vertices[right]["pos"]] for left, right in edges],
+                [[nodes[left]["pos"], nodes[right]["pos"]] for left, right in edges],
                 colors=[RESULT_VISIBILITY_EDGE_COLOR], linewidths=0.45,
                 capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Roadmap edges",
             ))
 
         self._draw_special_points(ax, context)
         node_positions = np.asarray(
-            [attributes["pos"] for attributes in vertices.values()],
+            [attributes["pos"] for attributes in nodes.values()],
             dtype=float,
         )
         if node_positions.size:
@@ -1203,7 +1203,7 @@ class VisibilityGraphPlotter(_ContinuousGraphPlotter):
                 node_positions[:, 0],
                 node_positions[:, 1],
                 s=RESULT_ROADMAP_NODE_SIZE,
-                color=GRAPH_VERTEX_COLOR,
+                color=GRAPH_NODE_COLOR,
                 edgecolors="none",
                 zorder=ROADMAP_NODE_ZORDER,
                 label="Roadmap nodes",
@@ -1260,11 +1260,11 @@ class DynamicVisibilityGraphPlotter(_ContinuousGraphPlotter):
                 capstyle="round", zorder=ROADMAP_EDGE_ZORDER, label="Inactive roadmap edges",
             ))
 
-        vertices = np.asarray(data["vertices"], dtype=float)
-        if vertices.size:
-            vertices = vertices.reshape(-1, 2)
-            ax.scatter(vertices[:, 0], vertices[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
-                       color=GRAPH_VERTEX_COLOR, edgecolors="none",
+        nodes = np.asarray(data["nodes"], dtype=float)
+        if nodes.size:
+            nodes = nodes.reshape(-1, 2)
+            ax.scatter(nodes[:, 0], nodes[:, 1], s=RESULT_ROADMAP_NODE_SIZE,
+                       color=GRAPH_NODE_COLOR, edgecolors="none",
                        zorder=ROADMAP_NODE_ZORDER, label="Roadmap nodes")
 
         self._draw_special_points(ax, context)

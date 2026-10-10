@@ -84,14 +84,14 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
             # add the neighbor cells to the union of neighborhoods
             grid_cells.update(neighbor_cells)
 
-        # remove or add grid vertices where the occupancy has changed
+        # remove or add grid nodes where the occupancy has changed
         for row, col in changed_cells:
             if self.occupancy[row, col] == 0:
                 self.G.add_node((row, col), pos=(col + 0.5, row + 0.5), type="grid")
             elif self.G.has_node((row, col)) and self.G.nodes[(row, col)].get("type") == "grid":
                 self.G.remove_node((row, col))
 
-        # remove edges between grid vertices in the neighborhoods of changed cells
+        # remove edges between grid nodes in the neighborhoods of changed cells
         grid_cells = {
             node for node in grid_cells
             if self.G.has_node(node) and self.G.nodes[node].get("type") == "grid"
@@ -101,7 +101,7 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
                 if neighbor in grid_cells and self.G.nodes[neighbor].get("type") == "grid":
                     self.G.remove_edge(node, neighbor)
 
-        # add edges between grid vertices in the neighborhoods of changed cells
+        # add edges between grid nodes in the neighborhoods of changed cells
         for row, col in grid_cells:
             for dr, dc in ((0, 1), (1, -1), (1, 0), (1, 1)): # right, bottom-left, bottom, bottom-right
                 neighbor = (row + dr, col + dc)
@@ -141,7 +141,7 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
         self.interaction_points = new_interaction_points
 
     def _connect_special_points_to_graph(self, G, new_interaction_points, new_access_points):
-        """Add a vertex for each special point and connect it to the closest grid vertex in the graph."""
+        """Add a node for each special point and connect it to the closest grid node in the graph."""
         special_progress = self._create_progress("Connecting special points")
         if special_progress is not None:
             total_special_points = len(new_interaction_points) + len(new_access_points)
@@ -150,11 +150,11 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
 
         for row, col in new_interaction_points:
             G.add_node((row, col), pos=(col, row))
-            closest_grid_vertex = (int(row), int(col))
-            if G.has_node(closest_grid_vertex):
-                G.add_edge((row, col), closest_grid_vertex)
+            closest_grid_node = (int(row), int(col))
+            if G.has_node(closest_grid_node):
+                G.add_edge((row, col), closest_grid_node)
             else:
-                message = f"Special point {row, col} is not adjacent to free grid vertex {closest_grid_vertex}."
+                message = f"Special point {row, col} is not adjacent to free grid node {closest_grid_node}."
                 raise ValueError(message)
             if special_progress is not None:
                 processed_special_points += 1
@@ -169,17 +169,17 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
         for row, col, direction in new_access_points:
             G.add_node((row, col), pos=(col, row))
             
-            # if the special point is an access point, connect it to the grid vertex that is directed towards the access point's direction
-            closest_grid_vertex = (int(row), int(col)) # for east and south always the case (for north and west, need to check if the special point is on the grid line (robot_radius == 0))
+            # if the special point is an access point, connect it to the grid node that is directed towards the access point's direction
+            closest_grid_node = (int(row), int(col)) # for east and south always the case (for north and west, need to check if the special point is on the grid line (robot_radius == 0))
             if direction == "n" and row == int(row): # for robot_radius == 0: needs to move one cell north
-                closest_grid_vertex = (closest_grid_vertex[0] - 1, closest_grid_vertex[1])
+                closest_grid_node = (closest_grid_node[0] - 1, closest_grid_node[1])
             elif direction == "w" and col == int(col): # for robot_radius == 0: needs to move one cell west
-                closest_grid_vertex = (closest_grid_vertex[0], closest_grid_vertex[1] - 1)
+                closest_grid_node = (closest_grid_node[0], closest_grid_node[1] - 1)
 
-            if G.has_node(closest_grid_vertex):
-                G.add_edge((row, col), closest_grid_vertex)
+            if G.has_node(closest_grid_node):
+                G.add_edge((row, col), closest_grid_node)
             else:
-                message = f"Special point {row, col} is not adjacent to free grid vertex {closest_grid_vertex}."
+                message = f"Special point {row, col} is not adjacent to free grid node {closest_grid_node}."
                 raise ValueError(message)
             if special_progress is not None:
                 processed_special_points += 1
@@ -208,18 +208,18 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
             grid_width = self.bounds[3] - self.bounds[1]
             total_cells = grid_height * grid_width
             processed_cells = 0
-            grid_vertices = 0
+            grid_nodes = 0
             graph_progress.start(f"grid: {grid_height}x{grid_width}")
             
         start_time = self._start_generation_time()
         G = nx.Graph()
 
-        # add grid vertices and edges
+        # add grid nodes and edges
         for row in range(self.bounds[0], self.bounds[2]):
             for col in range(self.bounds[1], self.bounds[3]):
                 if self.occupancy[row, col] == 0:
                     if graph_progress is not None:
-                        grid_vertices += 1
+                        grid_nodes += 1
                     G.add_node((row, col), pos=(col + 0.5, row + 0.5), type="grid")
                     for dr, dc in ((0, 1), (1, -1), (1, 0), (1, 1)): # right, bottom-left, bottom, bottom-right
                         neighbor_row = row + dr
@@ -238,17 +238,17 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
                 if graph_progress is not None:
                     processed_cells += 1
                     if processed_cells % 1000 == 0 or processed_cells == total_cells:
-                        graph_progress.update(processed_cells, total_cells, f"vertices: {grid_vertices} | edges: {G.number_of_edges()}")
+                        graph_progress.update(processed_cells, total_cells, f"nodes: {grid_nodes} | edges: {G.number_of_edges()}")
 
         if graph_progress is not None:
             graph_progress.finish(
                 True,
-                f"vertices: {grid_vertices} | edges: {G.number_of_edges()}",
+                f"nodes: {grid_nodes} | edges: {G.number_of_edges()}",
                 completed=total_cells,
                 total=total_cells,
             )
 
-        # add special points as nodes (with labels) and connect them to the closest grid vertex
+        # add special points as nodes (with labels) and connect them to the closest grid node
         self._connect_special_points_to_graph(G, self.interaction_points, self.access_points)
 
         self.G = G
@@ -274,7 +274,7 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
                     "access_points": self.access_points,
                     "interaction_points": self.interaction_points,
                     "bounds": self.bounds,
-                    "vertices": {
+                    "nodes": {
                         node: {
                             "pos": tuple(attributes.get("pos", (node[1] + 0.5, node[0] + 0.5))),
                             "type": attributes.get("type", "grid"),

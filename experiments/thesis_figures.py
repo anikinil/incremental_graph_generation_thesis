@@ -65,8 +65,8 @@ def _dynamic_vgraph_test_interaction_points(height, width):
     }
 
 # retaining the PRM settings used by the main experiment.
-PRM_MIN_NUM_VERTICES = 1000
-DRM_MIN_NUM_VERTICES = 1000
+PRM_MIN_NUM_NODES = 1000
+DRM_MIN_NUM_NODES = 1000
 DRM_LAYOUT_CHANGE_COUNT = 6
 ILLUSTRATIVE_LAYOUT_CHANGE_COUNT = 4
 
@@ -457,7 +457,7 @@ def generate_drm_figures():
         recorder=recorder,
         print_progress=PRINT_PROGRESS,
     )
-    graph.preprocessing_step(min_num_vertices=DRM_MIN_NUM_VERTICES)
+    graph.preprocessing_step(min_num_nodes=DRM_MIN_NUM_NODES)
 
     _apply_illustrative_layout_changes(scenario, count=DRM_LAYOUT_CHANGE_COUNT)
     _apply_drm_updates(graph, scenario)
@@ -484,22 +484,22 @@ def _gvd_stage_data(gvd, **stage_data):
 
 def _gvd_roadmap_without_special_connections(roadmap):
     """Return the skeleton-derived roadmap before special-point links are added."""
-    special_vertex_ids = {
-        vertex_id
-        for point_vertices in roadmap["special_point_vertices"].values()
-        for vertex_id in point_vertices.values()
+    special_node_ids = {
+        node_id
+        for point_nodes in roadmap["special_point_nodes"].values()
+        for node_id in point_nodes.values()
     }
     return {
-        "vertices": {
-            vertex_id: position
-            for vertex_id, position in roadmap["vertices"].items()
-            if vertex_id not in special_vertex_ids
+        "nodes": {
+            node_id: position
+            for node_id, position in roadmap["nodes"].items()
+            if node_id not in special_node_ids
         },
         "edges": {
             edge for edge in roadmap["edges"]
-            if special_vertex_ids.isdisjoint(edge)
+            if special_node_ids.isdisjoint(edge)
         },
-        "special_point_vertices": {"access": {}, "interaction": {}},
+        "special_point_nodes": {"access": {}, "interaction": {}},
     }
 
 
@@ -739,7 +739,7 @@ def generate_prm_figure():
         recorder=recorder,
         print_progress=PRINT_PROGRESS,
     )
-    graph.construction_step(min_num_vertices=PRM_MIN_NUM_VERTICES, avoid_cycles=False)
+    graph.construction_step(min_num_nodes=PRM_MIN_NUM_NODES, avoid_cycles=False)
     graph.record_graph()
 
 

@@ -99,7 +99,7 @@ class GVD(ProgressReportingAlgorithm):
         self.affected_distance_cells = set() 
         self.affected_voro_cells = set()
         
-        self.graph = None # { "vertices": [vid_1: (y, x), vid_2: (y, x), ...], "edges": [(vid_1, vid_2), ...] }
+        self.graph = None # { "nodes": [vid_1: (y, x), vid_2: (y, x), ...], "edges": [(vid_1, vid_2), ...] }
         
         # retained for compatibility; special points connect directly to Voronoi cells
         self.special_point_connections = np.zeros((self.height, self.width), dtype=bool)
@@ -601,23 +601,23 @@ class GVD(ProgressReportingAlgorithm):
     
     # for testing and validation only
     def _get_connected_components(self):
-        if not self.graph or not self.graph["vertices"]:
+        if not self.graph or not self.graph["nodes"]:
             return []
-        vertices = set(self.graph["vertices"].keys())
+        nodes = set(self.graph["nodes"].keys())
         adjacency = defaultdict(set)
         for v1, v2 in self.graph["edges"]:
             adjacency[v1].add(v2)
             adjacency[v2].add(v1)
         components = []
-        while vertices:
-            start = vertices.pop()
+        while nodes:
+            start = nodes.pop()
             component = {start}
             queue = deque([start])
             while queue:
-                vertex = queue.popleft()
-                for neighbor in adjacency[vertex]:
-                    if neighbor in vertices:
-                        vertices.remove(neighbor)
+                node = queue.popleft()
+                for neighbor in adjacency[node]:
+                    if neighbor in nodes:
+                        nodes.remove(neighbor)
                         component.add(neighbor)
                         queue.append(neighbor)
             components.append(component)
@@ -700,125 +700,125 @@ class GVD(ProgressReportingAlgorithm):
         # directions = [(-1, 0), ( 0, -1), ( 0, 1), ( 1, 0)]
 
         # calculate the degree of each skeleton cell (number of neighbors that are also skeleton cells)
-        vertex_cells = [tuple(cell) for cell in np.argwhere(grid == 1)]
+        node_cells = [tuple(cell) for cell in np.argwhere(grid == 1)]
         # degree = {}
         # for point_number, (r, c) in enumerate(skeleton_points, start=1):
         #     degree[(r, c)] = len(neighbors((r, c)))
         #     if point_number % 1000 == 0 or point_number == len(skeleton_points):
         #         progress.update(point_number, len(skeleton_points), "classifying skeleton cells")
 
-        # identify vertex cells: skeleton cells that are not degree 2 or connect a special point
-        # NOTE different from original paper: we also include special point connection cells as vertices, even if they have degree 2, to ensure that special points can be connected to the graph
-        # vertex_cells = [(r, c) for (r, c), deg in degree.items() if deg != 2 or self._special_point_connection_on_cell((r, c))]
+        # identify node cells: skeleton cells that are not degree 2 or connect a special point
+        # NOTE different from original paper: we also include special point connection cells as nodes, even if they have degree 2, to ensure that special points can be connected to the graph
+        # node_cells = [(r, c) for (r, c), deg in degree.items() if deg != 2 or self._special_point_connection_on_cell((r, c))]
         #  = [(r, c) for (r, c), deg in degree.items()]
         
-        # create mappings between vertex_id and vertex cell coordinates and vice versa
-        vertex_id_to_cell_coords = {} # maps from vertex_id to cell coordinates of vertex cells
-        cell_coords_to_vertex_id = {} # maps from cell coordinates of vertex cells to vertex_id
-        for vertex_id, cell in enumerate(vertex_cells):
-            vertex_id_to_cell_coords[vertex_id] = cell
-            cell_coords_to_vertex_id[cell] = vertex_id
+        # create mappings between node_id and node cell coordinates and vice versa
+        node_id_to_cell_coords = {} # maps from node_id to cell coordinates of node cells
+        cell_coords_to_node_id = {} # maps from cell coordinates of node cells to node_id
+        for node_id, cell in enumerate(node_cells):
+            node_id_to_cell_coords[node_id] = cell
+            cell_coords_to_node_id[cell] = node_id
 
-        # maps from skeleton cell coordinates to the vertex_id of the graph vertex that reached it
+        # maps from skeleton cell coordinates to the node_id of the graph node that reached it
         cell_coords_to_origin_id = {}
 
-        # queue for flood-fill propagation from each vertex to trace skeleton paths
+        # queue for flood-fill propagation from each node to trace skeleton paths
         floodfill_queue = deque()
 
-        # initialize the flood-fill queue with the neighbors of each vertex cell
-        for id, coords in vertex_id_to_cell_coords.items():
+        # initialize the flood-fill queue with the neighbors of each node cell
+        for id, coords in node_id_to_cell_coords.items():
             
-            # cells that are already graph vertices are assigned to themselves as their origin
+            # cells that are already graph nodes are assigned to themselves as their origin
             cell_coords_to_origin_id[coords] = id
 
             for neighbor in neighbors(coords):
                 floodfill_queue.append((neighbor, id))
 
-        # graph edges: touple of vertex_ids (sorted to avoid duplicate edges)
+        # graph edges: touple of node_ids (sorted to avoid duplicate edges)
         edges = set()
 
         # while there are cells to process in the flood-fill queue
         if progress is not None:
             processed_floodfill_cells = 0
         while floodfill_queue:
-            # pop the next cell and its source vertex_id from the queue
-            curr_cell_coords, source_vertex_id = floodfill_queue.popleft()
+            # pop the next cell and its source node_id from the queue
+            curr_cell_coords, source_node_id = floodfill_queue.popleft()
             
-            # stores the vertex_id of the vertex that reached this cell for later edge creation
-            connected_vertex_id = -1
+            # stores the node_id of the node that reached this cell for later edge creation
+            connected_node_id = -1
             
-            # get the vertex_id of the vertex that reached this cell, or -1 if it hasn't been reached yet
+            # get the node_id of the node that reached this cell, or -1 if it hasn't been reached yet
             origin = cell_coords_to_origin_id.get(curr_cell_coords, -1)
 
-            # if the current cell is not a vertex cell
-            if curr_cell_coords not in cell_coords_to_vertex_id:
+            # if the current cell is not a node cell
+            if curr_cell_coords not in cell_coords_to_node_id:
 
                 # if already visited by this flood fill, move on to the next cell in queue
-                if origin == source_vertex_id:
+                if origin == source_node_id:
                     continue
 
                 # if already visited by a different flood fill
                 if origin != -1:
-                    # two different vertices have become connected
-                    connected_vertex_id = origin
+                    # two different nodes have become connected
+                    connected_node_id = origin
                 else: # cell has not been visited yet
                     # mark the cell as visited by this flood fill
-                    cell_coords_to_origin_id[curr_cell_coords] = source_vertex_id
+                    cell_coords_to_origin_id[curr_cell_coords] = source_node_id
 
                     # add the neighbors of the current cell to the flood-fill queue
                     for neighbor in neighbors(curr_cell_coords):
-                        floodfill_queue.append((neighbor, source_vertex_id))
-            else: # cell IS a vertex cell
+                        floodfill_queue.append((neighbor, source_node_id))
+            else: # cell IS a node cell
                 
-                # if the current cell is a vertex cell, get its vertex_id
-                connected_vertex_id = cell_coords_to_vertex_id[curr_cell_coords]
+                # if the current cell is a node cell, get its node_id
+                connected_node_id = cell_coords_to_node_id[curr_cell_coords]
                 
-                # if the connected vertex is the same as the source vertex, skip to the next cell in queue
-                if connected_vertex_id == source_vertex_id:
+                # if the connected node is the same as the source node, skip to the next cell in queue
+                if connected_node_id == source_node_id:
                     continue
         
-            # if a connection between two different vertices was found
-            if connected_vertex_id >= 0:
-                # add an edge between the source vertex and the connected vertex, if it does not cross a blocked corner
-                if not self._diagonal_crosses_blocked_corner(vertex_id_to_cell_coords[source_vertex_id], vertex_id_to_cell_coords[connected_vertex_id], self.occupancy_grid > 0):
-                    edges.add(tuple(sorted((source_vertex_id, connected_vertex_id))))
+            # if a connection between two different nodes was found
+            if connected_node_id >= 0:
+                # add an edge between the source node and the connected node, if it does not cross a blocked corner
+                if not self._diagonal_crosses_blocked_corner(node_id_to_cell_coords[source_node_id], node_id_to_cell_coords[connected_node_id], self.occupancy_grid > 0):
+                    edges.add(tuple(sorted((source_node_id, connected_node_id))))
             if progress is not None:
                 processed_floodfill_cells += 1
                 if processed_floodfill_cells % 1000 == 0:
                     progress.update(processed_floodfill_cells, details="tracing skeleton paths")
 
-        # replace the cell coordinates of vertex cells with their cell centers
-        vertices = {
-            vertex_id: (cell[0] + 0.5, cell[1] + 0.5)
-            for vertex_id, cell in vertex_id_to_cell_coords.items()
+        # replace the cell coordinates of node cells with their cell centers
+        nodes = {
+            node_id: (cell[0] + 0.5, cell[1] + 0.5)
+            for node_id, cell in node_id_to_cell_coords.items()
         }
 
-        # create individual graph vertices for special points, so points located on the same cell are not merged
-        special_point_vertices = {"access": {}, "interaction": {}}
-        next_vertex_id = len(vertices)
+        # create individual graph nodes for special points, so points located on the same cell are not merged
+        special_point_nodes = {"access": {}, "interaction": {}}
+        next_node_id = len(nodes)
         for point_type, special_points in (("access", self.access_points), ("interaction", self.interaction_points)):
             for point_number, special_point in enumerate(special_points):
                 if point_type == "access":
                     connection_cell = self.access_point_connection_cells[point_number]
                 else:
                     connection_cell = self.interaction_point_connection_cells[point_number]
-                hub_vertex_id = cell_coords_to_vertex_id.get(connection_cell)
+                hub_node_id = cell_coords_to_node_id.get(connection_cell)
 
                 # skip special points that could not be connected to the Voronoi skeleton
-                if hub_vertex_id is None:
+                if hub_node_id is None:
                     continue
 
-                # add the special point as a vertex and connect it directly to the Voronoi cell
-                special_vertex_id = next_vertex_id
-                next_vertex_id += 1
-                vertices[special_vertex_id] = (special_point[0], special_point[1])
-                edges.add(tuple(sorted((special_vertex_id, hub_vertex_id))))
-                special_point_vertices[point_type][point_number] = special_vertex_id
+                # add the special point as a node and connect it directly to the Voronoi cell
+                special_node_id = next_node_id
+                next_node_id += 1
+                nodes[special_node_id] = (special_point[0], special_point[1])
+                edges.add(tuple(sorted((special_node_id, hub_node_id))))
+                special_point_nodes[point_type][point_number] = special_node_id
 
         self.graph = {
-            "vertices": vertices,
+            "nodes": nodes,
             "edges": edges,
-            "special_point_vertices": special_point_vertices,
+            "special_point_nodes": special_point_nodes,
         
         }
         # add the graph building time to the total, do not capture graph saving time
@@ -830,10 +830,10 @@ class GVD(ProgressReportingAlgorithm):
         # check that the graph is connected (only for testing)
         if progress is not None:
             graph_connected = self._is_graph_connected()
-            connected_special_points = sum(len(special_vertices) for special_vertices in special_point_vertices.values())
+            connected_special_points = sum(len(special_nodes) for special_nodes in special_point_nodes.values())
             progress.finish(
                 graph_connected,
-                f"vertices: {len(vertices)} | edges: {len(edges)} | "
+                f"nodes: {len(nodes)} | edges: {len(edges)} | "
                 f"special points connected: {connected_special_points}/"
                 f"{len(self.access_points) + len(self.interaction_points)}",
             )

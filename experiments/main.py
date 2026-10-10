@@ -80,7 +80,7 @@ if __name__ == "__main__":
         recorder=recorder,
         print_progress=True,
     )
-    prm.construction_step(min_num_vertices=1000, avoid_cycles=False)
+    prm.construction_step(min_num_nodes=1000, avoid_cycles=False)
     # prm.connect_special_points()
     prm.record_graph()
     print()

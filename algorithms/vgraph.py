@@ -34,7 +34,7 @@ class VGraph(ProgressReportingAlgorithm):
 
         self.G = nx.Graph()
 
-        self.number_of_vertices = self.G.number_of_nodes
+        self.number_of_nodes = self.G.number_of_nodes
         self.number_of_edges = self.G.number_of_edges
 
     def _get_convex_vertices(self, polygon):
@@ -63,9 +63,9 @@ class VGraph(ProgressReportingAlgorithm):
 
     def create_visibility_graph(self):
 
-        vertex_progress = self._create_progress("Collecting vertices")
-        if vertex_progress is not None:
-            vertex_progress.start()
+        node_progress = self._create_progress("Collecting nodes")
+        if node_progress is not None:
+            node_progress.start()
             
         start_time = self._start_generation_time()
 
@@ -80,51 +80,51 @@ class VGraph(ProgressReportingAlgorithm):
             obstacle_polygons = [obstacle_space]
             
         # collect all convex boundary vertices of the obstacle polygons
-        vertices = []
+        nodes = []
         for poly in obstacle_polygons:
             # exclude concave vertices
             convex_vertices = self._get_convex_vertices(poly)
-            vertices.extend(convex_vertices)
+            nodes.extend(convex_vertices)
         
-        # add obstacle vertices as vertices
-        for i, v in enumerate(vertices):
+        # add obstacle nodes as nodes
+        for i, v in enumerate(nodes):
             self.G.add_node(i, pos=v, type="obstacle")
         
-        # add interaction points as vertices
-        for i, (x, y) in enumerate(self.interaction_points, start=len(vertices)):
+        # add interaction points as nodes
+        for i, (x, y) in enumerate(self.interaction_points, start=len(nodes)):
             self.G.add_node(i, pos=(x, y), type="interaction")
     
-        # add access points as vertices
-        for i, (x, y) in enumerate(self.access_points, start=len(vertices) + len(self.interaction_points)):
+        # add access points as nodes
+        for i, (x, y) in enumerate(self.access_points, start=len(nodes) + len(self.interaction_points)):
             self.G.add_node(i, pos=(x, y), type="access")
             # print(f"Added access point node {i} at position {(x, y)}")
     
-        num_vertices_total = len(vertices) + len(self.interaction_points) + len(self.access_points)
-        if vertex_progress is not None:
-            vertex_progress.finish(True,
-                f"collected {len(vertices)} obstacle vertices | total vertices: {num_vertices_total}")
+        num_nodes_total = len(nodes) + len(self.interaction_points) + len(self.access_points)
+        if node_progress is not None:
+            node_progress.finish(True,
+                f"collected {len(nodes)} obstacle nodes | total nodes: {num_nodes_total}")
         
         visibility_progress = self._create_progress("Checking visibility")
         if visibility_progress is not None:
-            total_pairs = num_vertices_total * (num_vertices_total - 1) // 2
+            total_pairs = num_nodes_total * (num_nodes_total - 1) // 2
             visibility_progress.start(f"target: {total_pairs} node pairs")
         # Keep the uninstrumented path free of progress counters and checks.
         if visibility_progress is not None:
-            for pair_number, (i, j) in enumerate(combinations(range(num_vertices_total), 2), start=1):
+            for pair_number, (i, j) in enumerate(combinations(range(num_nodes_total), 2), start=1):
                 if pair_number % 100 == 0 or pair_number == total_pairs:
-                    visibility_progress.update(pair_number, total_pairs, f"checking vertices {i} and {j}")
+                    visibility_progress.update(pair_number, total_pairs, f"checking nodes {i} and {j}")
 
                 line = LineString([self.G.nodes[i]['pos'], self.G.nodes[j]['pos']])
                 if free_space.covers(line):
                     self.G.add_edge(i, j)
         else:
-            for i, j in combinations(range(num_vertices_total), 2):
+            for i, j in combinations(range(num_nodes_total), 2):
                 line = LineString([self.G.nodes[i]['pos'], self.G.nodes[j]['pos']])
                 if free_space.covers(line):
                     self.G.add_edge(i, j)
 
         if visibility_progress is not None:
-            visibility_progress.finish(True, f"generated {self.G.number_of_nodes()} vertices and {self.G.number_of_edges()} edges", completed=total_pairs, total=total_pairs)
+            visibility_progress.finish(True, f"generated {self.G.number_of_nodes()} nodes and {self.G.number_of_edges()} edges", completed=total_pairs, total=total_pairs)
 
         self._record_generation_time(self._generation_seconds(start_time), "generation")
 
@@ -148,9 +148,9 @@ class VGraph(ProgressReportingAlgorithm):
                     "access_points": self.access_points,
                     "interaction_points": self.interaction_points,
                     "bounds": (0, 0, self.width, self.height),
-                    "vertices": {
-                        vertex: {"pos": tuple(attributes["pos"]), "type": attributes["type"]}
-                        for vertex, attributes in self.G.nodes(data=True)
+                    "nodes": {
+                        node: {"pos": tuple(attributes["pos"]), "type": attributes["type"]}
+                        for node, attributes in self.G.nodes(data=True)
                     },
                     "edges": sorted(tuple(sorted(edge)) for edge in self.G.edges),
                 },

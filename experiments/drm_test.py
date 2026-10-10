@@ -8,11 +8,11 @@ from algorithms.geometry import continuous_special_points
 from scenario.scenario_generation import Scenario
 
 
-def _apply_scenario_updates(drm, scenario, min_num_vertices=None):
+def _apply_scenario_updates(drm, scenario, min_num_nodes=None):
     
     access_points, interaction_points = continuous_special_points(scenario.access_points, scenario.interaction_points, scenario.robot_radius)
     
-    drm.apply_layout_updates(scenario.consume_updates(), new_access_points=access_points, new_interaction_points=interaction_points, min_num_vertices=min_num_vertices)
+    drm.apply_layout_updates(scenario.consume_updates(), new_access_points=access_points, new_interaction_points=interaction_points, min_num_nodes=min_num_nodes)
     drm.build_graph()
 
 if __name__ == "__main__":
@@ -80,8 +80,8 @@ if __name__ == "__main__":
     )
     
     # drm.preprocessing_step()
-    drm.preprocessing_step(min_num_vertices=1000)
-    # drm.preprocessing_step(num_vertices=int(width * height * (1-scenario.occupancy_rate) // 2))
+    drm.preprocessing_step(min_num_nodes=1000)
+    # drm.preprocessing_step(num_nodes=int(width * height * (1-scenario.occupancy_rate) // 2))
 
 
     scenario.make_updates(number_of_updates=30)

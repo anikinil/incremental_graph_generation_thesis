@@ -105,22 +105,22 @@ def amanatides_woo_cells(start, end, height, width):
 
     return cells
 
-def buffered_edge_cells(vertex1, vertex2, robot_radius, height, width):
-    """Returns grid cells crossed by the buffered edge between two vertices."""
+def buffered_edge_cells(node1, node2, robot_radius, height, width):
+    """Returns grid cells crossed by the buffered edge between two nodes."""
 
-    x1, y1 = vertex1
-    x2, y2 = vertex2
+    x1, y1 = node1
+    x2, y2 = node2
     dx = x2 - x1
     dy = y2 - y1
     length = hypot(dx, dy) # TODO: necessary?
 
     if robot_radius == 0: # if robot is a point, only traverse the edge centerline
-        return amanatides_woo_cells(vertex1, vertex2, height, width)
+        return amanatides_woo_cells(node1, node2, height, width)
 
     if length == 0:
-        return amanatides_woo_cells(vertex1, vertex2, height, width)
+        return amanatides_woo_cells(node1, node2, height, width)
 
-    # offset the vertices in the positive and negative directions of the edge normal by the robot's radius
+    # offset the nodes in the positive and negative directions of the edge normal by the robot's radius
     offset_x = -dy / length * robot_radius
     offset_y = dx / length * robot_radius
 

@@ -29,13 +29,13 @@ class DynamicVGraph(ProgressReportingAlgorithm):
         self.recorder = recorder
         self.print_progress = bool(print_progress)
         
-        self.vertices = []
+        self.nodes = []
         self.edges = []
         
-        # mappings between grid cells, graph edges, and vertices
+        # mappings between grid cells, graph edges, and nodes
         self.cell_to_edge = {}
         self.edge_to_cells = {}
-        self.vertex_to_edges = {}
+        self.node_to_edges = {}
         
         self.edge_active_status = {}  # dictionary to track the active status of edges
 
@@ -84,10 +84,10 @@ class DynamicVGraph(ProgressReportingAlgorithm):
         return vertices
     
     
-    def _determine_edge_cells(self, vertex1, vertex2):
-        """Returns grid cells crossed by the buffered edge between two vertices."""
+    def _determine_edge_cells(self, node1, node2):
+        """Returns grid cells crossed by the buffered edge between two nodes."""
 
-        return buffered_edge_cells(vertex1, vertex2, self.robot_radius, self.height, self.width)
+        return buffered_edge_cells(node1, node2, self.robot_radius, self.height, self.width)
 
 
     def _deactivate_edges_in_obstacle_cells(self):
@@ -104,37 +104,37 @@ class DynamicVGraph(ProgressReportingAlgorithm):
 
     def preprocessing(self):
 
-        vertex_progress = self._create_progress("Collecting vertices")
-        if vertex_progress is not None:
-            vertex_progress.start()
+        node_progress = self._create_progress("Collecting nodes")
+        if node_progress is not None:
+            node_progress.start()
             
         start_time = self._start_generation_time()
 
         # get all convex vertices of the obstacle polygons
         _, obstacle_space = navigation_space(self.occupancy, self.robot_radius, num_buffer_segments=self.num_buffer_segments)
-        vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
+        nodes = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
 
-        if vertex_progress is not None:
-            vertex_progress.finish(True, f"collected {len(vertices)} visibility vertices")
+        if node_progress is not None:
+            node_progress.finish(True, f"collected {len(nodes)} visibility nodes")
 
         edge_progress = self._create_progress("Mapping candidate edges")
         if edge_progress is not None:
-            total_pairs = len(vertices) * (len(vertices) - 1) // 2
-            edge_progress.start(f"target: {total_pairs} vertex pairs")
+            total_pairs = len(nodes) * (len(nodes) - 1) // 2
+            edge_progress.start(f"target: {total_pairs} node pairs")
                 
-        # for each vertex pair determine which cells the edge between them crosses
+        # for each node pair determine which cells the edge between them crosses
         # store mappings between cells and edges in dictionaries for fast lookup
         if edge_progress is not None:
             pair_number = 0
-        for i in range(len(vertices)):
-            for j in range(i + 1, len(vertices)): # order vertices by index to avoid duplicate edges
-                edge = (vertices[i], vertices[j])
+        for i in range(len(nodes)):
+            for j in range(i + 1, len(nodes)): # order nodes by index to avoid duplicate edges
+                edge = (nodes[i], nodes[j])
                 cells = self._determine_edge_cells(edge[0], edge[1])
                 self.edge_to_cells[edge] = cells
-                for vertex in edge:
-                    if vertex not in self.vertex_to_edges:
-                        self.vertex_to_edges[vertex] = set()
-                    self.vertex_to_edges[vertex].add(edge)
+                for node in edge:
+                    if node not in self.node_to_edges:
+                        self.node_to_edges[node] = set()
+                    self.node_to_edges[node].add(edge)
                 for cell in cells:
                     if cell not in self.cell_to_edge:
                         self.cell_to_edge[cell] = set()
@@ -149,9 +149,9 @@ class DynamicVGraph(ProgressReportingAlgorithm):
         # mark edges that cross obstacle cells as inactive in edge_active_status
         self._deactivate_edges_in_obstacle_cells()
 
-        # construct the graph from the vertices and active edges
-        for vertex in vertices:
-            self.vertices.append(vertex)
+        # construct the graph from the nodes and active edges
+        for node in nodes:
+            self.nodes.append(node)
         for edge in self.edge_to_cells.keys():
             if self.edge_active_status[edge]:
                 self.edges.append(edge)
@@ -212,54 +212,54 @@ class DynamicVGraph(ProgressReportingAlgorithm):
             progress.update(3, update_steps, "special points updated")
 
         # TODO make incremental, only look at relebvant parts instead of recomputing whole obstacle space
-        # get all vertices of the updated obstacle space and special points
+        # get all nodes of the updated obstacle space and special points
         _, obstacle_space = navigation_space(self.occupancy, self.robot_radius, num_buffer_segments=self.num_buffer_segments)
-        new_vertices = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
+        new_nodes = list(dict.fromkeys(self._extract_convex_vertices(obstacle_space) + list(self.interaction_points) + list(self.access_points)))
 
-        # remove vertices that are no longer part of the obstacle space or special points
-        new_vertex_set = set(new_vertices)
-        removed_vertices = set(self.vertices) - new_vertex_set
+        # remove nodes that are no longer part of the obstacle space or special points
+        new_node_set = set(new_nodes)
+        removed_nodes = set(self.nodes) - new_node_set
         removed_edges = set()
-        for vertex in removed_vertices:
-            removed_edges.update(self.vertex_to_edges.get(vertex, set()))
+        for node in removed_nodes:
+            removed_edges.update(self.node_to_edges.get(node, set()))
 
         for edge in removed_edges:
             cells = self.edge_to_cells.pop(edge)
             self.edge_active_status.pop(edge)
-            for edge_vertex in edge:
-                self.vertex_to_edges[edge_vertex].remove(edge)
-                if not self.vertex_to_edges[edge_vertex]:
-                    del self.vertex_to_edges[edge_vertex]
+            for edge_node in edge:
+                self.node_to_edges[edge_node].remove(edge)
+                if not self.node_to_edges[edge_node]:
+                    del self.node_to_edges[edge_node]
             for cell in cells:
                 self.cell_to_edge[cell].remove(edge)
                 if not self.cell_to_edge[cell]:
                     del self.cell_to_edge[cell]
 
-        self.vertices = [vertex for vertex in self.vertices if vertex not in removed_vertices]
+        self.nodes = [node for node in self.nodes if node not in removed_nodes]
 
         if progress is not None:
-            progress.update(4, update_steps, f"removed {len(removed_vertices)} vertices")
+            progress.update(4, update_steps, f"removed {len(removed_nodes)} nodes")
 
-        # add new obstacle and special point vertices with edges to all existing vertices
-        current_vertex_set = set(self.vertices)
-        added_vertices = [vertex for vertex in new_vertices if vertex not in current_vertex_set]
+        # add new obstacle and special point nodes with edges to all existing nodes
+        current_node_set = set(self.nodes)
+        added_nodes = [node for node in new_nodes if node not in current_node_set]
         added_edges = set()
-        for vertex in added_vertices:
-            for other_vertex in self.vertices:
-                edge = (other_vertex, vertex)
+        for node in added_nodes:
+            for other_node in self.nodes:
+                edge = (other_node, node)
                 cells = self._determine_edge_cells(edge[0], edge[1])
                 self.edge_to_cells[edge] = cells
                 self.edge_active_status[edge] = True
                 added_edges.add(edge)
-                for edge_vertex in edge:
-                    if edge_vertex not in self.vertex_to_edges:
-                        self.vertex_to_edges[edge_vertex] = set()
-                    self.vertex_to_edges[edge_vertex].add(edge)
+                for edge_node in edge:
+                    if edge_node not in self.node_to_edges:
+                        self.node_to_edges[edge_node] = set()
+                    self.node_to_edges[edge_node].add(edge)
                 for cell in cells:
                     if cell not in self.cell_to_edge:
                         self.cell_to_edge[cell] = set()
                     self.cell_to_edge[cell].add(edge)
-            self.vertices.append(vertex)
+            self.nodes.append(node)
             
         # deactivate new edges that cross an existing obstacle cell
         for edge in added_edges:
@@ -286,7 +286,7 @@ class DynamicVGraph(ProgressReportingAlgorithm):
 
         self.record_graph(phase="online_update")
         if progress is not None:
-            progress.finish(True, f"vertices: {len(self.vertices)} | active edges: {len(self.edges)}", completed=update_steps, total=update_steps)
+            progress.finish(True, f"nodes: {len(self.nodes)} | active edges: {len(self.edges)}", completed=update_steps, total=update_steps)
     
     def record_graph(self, phase="manual"):
         """Record all visibility candidates and their current active status."""
@@ -307,7 +307,7 @@ class DynamicVGraph(ProgressReportingAlgorithm):
                     "interaction_points": sorted(self.interaction_points),
                     "height": self.height,
                     "width": self.width,
-                    "vertices": sorted({tuple(vertex) for vertex in self.vertices}),
+                    "nodes": sorted({tuple(node) for node in self.nodes}),
                     "edges": edges,
                     "edge_active": {
                         edge: bool(self.edge_active_status[edge])

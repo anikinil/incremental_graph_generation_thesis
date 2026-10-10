@@ -22,7 +22,7 @@ class UnionFind:
         Initializes the Union-Find structure with n elements (0 to n-1).
         Instead of using make
         """
-        self.parent = np.arange(n) # each vertex is its own parent initially
+        self.parent = np.arange(n) # each node is its own parent initially
         self.rank = np.zeros(n, dtype=int) # rank for union by rank optimization
 
     def ensure_capacity(self, size):
@@ -65,10 +65,10 @@ class UnionFind:
         
         return True
     
-    def get_num_components(self, num_vertices):
-        """Gets the number of connected components among the first num_vertices vertices."""
+    def get_num_components(self, num_nodes):
+        """Gets the number of connected components among the first num_nodes nodes."""
         roots = set()
-        for i in range(num_vertices):
+        for i in range(num_nodes):
             roots.add(self.find(i))
         return len(roots)
 
@@ -105,9 +105,9 @@ class PRM(ProgressReportingAlgorithm):
         self.print_progress = bool(print_progress)
         self.iteration = 0
         
-        # initialize with empty vertices (pre-allocate capacity)
-        self.vertices = np.empty((100, 2), dtype=np.float64)
-        self.num_vertices = 0  # Track actual number of vertices
+        # initialize with empty nodes (pre-allocate capacity)
+        self.nodes = np.empty((100, 2), dtype=np.float64)
+        self.num_nodes = 0  # Track actual number of nodes
         
         # KDTree for efficient neighbor search (will be built on first addition)
         self.kdtree = None
@@ -115,7 +115,7 @@ class PRM(ProgressReportingAlgorithm):
         # unionind for efficient component tracking (will be expanded as needed)
         self.union_find = UnionFind(100)
         
-        # track failures and attempts per vertex
+        # track failures and attempts per node
         # self.failure_count = defaultdict(int)
         # self.attempt_count = defaultdict(int)
         
@@ -125,7 +125,7 @@ class PRM(ProgressReportingAlgorithm):
         # store paths for edges created during random-bounce walks
         self.edge_paths = {}
 
-        self.wall_vertices = {} # (row, col) -> vertex_index
+        self.wall_nodes = {} # (row, col) -> node_index
         self.graph = None
 
         self.KING_MOVES = (
@@ -174,43 +174,43 @@ class PRM(ProgressReportingAlgorithm):
     def _get_candidate_neighbors(self, config):
         """Returns candidates from current roadmap in increasing distance order."""
 
-        # if no vertices created yet, return empty list
-        if self.kdtree is None or self.num_vertices == 0:
+        # if no nodes created yet, return empty list
+        if self.kdtree is None or self.num_nodes == 0:
             return []
 
         # number of neighbors to query
-        k = min(self.max_neighbors, self.num_vertices)
+        k = min(self.max_neighbors, self.num_nodes)
         # get distances and indices of the nearest candidates within max_dist
         distances, indices = self.kdtree.query(config, k=k, distance_upper_bound=self.max_dist)
         # make sure distances and indices are 1D arrays (query returns scalars if k=1)
         distances = np.atleast_1d(distances)
         indices = np.atleast_1d(indices)
 
-        # return indices of candidates that are within max_dist and are valid vertices
+        # return indices of candidates that are within max_dist and are valid nodes
         return [int(index) for distance, index in zip(distances, indices) if np.isfinite(distance)]
 
     def _update_kdtree(self):
-        """Rebuilds KDTree with current vertices."""
-        if self.num_vertices > 0:
-            self.kdtree = KDTree(self.vertices[:self.num_vertices])
+        """Rebuilds KDTree with current nodes."""
+        if self.num_nodes > 0:
+            self.kdtree = KDTree(self.nodes[:self.num_nodes])
         else:
             self.kdtree = None
     
-    def _add_vertex(self, config):
-        """Adds a new vertex and updates data structures."""
+    def _add_node(self, config):
+        """Adds a new node and updates data structures."""
         
-        new_idx = self.num_vertices
+        new_idx = self.num_nodes
         
-        # expand vertices array if needed
-        if new_idx >= len(self.vertices):
-            new_vertices = np.empty((len(self.vertices) + 100, 2), dtype=np.float64)
-            new_vertices[:self.num_vertices] = self.vertices[:self.num_vertices]
-            self.vertices = new_vertices
+        # expand nodes array if needed
+        if new_idx >= len(self.nodes):
+            new_nodes = np.empty((len(self.nodes) + 100, 2), dtype=np.float64)
+            new_nodes[:self.num_nodes] = self.nodes[:self.num_nodes]
+            self.nodes = new_nodes
         
-        self.vertices[new_idx] = config
-        self.num_vertices += 1
+        self.nodes[new_idx] = config
+        self.num_nodes += 1
 
-        self.union_find.ensure_capacity(self.num_vertices)
+        self.union_find.ensure_capacity(self.num_nodes)
         
         return new_idx
 
@@ -240,38 +240,38 @@ class PRM(ProgressReportingAlgorithm):
             for col in range(self.width):
                 if self._is_adjacent_to_wall((row, col)):
                     config = np.array([col + 0.5, row + 0.5], dtype=np.float64)
-                    self.wall_vertices[(row, col)] = self._add_vertex(config)
+                    self.wall_nodes[(row, col)] = self._add_node(config)
 
-        # add the King's Graph edges between the wall vertices
-        for (row, col), vertex_idx in self.wall_vertices.items(): # for all wall vertices
+        # add the King's Graph edges between the wall nodes
+        for (row, col), node_idx in self.wall_nodes.items(): # for all wall nodes
             for row_offset, col_offset in self.KING_MOVES: # for all neighbours
                 neighbour_row = row + row_offset
                 neighbour_col = col + col_offset
-                neighbour_idx = self.wall_vertices.get((neighbour_row, neighbour_col))
-                if neighbour_idx is not None and neighbour_idx > vertex_idx: # if neighbour is a wall vertex and not already processed
+                neighbour_idx = self.wall_nodes.get((neighbour_row, neighbour_col))
+                if neighbour_idx is not None and neighbour_idx > node_idx: # if neighbour is a wall node and not already processed
                     # if the edge is diagonal, check if it would cut a corner through an occupied cell and if yes skip it
                     if (abs(row_offset) + abs(col_offset) == 2 and
                         (self.occupancy[row, neighbour_col] != 0 or self.occupancy[neighbour_row, col] != 0)):
                         continue
 
                     # # the local path must also respect the buffered obstacle space
-                    # path = LineString([self.vertices[vertex_idx], self.vertices[neighbour_idx]])
-                    # if self.free_space.covers(path): # line between the two vertices is collision-free
-                    self._connect_vertices(vertex_idx, neighbour_idx)
+                    # path = LineString([self.nodes[node_idx], self.nodes[neighbour_idx]])
+                    # if self.free_space.covers(path): # line between the two nodes is collision-free
+                    self._connect_nodes(node_idx, neighbour_idx)
 
-        # build the tree after all wall vertices have been added
+        # build the tree after all wall nodes have been added
         self._update_kdtree()
 
     def _num_components(self):
         """Returns the number of connected components in the roadmap."""
-        return self.union_find.get_num_components(self.num_vertices)
+        return self.union_find.get_num_components(self.num_nodes)
 
-    def construction_step(self, min_num_vertices, avoid_cycles):
+    def construction_step(self, min_num_nodes, avoid_cycles):
         """Builds initial roadmap without special points."""
         progress = self._create_progress("Generating initial roadmap")
         if progress is not None:
-            progress.start(f"target: {min_num_vertices} sampling attempts after wall graph")
         
+            progress.start(f"target: {min_num_nodes} sampling attempts after wall graph")
         start_time = self._start_generation_time()
 
         # get free space as shapely Polygon for sampling and local planner checks
@@ -283,9 +283,9 @@ class PRM(ProgressReportingAlgorithm):
         # connect special points to the roadmap
         self._connect_special_points(avoid_cycles=avoid_cycles)
         
-        added_vertices_num = 0
+        added_nodes_num = 0
         num_components = self._num_components()
-        while num_components > 1 or (min_num_vertices is not None and added_vertices_num < min_num_vertices):
+        while num_components > 1 or (min_num_nodes is not None and added_nodes_num < min_num_nodes):
             
             # generate random free configuration
             c = self._generate_random_free_config()
@@ -294,8 +294,8 @@ class PRM(ProgressReportingAlgorithm):
             candidate_indices = self._get_candidate_neighbors(c)
 
             # add every collision-free sampled configuration to the roadmap
-            c_idx = self._add_vertex(c)
-            added_vertices_num += 1
+            c_idx = self._add_node(c)
+            added_nodes_num += 1
 
             # try to connect in order of increasing distance
             for n_idx in candidate_indices:
@@ -306,26 +306,26 @@ class PRM(ProgressReportingAlgorithm):
                     # self.attempt_count[n_idx] += 1
 
                     # check if can be connected via local planner (\delta(c, n) = True)
-                    if self._local_planner(self.vertices[c_idx], self.vertices[n_idx]):
-                        # if yes, connect new vertex to neighbor and update component status
-                        self._connect_vertices(c_idx, n_idx)
+                    if self._local_planner(self.nodes[c_idx], self.nodes[n_idx]):
+                        # if yes, connect new node to neighbor and update component status
+                        self._connect_nodes(c_idx, n_idx)
                     # else:
                     #     # else, mark failure and continue
                     #     self.failure_count[c_idx] += 1
                     #     self.failure_count[n_idx] += 1
 
-            # update KDTree after added vertices
+            # update KDTree after added nodes
             self._update_kdtree()
             num_components = self._num_components()
 
-            if progress is not None and added_vertices_num % 100 == 0:
+            if progress is not None and added_nodes_num % 100 == 0:
                 num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-                progress.update(added_vertices_num, details=(f"components: {num_components} | vertices: {self.num_vertices} | "
+                progress.update(added_nodes_num, details=(f"components: {num_components} | nodes: {self.num_nodes} | "
                                                          f"edges: {num_edges}"))
         
         if progress is not None:
             num_edges = sum(len(v) for v in self.adjacency.values()) // 2
-            progress.finish(True, (f"added vertices: {added_vertices_num} | vertices: {self.num_vertices} | "
+            progress.finish(True, (f"added nodes: {added_nodes_num} | nodes: {self.num_nodes} | "
                                    f"edges: {num_edges} | components: {num_components}"))
 
         self.graph = self.build_graph()
@@ -367,18 +367,18 @@ class PRM(ProgressReportingAlgorithm):
 
     #     return current, np.asarray(path)
 
-    def _connect_vertices(self, vertex_a, vertex_b, path=None):
-        """Connects two vertices and update data structures."""
+    def _connect_nodes(self, node_a, node_b, path=None):
+        """Connects two nodes and update data structures."""
         # store new edge
-        self.adjacency[vertex_a].add(vertex_b)
-        self.adjacency[vertex_b].add(vertex_a)
+        self.adjacency[node_a].add(node_b)
+        self.adjacency[node_b].add(node_a)
         # store union for efficient component check
-        self.union_find.union(vertex_a, vertex_b)
+        self.union_find.union(node_a, node_b)
 
         if path is not None:
-            edge = tuple(sorted((vertex_a, vertex_b)))
+            edge = tuple(sorted((node_a, node_b)))
             edge_path = np.asarray(path, dtype=np.float64)
-            self.edge_paths[edge] = edge_path if edge == (vertex_a, vertex_b) else edge_path[::-1].copy()
+            self.edge_paths[edge] = edge_path if edge == (node_a, node_b) else edge_path[::-1].copy()
 
     def _connect_special_points(self, avoid_cycles=True):
         """Attempts to connect special points (access + interaction points) to the roadmap."""
@@ -395,23 +395,23 @@ class PRM(ProgressReportingAlgorithm):
             # get candidate neighbors of the special point
             candidate_indices = self._get_candidate_neighbors(config)
 
-            # add special point to vertices
-            vertex_idx = self._add_vertex(config)
+            # add special point to nodes
+            node_idx = self._add_node(config)
 
             for neighbor_idx in candidate_indices:
                 # skip if already in same component
-                if not avoid_cycles or self.union_find.find(vertex_idx) != self.union_find.find(neighbor_idx):
+                if not avoid_cycles or self.union_find.find(node_idx) != self.union_find.find(neighbor_idx):
 
                     # # check if can be connected via local planner
-                    # self.attempt_count[vertex_idx] += 1
+                    # self.attempt_count[node_idx] += 1
                     # self.attempt_count[neighbor_idx] += 1
 
-                    if self._local_planner(self.vertices[vertex_idx], self.vertices[neighbor_idx]):
-                        # if yes, connect new vertex to neighbor
-                        self._connect_vertices(vertex_idx, neighbor_idx)
+                    if self._local_planner(self.nodes[node_idx], self.nodes[neighbor_idx]):
+                        # if yes, connect new node to neighbor
+                        self._connect_nodes(node_idx, neighbor_idx)
                     # else:
                     #     # else, mark failure and continue
-                    #     self.failure_count[vertex_idx] += 1
+                    #     self.failure_count[node_idx] += 1
                     #     self.failure_count[neighbor_idx] += 1
 
             self._update_kdtree()
@@ -424,14 +424,14 @@ class PRM(ProgressReportingAlgorithm):
                     progress.update(
                         processed_special_points,
                         total_special_points,
-                        f"vertices: {self.num_vertices} | edges: {num_edges}",
+                        f"nodes: {self.num_nodes} | edges: {num_edges}",
                     )
 
         if progress is not None:
             num_edges = sum(len(v) for v in self.adjacency.values()) // 2
             progress.finish(
                 True,
-                f"processed {total_special_points} special points | vertices: {self.num_vertices} | edges: {num_edges}",
+                f"processed {total_special_points} special points | nodes: {self.num_nodes} | edges: {num_edges}",
                 completed=total_special_points,
                 total=total_special_points,
             )
@@ -447,42 +447,42 @@ class PRM(ProgressReportingAlgorithm):
         """Converts the roadmap to a NetworkX graph with straight edges only."""
         G = nx.Graph()
         
-        # add all vertices to the graph
-        for i in range(self.num_vertices):
-            G.add_node(i, pos=tuple(self.vertices[i]))
+        # add all nodes to the graph
+        for i in range(self.num_nodes):
+            G.add_node(i, pos=tuple(self.nodes[i]))
         
-        next_path_vertex_idx = self.num_vertices
+        next_path_node_idx = self.num_nodes
         added_edges = set() # track edges already added to avoid duplicates
-        # for every vertex, add edges to its neighbors
-        for vertex_idx, neighbors in self.adjacency.items():
+        # for every node, add edges to its neighbors
+        for node_idx, neighbors in self.adjacency.items():
             for neighbor_idx in neighbors:
-                edge = tuple(sorted([vertex_idx, neighbor_idx])) # sort to avoid duplicates
+                edge = tuple(sorted([node_idx, neighbor_idx])) # sort to avoid duplicates
                 if edge in added_edges:
                     continue # skip if already added
                 # check if there is a stored path for this edge (from random-bounce walk)
                 path = self.edge_paths.get(edge)
                 if path is None:
                     # if no path stored, add straight edge
-                    G.add_edge(vertex_idx, neighbor_idx)
+                    G.add_edge(node_idx, neighbor_idx)
                 else:
-                    # if path is stored, add intermediate vertices for the path and connect them
+                    # if path is stored, add intermediate nodes for the path and connect them
                     path = np.asarray(path, dtype=np.float64)
-                    path_vertex_indices = [edge[0]] # vertices to add
-                    previous_config = self.vertices[edge[0]] # track previous vertex to avoid duplicates
+                    path_node_indices = [edge[0]] # nodes to add
+                    previous_config = self.nodes[edge[0]] # track previous node to avoid duplicates
 
-                    # turn path vertices created during bounce walks into graph vertices (exclude endpoints)
+                    # turn path nodes created during bounce walks into graph nodes (exclude endpoints)
                     for config in path[1:-1]:
-                        if np.array_equal(config, previous_config): # skip, if same as previous vertex (hit the same wall twice)
+                        if np.array_equal(config, previous_config): # skip, if same as previous node (hit the same wall twice)
                             continue
-                        G.add_node(next_path_vertex_idx, pos=tuple(config), bounce_turn=True)
-                        path_vertex_indices.append(next_path_vertex_idx)
-                        next_path_vertex_idx += 1
+                        G.add_node(next_path_node_idx, pos=tuple(config), bounce_turn=True)
+                        path_node_indices.append(next_path_node_idx)
+                        next_path_node_idx += 1
                         previous_config = config
-                    # connect the path vertices to 
-                    path_vertex_indices.append(edge[1])
-                    for i in range(len(path_vertex_indices) - 1):
-                        left = path_vertex_indices[i]
-                        right = path_vertex_indices[i + 1]
+                    # connect the path nodes
+                    path_node_indices.append(edge[1])
+                    for i in range(len(path_node_indices) - 1):
+                        left = path_node_indices[i]
+                        right = path_node_indices[i + 1]
                         G.add_edge(left, right)
 
                 added_edges.add(edge)
@@ -493,18 +493,18 @@ class PRM(ProgressReportingAlgorithm):
     def _expanded_graph_snapshot(self):
         """Returns the straight-edge graph representation."""
         graph = self.graph if self.graph is not None else self.build_graph()
-        vertex_ids = sorted(graph.nodes)
-        vertex_id_to_index = {vertex_id: index for index, vertex_id in enumerate(vertex_ids)}
-        vertices = np.asarray([graph.nodes[vertex_id]["pos"] for vertex_id in vertex_ids], dtype=np.float64)
-        edges = sorted(tuple(sorted((vertex_id_to_index[left], vertex_id_to_index[right]))) for left, right in graph.edges)
-        return vertices, edges
+        node_ids = sorted(graph.nodes)
+        node_id_to_index = {node_id: index for index, node_id in enumerate(node_ids)}
+        nodes = np.asarray([graph.nodes[node_id]["pos"] for node_id in node_ids], dtype=np.float64)
+        edges = sorted(tuple(sorted((node_id_to_index[left], node_id_to_index[right]))) for left, right in graph.edges)
+        return nodes, edges
 
     def record_graph(self):
         """Records the current roadmap graph."""
         if self.recorder is None:
             return None
 
-        vertices, edges = self._expanded_graph_snapshot()
+        nodes, edges = self._expanded_graph_snapshot()
         save_progress = self._create_progress("Saving graph to disk")
         if save_progress is not None:
             save_progress.start()
@@ -519,9 +519,9 @@ class PRM(ProgressReportingAlgorithm):
                     "interaction_points": self.interaction_points,
                     "height": self.height,
                     "width": self.width,
-                    "vertices": vertices,
+                    "nodes": nodes,
                     "edges": edges,
-                    "num_vertices": self.num_vertices,
+                    "num_nodes": self.num_nodes,
                 },
                 plot=True,
             )

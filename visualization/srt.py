@@ -38,7 +38,7 @@ NODE_PAIR_CANDIDATES = 5
 OUTPUT_DIRECTORY = Path("artifacts/visualization")
 
 # These collision-free roots are the SRT milestones.  The local RRT-like trees
-# grown from them represent roadmap vertices; the black lines are successful
+# grown from them represent roadmap nodes; the black lines are successful
 # connections between separate trees.
 TREE_ROOTS = (
     (0.75, 1.10),

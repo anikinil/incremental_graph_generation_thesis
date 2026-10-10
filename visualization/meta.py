@@ -3,7 +3,7 @@
 from artifacts.plot import (
     ACCESS_POINT_COLOR,
     ROBOT_RADIUS_BUFFER_COLOR,
-    GRAPH_VERTEX_COLOR,
+    GRAPH_NODE_COLOR,
     GRID_ZORDER,
     IO_POINT_COLOR,
     OFFSET_VEC_COLOR,
@@ -37,7 +37,7 @@ PRM_TERMINAL_LABEL_COLOR = "white"
 PRM_TERMINAL_LABEL_SIZE = 11
 
 # Interaction points use the same 225%-of-access-point emphasis as result
-# plots, while access-point markers and graph vertices retain their own sizes.
+# plots, while access-point markers and graph nodes retain their own sizes.
 INTERACTION_POINT_SIZE = 117
 GRAPH_NODE_SIZE_SCALE = 2
 
