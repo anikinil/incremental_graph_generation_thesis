@@ -1,11 +1,11 @@
 [experiment]
 name = "test3"
-seed = 11
+seed = 10
 
 
 [scenario]
 height = 15
-width = 20
+width = 30
 occupancy_rate = 0.3
 sigma_coarse = 3
 sigma_fine = 1
