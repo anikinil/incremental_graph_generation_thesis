@@ -153,6 +153,10 @@ class ThesisFigureRecorder:
         """Match the recorder interface used by ``DynamicVGraph``."""
         self.iteration = self.iteration + 1 if iteration is None else iteration
 
+    def record_time(self, seconds, phase):
+        """Ignore timings because this recorder writes thesis figures only."""
+        del seconds, phase
+
     def save_named(self, data_type, data, filename, *, algorithm=None, iteration=None):
         """Write one explicitly named, PDF-only thesis figure."""
         algorithm = algorithm or self.algorithm
@@ -518,7 +522,13 @@ def generate_gvd_figure():
 
     recorder.set_algorithm("gvd", use_iterations=False, plot=True)
     graph = _build_gvd(rng, scenario, recorder)
-    graph.computeDistanceMap()
+    gvd_recorder = graph.recorder
+    graph.recorder = None
+    try:
+        graph.computeDistanceMap()
+    finally:
+        graph.recorder = gvd_recorder
+
     recorder.save_named(
         "distance_map",
         _gvd_stage_data(graph, D=graph.D, obst=graph.obst),
@@ -530,16 +540,8 @@ def generate_gvd_figure():
         "gvd_voronoi_skeleton.pdf",
     )
 
-    # ``build_graph`` normally records the completed graph.  The static
-    # thesis sequence needs both its pre-connection and completed forms, so
-    # render the two explicit stage payloads below instead.
-    gvd_recorder = graph.recorder
-    graph.recorder = None
-    try:
-        graph.build_graph()
-    finally:
-        graph.recorder = gvd_recorder
-
+    # ``computeDistanceMap`` already builds the completed graph. Render both
+    # the pre-connection and completed forms explicitly below.
     recorder.save_named(
         "graph",
         _gvd_stage_data(
@@ -557,14 +559,13 @@ def generate_gvd_figure():
 
 
 def _apply_gvd_update(graph, scenario):
-    """Apply the pending scenario change and rebuild the GVD roadmap."""
+    """Apply the pending scenario change and update the GVD roadmap."""
     graph.apply_layout_updates(
         scenario.consume_updates(),
         new_access_points=scenario.access_points,
         new_interaction_points=scenario.interaction_points,
     )
     graph.updateDistanceMap()
-    graph.build_graph()
 
 
 def _add_gvd_l_shape_above_interaction_points(scenario, *, distance=4):
@@ -616,7 +617,6 @@ def generate_dynamic_gvd_figures():
     recorder.set_algorithm("dynamic_gvd", use_iterations=True, plot=True)
     graph = _build_gvd(rng, scenario, recorder)
     graph.computeDistanceMap()
-    graph.build_graph()
 
     _apply_illustrative_layout_changes(
         scenario,

@@ -66,6 +66,8 @@ class VGraph(ProgressReportingAlgorithm):
         vertex_progress = self._create_progress("Collecting vertices")
         if vertex_progress is not None:
             vertex_progress.start()
+            
+        start_time = self._start_generation_time()
 
         free_space, obstacle_space = navigation_space(self.occupancy, self.robot_radius, self.num_buffer_segments)
 
@@ -122,15 +124,12 @@ class VGraph(ProgressReportingAlgorithm):
                     self.G.add_edge(i, j)
 
         if visibility_progress is not None:
-            visibility_progress.finish(
-                True,
-                f"generated {self.G.number_of_nodes()} vertices and {self.G.number_of_edges()} edges",
-                completed=total_pairs,
-                total=total_pairs,
-            )
+            visibility_progress.finish(True, f"generated {self.G.number_of_nodes()} vertices and {self.G.number_of_edges()} edges", completed=total_pairs, total=total_pairs)
+
+        self._record_generation_time(self._generation_seconds(start_time), "generation")
 
     def record_graph(self):
-        """Record the visibility graph using via recorder if available."""
+        """Record the visibility graph using the recorder if available."""
         if self.recorder is None:
             return None
 

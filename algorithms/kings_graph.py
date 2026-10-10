@@ -33,6 +33,8 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
 
     def apply_layout_updates_and_update_graph(self, obstacle_updates, new_access_points, new_interaction_points):
         """Apply whole layout update and update the graph at changed locations."""
+        
+        start_time = self._start_generation_time()
         changed_cells = set()
 
         for update in obstacle_updates:
@@ -59,6 +61,8 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
 
         self.iteration += 1
 
+        self._record_generation_time(self._generation_seconds(start_time), "update")
+        
         if self.recorder is not None:
             self.recorder.new_iteration(self.iteration)
 
@@ -197,7 +201,7 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
             )
 
     def build_graph(self):
-        G = nx.Graph()
+        
         graph_progress = self._create_progress("Building King's-grid graph")
         if graph_progress is not None:
             grid_height = self.bounds[2] - self.bounds[0]
@@ -206,6 +210,9 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
             processed_cells = 0
             grid_vertices = 0
             graph_progress.start(f"grid: {grid_height}x{grid_width}")
+            
+        start_time = self._start_generation_time()
+        G = nx.Graph()
 
         # add grid vertices and edges
         for row in range(self.bounds[0], self.bounds[2]):
@@ -245,6 +252,8 @@ class IncrementalKingsGraph(ProgressReportingAlgorithm):
         self._connect_special_points_to_graph(G, self.interaction_points, self.access_points)
 
         self.G = G
+        phase = "generation" if self.iteration == 0 else "update"
+        self._record_generation_time(self._generation_seconds(start_time), phase)
 
     def record_graph(self):
         """Records the current roadmap graph."""

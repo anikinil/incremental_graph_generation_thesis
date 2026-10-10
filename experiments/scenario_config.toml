@@ -1,17 +1,17 @@
 [experiment]
-name = "test"
-seed = 42
+name = "test3"
+seed = 11
 
 
 [scenario]
-height = 30
-width = 60
+height = 15
+width = 20
 occupancy_rate = 0.3
 sigma_coarse = 3
 sigma_fine = 1
 noisy_aisles_num = 0
 noisy_aisle_sigma = 1
-interaction_points = [[3, 1], [28, 33]]
+interaction_points = [[3, 3], [10, 18]]
 interaction_points_radius = 3
 simple_obstacle_rate = 0.1
 robot_radius = 0.3
@@ -19,29 +19,13 @@ robot_radius = 0.3
 
 [[scenario.stages]]
 type = "add_random_obstacles"
-count = 5
+count = 10
 
+
+[[scenario.stages]]
+type = "remove_random_obstacles"
+count = 10
 
 [[scenario.stages]]
 type = "add_random_obstacles"
-count = 5
-
-
-[[scenario.stages]]
-type = "add_random_obstacles"
-count = 5
-
-
-[[scenario.stages]]
-type = "remove_random_obstacles"
-count = 5
-
-
-[[scenario.stages]]
-type = "remove_random_obstacles"
-count = 5
-
-
-[[scenario.stages]]
-type = "remove_random_obstacles"
-count = 5
+count = 10

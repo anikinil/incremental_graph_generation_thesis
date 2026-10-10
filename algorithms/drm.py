@@ -477,6 +477,7 @@ class DRM(ProgressReportingAlgorithm):
 
     def preprocessing_step(self, min_num_vertices=None):
         """Build the initial roadmap and map all vertices and edges to their occupancy cells."""
+        start_time = self._start_generation_time()
         self.affected_vertices.clear()
         self.affected_edges.clear()
         progress = self._create_progress("Preprocessing roadmap")
@@ -500,7 +501,12 @@ class DRM(ProgressReportingAlgorithm):
         if progress is not None:
             progress.update(4, preprocessing_steps, "connectivity repaired")
 
+        self.build_graph()
+        
+        self._record_generation_time(self._generation_seconds(start_time), "generation")
+        
         self.record_graph(phase="preprocessing")
+        
         if progress is not None:
             progress.finish(True, completed=preprocessing_steps, total=preprocessing_steps)
 
@@ -519,6 +525,7 @@ class DRM(ProgressReportingAlgorithm):
 
     def apply_layout_updates(self, obstacle_updates, new_access_points, new_interaction_points, min_num_vertices=None):
         """Apply changed cells and update only the affected roadmap regions."""
+        start_time = self._start_generation_time()
 
         self.affected_vertices.clear()
         self.affected_edges.clear()
@@ -586,6 +593,9 @@ class DRM(ProgressReportingAlgorithm):
         self.affected_edges = affected_edges | new_wall_edges | changed_special_edges | repair_edges
         
         # record the updated graph
+        self.build_graph()
+        
+        self._record_generation_time(self._generation_seconds(start_time), "update")
         self.record_graph(phase="online_update")
 
     def build_graph(self):

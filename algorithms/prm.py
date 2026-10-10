@@ -126,6 +126,7 @@ class PRM(ProgressReportingAlgorithm):
         self.edge_paths = {}
 
         self.wall_vertices = {} # (row, col) -> vertex_index
+        self.graph = None
 
         self.KING_MOVES = (
             (-1, -1), (-1, 0), (-1, 1),
@@ -267,10 +268,11 @@ class PRM(ProgressReportingAlgorithm):
 
     def construction_step(self, min_num_vertices, avoid_cycles):
         """Builds initial roadmap without special points."""
-        
         progress = self._create_progress("Generating initial roadmap")
         if progress is not None:
             progress.start(f"target: {min_num_vertices} sampling attempts after wall graph")
+        
+        start_time = self._start_generation_time()
 
         # get free space as shapely Polygon for sampling and local planner checks
         self.free_space, _ = navigation_space(self.occupancy, self.buffer, self.num_buffer_segments)
@@ -325,6 +327,9 @@ class PRM(ProgressReportingAlgorithm):
             num_edges = sum(len(v) for v in self.adjacency.values()) // 2
             progress.finish(True, (f"added vertices: {added_vertices_num} | vertices: {self.num_vertices} | "
                                    f"edges: {num_edges} | components: {num_components}"))
+
+        self.graph = self.build_graph()
+        self._record_generation_time(self._generation_seconds(start_time), "generation")
 
     
     # def _random_bounce_walk(self, start_config, walk_length, max_bounces):
@@ -487,7 +492,7 @@ class PRM(ProgressReportingAlgorithm):
     # for visualization during generation, TODO remove later
     def _expanded_graph_snapshot(self):
         """Returns the straight-edge graph representation."""
-        graph = self.build_graph()
+        graph = self.graph if self.graph is not None else self.build_graph()
         vertex_ids = sorted(graph.nodes)
         vertex_id_to_index = {vertex_id: index for index, vertex_id in enumerate(vertex_ids)}
         vertices = np.asarray([graph.nodes[vertex_id]["pos"] for vertex_id in vertex_ids], dtype=np.float64)

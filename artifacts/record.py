@@ -1,6 +1,7 @@
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 import copy
+import csv
 import pickle
 
 import numpy as np
@@ -20,9 +21,11 @@ class ExperimentRecorder:
         experiment_name="", # if empty, will be generated based on timestamp, else gets a specified name
         enabled=True, # false to disable saving and plotting
         plot_buffer_segments=None, # visual buffer resolution for dynamic-vgraph plots only
+        save_metadata=True,
+        root="artifacts/results",
     ):
 
-        self.root = Path("artifacts/results")
+        self.root = Path(root)
         self.seed = seed
         self.enabled = enabled
 
@@ -55,7 +58,8 @@ class ExperimentRecorder:
             "created": datetime.now().isoformat(),
         })
 
-        self._save_metadata()
+        if save_metadata:
+            self._save_metadata()
 
         self.plot_manager = PlotManager(dynamic_vgraph_plot_buffer_segments=plot_buffer_segments)
 
@@ -79,9 +83,26 @@ class ExperimentRecorder:
         self.scenario = self._snapshot(scenario)
         self.plot_manager.scenario = self.scenario
         self.scenario_version += 1
-        self.scenario_dir = self.experiment_dir / f"scenario_{self.scenario_version:03d}"
+        self.scenario_dir = self.experiment_dir / f"stage_{self.scenario_version + 1:03d}"
         self.scenario_dir.mkdir(parents=True, exist_ok=True)
         return self.save(data_type="scenario", data=self.scenario, plot=plot, algorithm="scenario", iteration=iteration)
+
+    def use_scenario(self, scenario_dir, scenario, iteration=0):
+        scenario_dir = Path(scenario_dir)
+        if scenario_dir.resolve().parent != self.experiment_dir.resolve():
+            raise ValueError("Scenario directory does not belong to this experiment.")
+        if scenario_dir.name.startswith("stage_"):
+            scenario_version = int(scenario_dir.name.removeprefix("stage_")) - 1
+        else:
+            raise ValueError(f"Invalid scenario directory name: {scenario_dir.name}")
+
+        scenario_dir.mkdir(parents=True, exist_ok=True)
+
+        self.scenario = self._snapshot(scenario)
+        self.plot_manager.scenario = self.scenario
+        self.scenario_dir = scenario_dir
+        self.scenario_version = scenario_version
+        self.iteration = iteration
 
     def save(self, data_type, data, plot=False, algorithm=None, iteration=None):
         if not self.enabled:
@@ -152,6 +173,30 @@ class ExperimentRecorder:
             "pkl": pkl_path,
             "pdf": pdf_path if should_plot else None,
         }
+
+    def record_time(self, seconds, phase):
+        if not self.enabled:
+            return None
+
+        if self.scenario_dir is None:
+            raise RuntimeError("A scenario must be selected before recording a time.")
+        if not self.algorithm:
+            raise RuntimeError("An algorithm must be selected before recording a time.")
+
+        path = self.experiment_dir / "timings.csv"
+        write_header = not path.exists()
+
+        with path.open("a", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=["algorithm", "scenario", "iteration", "phase", "seconds"])
+            if write_header:
+                writer.writeheader()
+            writer.writerow({
+                "algorithm": self.algorithm,
+                "scenario": self.scenario_dir.name,
+                "iteration": self.iteration,
+                "phase": phase,
+                "seconds": seconds,
+            })
 
     def new_iteration(self, iteration=None):
         """

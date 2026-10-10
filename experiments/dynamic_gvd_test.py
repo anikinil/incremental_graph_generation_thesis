@@ -13,7 +13,6 @@ def _apply_scenario_updates(gvd, scenario):
         new_interaction_points=scenario.interaction_points,
     )
     gvd.updateDistanceMap()
-    gvd.build_graph()
 
 
 if __name__ == "__main__":
@@ -73,7 +72,6 @@ if __name__ == "__main__":
     )
 
     gvd.computeDistanceMap()
-    gvd.build_graph()
 
     scenario.make_updates(number_of_updates=30)
     _apply_scenario_updates(gvd, scenario)

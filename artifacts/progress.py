@@ -1,3 +1,6 @@
+from time import perf_counter
+
+
 class GenerationProgress:
     """Render roadmap-generation progress in one consistent terminal format."""
 
@@ -82,3 +85,13 @@ class ProgressReportingAlgorithm:
         if not self.print_progress:
             return None
         return GenerationProgress(self.progress_name, stage, self.iteration)
+
+    def _start_generation_time(self):
+        return perf_counter()
+
+    def _generation_seconds(self, start_time):
+        return perf_counter() - start_time
+
+    def _record_generation_time(self, seconds, phase):
+        if self.recorder is not None:
+            self.recorder.record_time(seconds, phase)

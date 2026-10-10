@@ -1,0 +1,33 @@
+[experiment]
+scenario_run = "test3"
+seed = 41
+
+[algorithms.vgraph]
+num_buffer_segments = 0
+
+[algorithms.dynamic_vgraph]
+
+[algorithms.prm]
+eps = 0.05
+max_dist = 5
+max_neighbors = 10
+num_buffer_segments = 2
+min_num_vertices = 100
+avoid_cycles = false
+
+[algorithms.gvd]
+scale_factor = 1
+
+[algorithms.dynamic_gvd]
+scale_factor = 1
+
+[algorithms.kings_graph]
+
+[algorithms.dynamic_kings_graph]
+
+[algorithms.drm]
+max_dist = 5
+max_neighbors = 10
+num_buffer_segments = 3
+min_num_vertices = 100
+

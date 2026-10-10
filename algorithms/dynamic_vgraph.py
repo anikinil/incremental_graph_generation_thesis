@@ -107,6 +107,8 @@ class DynamicVGraph(ProgressReportingAlgorithm):
         vertex_progress = self._create_progress("Collecting vertices")
         if vertex_progress is not None:
             vertex_progress.start()
+            
+        start_time = self._start_generation_time()
 
         # get all convex vertices of the obstacle polygons
         _, obstacle_space = navigation_space(self.occupancy, self.robot_radius, num_buffer_segments=self.num_buffer_segments)
@@ -153,21 +155,22 @@ class DynamicVGraph(ProgressReportingAlgorithm):
         for edge in self.edge_to_cells.keys():
             if self.edge_active_status[edge]:
                 self.edges.append(edge)
+                
+        self._record_generation_time(self._generation_seconds(start_time), "generation")
 
         if edge_progress is not None:
-            edge_progress.finish(
-                True,
-                f"mapped {len(self.edge_to_cells)} candidate edges | active: {len(self.edges)}",
-                completed=total_pairs,
-                total=total_pairs,
-            )
+            edge_progress.finish(True, f"mapped {len(self.edge_to_cells)} candidate edges | active: {len(self.edges)}", completed=total_pairs, total=total_pairs)
+
 
     def apply_layout_updates(self, obstacle_updates, new_access_points, new_interaction_points):
         """Apply layout updates and update the visibility graph."""
+        
         progress = self._create_progress("Updating roadmap")
         if progress is not None:
             update_steps = 5
             progress.start(f"target: {update_steps} stages")
+            
+        start_time = self._start_generation_time()
 
         # update the occupancy grid and collect added and removed obstacle cells
         added_cells = set()
@@ -275,17 +278,15 @@ class DynamicVGraph(ProgressReportingAlgorithm):
             progress.update(5, update_steps, "edge status updated")
 
         self.iteration += 1
+        
+        self._record_generation_time(self._generation_seconds(start_time), "update")
+        
         if self.recorder is not None:
             self.recorder.new_iteration(self.iteration)
 
         self.record_graph(phase="online_update")
         if progress is not None:
-            progress.finish(
-                True,
-                f"vertices: {len(self.vertices)} | active edges: {len(self.edges)}",
-                completed=update_steps,
-                total=update_steps,
-            )
+            progress.finish(True, f"vertices: {len(self.vertices)} | active edges: {len(self.edges)}", completed=update_steps, total=update_steps)
     
     def record_graph(self, phase="manual"):
         """Record all visibility candidates and their current active status."""

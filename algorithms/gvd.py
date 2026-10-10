@@ -109,6 +109,7 @@ class GVD(ProgressReportingAlgorithm):
         self.interaction_point_connection_cells = []
     
         self.iteration = 0 # increased after every layout update
+        self._generation_seconds_total = 0
 
     def _plot_context(self):
         """Return the complete grid state in the GVD coordinate system.
@@ -225,6 +226,8 @@ class GVD(ProgressReportingAlgorithm):
         if progress is not None:
             progress.start(f"grid: {self.height}x{self.width}")
 
+        start_time = self._start_generation_time()
+        
         # initialize and enqueue occupied cells
         for y in range(self.height):
             for x in range(self.width):
@@ -244,12 +247,19 @@ class GVD(ProgressReportingAlgorithm):
                 processed_cells += 1
                 if processed_cells % 1000 == 0:
                     progress.update(processed_cells, details="wavefront cells processed")
-        if progress is not None:
-            progress.finish(True, f"processed {processed_cells} wavefront cells")
 
         # self.prune_voronoi(connectivity=8) # prune
+        
+        # only capture the distance map generation time, not saving time
+        self._generation_seconds_total += self._generation_seconds(start_time)
+        
         self._record("distance_map", D=self.D, obst=self.obst)
         self._record("voronoi_skeleton", voro=self.voro)
+       
+        if progress is not None:
+            progress.finish(True, f"processed {processed_cells} wavefront cells")
+       
+        self.build_graph()
         
     def lower(self, s):
         
@@ -315,6 +325,7 @@ class GVD(ProgressReportingAlgorithm):
         return value  # return the type of obstacle that was removed (for move operations)
     
     def updateDistanceMap(self):
+        start_time = self._start_generation_time()
         progress = self._create_progress("Updating distance map")
         if progress is not None:
             progress.start()
@@ -345,10 +356,14 @@ class GVD(ProgressReportingAlgorithm):
         # # store as tuples
         # self.affected_distance_cells = {(int(y), int(x)) for y, x in np.argwhere(changed_mask)}
         
+        self._generation_seconds_total += self._generation_seconds(start_time)
+        
         if progress is not None:
             progress.finish(True, f"processed {processed_cells} wavefront cells")
         self._record("distance_map", D=self.D, obst=self.obst)
         self._record("voronoi_skeleton", voro=self.voro)
+        
+        self.build_graph()
 
     def raise_(self, s):
         
@@ -401,6 +416,7 @@ class GVD(ProgressReportingAlgorithm):
                 self.affected_voro_cells.add(n)
 
     def apply_layout_updates(self, obstacle_updates, new_access_points, new_interaction_points):
+        start_time = self._start_generation_time()
 
         # clear affected cells
         self.affected_voro_cells.clear()
@@ -463,8 +479,10 @@ class GVD(ProgressReportingAlgorithm):
         self.special_point_connections.fill(False)
         self.access_point_connection_cells = []
         self.interaction_point_connection_cells = []
-        
         self.iteration += 1
+        
+        self._generation_seconds_total += self._generation_seconds(start_time)
+        
         if self.recorder is not None:
             self.recorder.new_iteration(self.iteration)
 
@@ -640,6 +658,8 @@ class GVD(ProgressReportingAlgorithm):
         https://github.com/ethz-asl/mav_voxblox_planning/blob/master/voxblox_skeleton/src/skeleton_generator.cpp
         
         """
+        start_time = self._start_generation_time()
+        
         # self.thin() # not working: deleting essential endpoints. TODO remove, or find better solution
         # perhaps modify "Building Skeleton Models via 3D Medial Surface/Axis Thinning Algorithms", T.-C. Lee, R. Kashyap, C.-N. Chu (1994)
         
@@ -799,31 +819,31 @@ class GVD(ProgressReportingAlgorithm):
             "vertices": vertices,
             "edges": edges,
             "special_point_vertices": special_point_vertices,
-        }
         
-        # check that graph is connected
-        graph_connected = self._is_graph_connected()
+        }
+        # add the graph building time to the total, do not capture graph saving time
+        self._generation_seconds_total += self._generation_seconds(start_time)
+        phase = "generation" if self.iteration == 0 else "update"
+        self._record_generation_time(self._generation_seconds_total, phase)
+        self._generation_seconds_total = 0
+        
+        # check that the graph is connected (only for testing)
         if progress is not None:
-            connected_special_points = sum(
-                len(special_vertices) for special_vertices in special_point_vertices.values()
-            )
+            graph_connected = self._is_graph_connected()
+            connected_special_points = sum(len(special_vertices) for special_vertices in special_point_vertices.values())
             progress.finish(
                 graph_connected,
                 f"vertices: {len(vertices)} | edges: {len(edges)} | "
                 f"special points connected: {connected_special_points}/"
                 f"{len(self.access_points) + len(self.interaction_points)}",
             )
-        
+
         if self.recorder is not None:
             save_progress = self._create_progress("Saving graph to disk")
             if save_progress is not None:
                 save_progress.start()
             try:
-                saved_artifacts = self._record(
-                    "graph",
-                    graph=self.graph,
-                    voro=self.voro,
-                )
+                saved_artifacts = self._record("graph", graph=self.graph, voro=self.voro)
             except Exception as error:
                 if save_progress is not None:
                     save_progress.finish(False, f"could not save graph: {error}")
@@ -834,7 +854,7 @@ class GVD(ProgressReportingAlgorithm):
             else:
                 if save_progress is not None:
                     save_progress.finish(True, f"saved to {saved_artifacts['pkl']}")
-        return graph_connected
+        # return graph_connected
     
 # TODO: edge splitting (obstacle avoidance) -- necessary?
 #         - probably YES (edges can cross buffer zone, at least for CORNER_SEGMENTS=0)

@@ -98,7 +98,6 @@ if __name__ == "__main__":
         print_progress=True,
     )
     gvd.computeDistanceMap()
-    gvd.build_graph()
 
     gvd_iterations = 3
     updates_per_iteration = 10
@@ -106,16 +105,13 @@ if __name__ == "__main__":
         scenario.make_updates(number_of_updates=updates_per_iteration)
         gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_interaction_points=scenario.interaction_points)
         gvd.updateDistanceMap()
-        gvd.build_graph()
         
     scenario.remove_region(top_left=(10, 10), bottom_right=(20, 20))
     gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_interaction_points=scenario.interaction_points)
     gvd.updateDistanceMap()
-    gvd.build_graph()
     
     scenario.add_region(top_left=(12, 12), bottom_right=(15, 15))
     gvd.apply_layout_updates(obstacle_updates=scenario.consume_updates(), new_access_points=scenario.access_points, new_interaction_points=scenario.interaction_points)
     gvd.updateDistanceMap()
-    gvd.build_graph()
 
         
