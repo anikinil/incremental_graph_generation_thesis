@@ -4,8 +4,8 @@ seed = 10
 
 
 [scenario]
-height = 15
-width = 30
+height = 30
+width = 40
 occupancy_rate = 0.3
 sigma_coarse = 3
 sigma_fine = 1

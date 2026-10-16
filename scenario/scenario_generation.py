@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.ndimage import binary_closing, distance_transform_edt, gaussian_filter, label
-from shapely.geometry import box
-from algorithms.geometry import buffered_obstacle_space
+from shapely.geometry import Point, box
 from artifacts.progress import ProgressReportingAlgorithm
 
 
@@ -157,12 +156,12 @@ class Scenario(ProgressReportingAlgorithm):
     def _get_random_cell(self, free):
         # free=True: select a free cell, free=False: select an occupied cell
         if free:
-            free_cells = np.argwhere(self.occupancy == 0)
+            candidate_cells = np.argwhere(self.occupancy == 0)
         else:
-            free_cells = np.argwhere(self.occupancy != 0)
-        if len(free_cells) == 0:
+            candidate_cells = np.argwhere(self.occupancy != 0)
+        if len(candidate_cells) == 0:
             return None
-        cell = tuple(free_cells[self.rng.integers(len(free_cells))])
+        cell = tuple(candidate_cells[self.rng.integers(len(candidate_cells))])
         return cell
         
     def generate(self):
@@ -240,12 +239,7 @@ class Scenario(ProgressReportingAlgorithm):
                     f"{placed_obstacles}/{target_obstacle_count} obstacles | "
                     f"unit-load: {unit_loads_placed} | simple: {simple_obstacles_placed}"
                 )
-            progress.finish(
-                success,
-                details,
-                completed=placed_obstacles,
-                total=target_obstacle_count,
-            )
+            progress.finish(success, details, completed=placed_obstacles, total=target_obstacle_count)
         
         if self.recorder is not None:
             self._record_scenario()
@@ -406,6 +400,14 @@ class Scenario(ProgressReportingAlgorithm):
             if success:
                 added_cells.append(cell)
             attempts += 1
+
+    def _obstacle_blocks_interaction_point(self, cell):
+        row, column = cell
+        obstacle_space = box(column, row, column + 1, row + 1).buffer(self.robot_radius, quad_segs=16, join_style="round")
+        for interaction_row, interaction_column in self.interaction_points:
+            if obstacle_space.covers(Point(interaction_column, interaction_row)):
+                return True
+        return False
             
     def remove_obstacles_randomly(self, count, max_attempts=None):
         """Remove a specified number of obstacles at random locations from the scenario while preserving connectivity."""
@@ -429,12 +431,10 @@ class Scenario(ProgressReportingAlgorithm):
             
     def _add_obstacle(self, cell, type):
         """Add an obstacle of the specified type at the given cell if it does not disconnect the free space."""
-        self.occupancy[cell] = type  # 1 for simple obstacle, 2 for unit-load obstacle
-        
-        if (cell in self.interaction_points):
-            # undo addition if it involves interaction points
-            self.occupancy[cell] = 0
+        if self._obstacle_blocks_interaction_point(cell):
             return False
+
+        self.occupancy[cell] = type  # 1 for simple obstacle, 2 for unit-load obstacle
 
         # ensure connectivity after addition
         if not self.connected():
@@ -446,14 +446,12 @@ class Scenario(ProgressReportingAlgorithm):
         
         self.updates.append({"action": "add", "cell": cell, "obstacle_type": type})
         return True
-    
+
     def _move_obstacle(self, from_cell, to_cell):
         """Move an obstacle from one cell to another if it does not disconnect the free space."""
         
-        # do not move if an interaction point is at target
-        if (to_cell in self.interaction_points):
-            return False
-        
+        if self._obstacle_blocks_interaction_point(to_cell):
+            return False    
         # move the obstacle
         from_val = self.occupancy[from_cell]
         self.occupancy[from_cell] = 0

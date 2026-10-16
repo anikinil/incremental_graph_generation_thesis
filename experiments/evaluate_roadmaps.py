@@ -1,5 +1,6 @@
 
 import json
+from math import ceil
 from pathlib import Path
 import pickle
 import sys
@@ -9,12 +10,13 @@ import numpy as np
 from networkx.algorithms.connectivity import local_edge_connectivity
 
 
-from shapely.geometry import box
+from shapely.geometry import Point, box
 from algorithms.geometry import buffered_obstacle_space
 
 
 TASK_NUM = 11
 SEED = 69
+CLEARANCE_SAMPLE_SPACING = 0.1 # clearance samples are sampled every 0.1 units along the roadmap edges
 
 ########## evaluation ###########
 
@@ -43,23 +45,18 @@ def _evaluate_path_length(roadmap, source, access, destination):
     inbound_length = nx.shortest_path_length(graph, access, destination, weight="weight")
 
     return {
-        "outbound_length": outbound_length,
-        "inbound_length": inbound_length,
         "task_route_length": outbound_length + inbound_length
     }
     
 def _evaluate_route_redundancy(roadmap, source, access, destination):
     graph = roadmap["graph"]
     return {
-        "outbound_edge_connectivity": local_edge_connectivity(graph, source, access),
-        "inbound_edge_connectivity": local_edge_connectivity(graph, access, destination),
+        # local_edge_connectivity: number of edge-disjoint paths between two nodes
+        "edge_connectivity": local_edge_connectivity(graph, source, access) + local_edge_connectivity(graph, access, destination)
     }
 
-def _evaluate_clearance_mean(roadmap):
-    return -1  # TODO
-
-def _evaluate_clearance_standard_deviation(roadmap):
-    return -1  # TODO
+def _evaluate_task_route_clearance(roadmap, source, access, destination):
+    return -1 # TODO
 
 def _calculate_free_area(roadmap):
     occupancy = roadmap["occupancy"]
@@ -104,13 +101,25 @@ def evaluate_tasks(roadmap):
                 "destination_interaction": destination["position"]
             },
             "path_length": _evaluate_path_length(roadmap, source, access, destination),
-            "clearance_mean": _evaluate_clearance_mean(roadmap),
-            "clearance_standard_deviation": _evaluate_clearance_standard_deviation(roadmap),
+            "clearance": _evaluate_task_route_clearance(roadmap, source, access, destination),
             "route_redundancy": _evaluate_route_redundancy(roadmap, source["node"], access["node"], destination["node"])
         }
         results.append(result)
 
     return results
+
+
+def average_task_metrics(task_results):
+    """Calculate the average metrics for a set of task results."""
+    task_route_lengths = [result["path_length"]["task_route_length"] for result in task_results]
+    mean_clearances = [result["clearance"]["mean_clearance"] for result in task_results]
+    edge_connectivities = [result["route_redundancy"]["edge_connectivity"] for result in task_results]
+
+    return {
+        "average_task_route_length": float(np.mean(task_route_lengths)),
+        "average_task_mean_clearance": float(np.mean(mean_clearances)),
+        "average_task_route_redundancy": float(np.mean(edge_connectivities))
+    }
 
 
 def evaluate_roadmap(roadmap):
@@ -119,7 +128,6 @@ def evaluate_roadmap(roadmap):
         "geometric_roadmap_density": _evaluate_geometric_roadmap_density(roadmap),
         "data_structure_density": _evaluate_data_structure_density(roadmap)
     }
-
 
 ########## build graph ###########
 
@@ -137,13 +145,16 @@ def _build_graph(record):
     data_type = record["data_type"]
     graph = nx.Graph()
 
-    if data_type == "graph":  # gvd graph
+    if data_type == "graph": # gvd graph
         saved_graph = data["graph"]
+        scale_factor = float(data.get("scale_factor", 1))
         for node, position in saved_graph["nodes"].items():
-            graph.add_node(node, pos=tuple(position))
+            row, column = position
+            # inverted order because the GVD uses (row, column) instead of (x, y) when saving graphs
+            graph.add_node(node, pos=((column - 1) / scale_factor, (row - 1) / scale_factor))
         _add_weighted_edges(graph, saved_graph["edges"])
 
-    elif isinstance(data["nodes"], dict):  # visibility graph and king's graph
+    elif isinstance(data["nodes"], dict): # visibility graph and king's graph
         for node, attributes in data["nodes"].items():
             graph.add_node(node, pos=tuple(attributes["pos"]))
         _add_weighted_edges(graph, data["edges"])
@@ -282,9 +293,10 @@ def main():
         roadmap_results = evaluate_roadmap(roadmap)
         output[roadmap["name"]] = {
             "tasks": task_results,
+            "task_averages": average_task_metrics(task_results),
             "roadmap": roadmap_results,
         }
-        print(roadmap["name"], output[roadmap["name"]]["roadmap"])
+        print(roadmap["name"])
 
     output_path = roadmap_run / "evaluation_results.json"
     output_path.write_text(json.dumps(_json_value(output), indent=2) + "\n")

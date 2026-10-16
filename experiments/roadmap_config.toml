@@ -1,6 +1,6 @@
 [experiment]
 scenario_run = "test3"
-seed = 43
+seed = 22
 
 [algorithms.vgraph]
 num_buffer_segments = 0
