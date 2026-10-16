@@ -7,7 +7,6 @@ import sys
 
 import networkx as nx
 import numpy as np
-from networkx.algorithms.connectivity import local_edge_connectivity
 
 
 from shapely.geometry import Point, box
@@ -50,13 +49,26 @@ def _evaluate_path_length(roadmap, source, access, destination):
     
 def _evaluate_route_redundancy(roadmap, source, access, destination):
     graph = roadmap["graph"]
+
+    outbound_path = nx.shortest_path(graph, source, access, weight="weight")
+    inbound_path = nx.shortest_path(graph, access, destination, weight="weight")
+    task_path = outbound_path[:-1] + inbound_path
+    bridge_edges = set(nx.bridges(graph))
+
+    task_length = 0
+    non_bridge_length = 0
+    for left, right in nx.utils.pairwise(task_path):
+        edge_length = graph.edges[left, right]["weight"]
+        task_length += edge_length
+        if (left, right) not in bridge_edges and (right, left) not in bridge_edges:
+            non_bridge_length += edge_length
+
     return {
-        # local_edge_connectivity: number of edge-disjoint paths between two nodes
-        "edge_connectivity": local_edge_connectivity(graph, source, access) + local_edge_connectivity(graph, access, destination)
+        "non_bridge_path_percentage": non_bridge_length / task_length if task_length else 0
     }
 
 def _evaluate_task_route_clearance(roadmap, source, access, destination):
-    return -1 # TODO
+    pass # TODO
 
 def _calculate_free_area(roadmap):
     occupancy = roadmap["occupancy"]
@@ -101,7 +113,7 @@ def evaluate_tasks(roadmap):
                 "destination_interaction": destination["position"]
             },
             "path_length": _evaluate_path_length(roadmap, source, access, destination),
-            "clearance": _evaluate_task_route_clearance(roadmap, source, access, destination),
+            # "clearance": _evaluate_task_route_clearance(roadmap, source, access, destination),
             "route_redundancy": _evaluate_route_redundancy(roadmap, source["node"], access["node"], destination["node"])
         }
         results.append(result)
@@ -112,13 +124,13 @@ def evaluate_tasks(roadmap):
 def average_task_metrics(task_results):
     """Calculate the average metrics for a set of task results."""
     task_route_lengths = [result["path_length"]["task_route_length"] for result in task_results]
-    mean_clearances = [result["clearance"]["mean_clearance"] for result in task_results]
-    edge_connectivities = [result["route_redundancy"]["edge_connectivity"] for result in task_results]
+    # mean_clearances = [result["clearance"]["mean_clearance"] for result in task_results]
+    non_bridge_path_percentages = [result["route_redundancy"]["non_bridge_path_percentage"] for result in task_results]
 
     return {
         "average_task_route_length": float(np.mean(task_route_lengths)),
-        "average_task_mean_clearance": float(np.mean(mean_clearances)),
-        "average_task_route_redundancy": float(np.mean(edge_connectivities))
+        # "average_task_mean_clearance": float(np.mean(mean_clearances)),
+        "average_non_bridge_path_percentage": float(np.mean(non_bridge_path_percentages))
     }
 
 

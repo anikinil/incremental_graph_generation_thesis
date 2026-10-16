@@ -6,7 +6,7 @@ seed = 10
 [scenario]
 height = 30
 width = 40
-occupancy_rate = 0.3
+occupancy_rate = 0.7
 sigma_coarse = 3
 sigma_fine = 1
 noisy_aisles_num = 0
