@@ -9,6 +9,13 @@ import numpy as np
 from networkx.algorithms.connectivity import local_edge_connectivity
 
 
+from shapely.geometry import box
+from algorithms.geometry import buffered_obstacle_space
+
+
+TASK_NUM = 11
+SEED = 69
+
 ########## evaluation ###########
 
 def _sample_two_leg_task(roadmap, rng):
@@ -48,13 +55,47 @@ def _evaluate_route_redundancy(roadmap, source, access, destination):
         "inbound_edge_connectivity": local_edge_connectivity(graph, access, destination),
     }
 
+def _evaluate_clearance_mean(roadmap):
+    return -1  # TODO
 
-def evaluate_roadmap(roadmap, number_of_tasks=100, seed=41):
-    """Evaluate sampled tasks and return one result dictionary per task."""
-    rng = np.random.default_rng(seed)
+def _evaluate_clearance_standard_deviation(roadmap):
+    return -1  # TODO
+
+def _calculate_free_area(roadmap):
+    occupancy = roadmap["occupancy"]
+    robot_radius = roadmap["robot_radius"]
+
+    height, width = occupancy.shape
+    r = robot_radius
+
+    # warehouse area
+    robot_centre_world = box(0, 0, width, height)
+    # obstacles inflated by r (circle approximated by a polygon with 16 segments)
+    inflated_obstacles = buffered_obstacle_space(occupancy, robot_radius=r, num_buffer_segments=16)
+    # free space area
+    free_area = robot_centre_world.difference(inflated_obstacles).area
+
+    return free_area
+
+def _evaluate_geometric_roadmap_density(roadmap):
+    free_area = _calculate_free_area(roadmap)
+    edges = roadmap["graph"].edges(data=True)
+    total_length = sum(attributes["weight"] for _, _, attributes in edges)
+    return total_length / free_area
+
+def _evaluate_data_structure_density(roadmap):
+    free_area = _calculate_free_area(roadmap)
+    num_edges = roadmap["graph"].number_of_edges()
+    num_nodes = roadmap["graph"].number_of_nodes()
+    return (num_edges + num_nodes) / free_area
+
+
+def evaluate_tasks(roadmap):
+    """Evaluate the properties of a number of randomly sampled tasks."""
+    rng = np.random.default_rng(SEED)
     results = []
 
-    for _ in range(number_of_tasks):
+    for _ in range(TASK_NUM):
         source, access, destination = _sample_two_leg_task(roadmap, rng)
         result = {
             "task": {
@@ -63,13 +104,21 @@ def evaluate_roadmap(roadmap, number_of_tasks=100, seed=41):
                 "destination_interaction": destination["position"]
             },
             "path_length": _evaluate_path_length(roadmap, source, access, destination),
-            "route_redundancy": _evaluate_route_redundancy(roadmap, source["node"], access["node"], destination["node"]),
+            "clearance_mean": _evaluate_clearance_mean(roadmap),
+            "clearance_standard_deviation": _evaluate_clearance_standard_deviation(roadmap),
+            "route_redundancy": _evaluate_route_redundancy(roadmap, source["node"], access["node"], destination["node"])
         }
-        
         results.append(result)
-        
+
     return results
 
+
+def evaluate_roadmap(roadmap):
+    """Evaluate the non-task-specific roadmap properties."""
+    return {
+        "geometric_roadmap_density": _evaluate_geometric_roadmap_density(roadmap),
+        "data_structure_density": _evaluate_data_structure_density(roadmap)
+    }
 
 
 ########## build graph ###########
@@ -107,9 +156,11 @@ def _build_graph(record):
         _add_weighted_edges(graph, active_edges)
 
     elif data_type == "dynamic_vgraph": # dynamic vgraph
-        for node in data["nodes"]:
-            graph.add_node(node, pos=tuple(node))
         active_edges = [edge for edge in data["edges"] if data["edge_active"][edge]]
+        # add only nodes that are part of active edges to the graph
+        active_nodes = {node for edge in active_edges for node in edge}
+        for node in active_nodes:
+            graph.add_node(node, pos=tuple(node))
         _add_weighted_edges(graph, active_edges)
 
     elif data_type == "prm_graph": # prm graph
@@ -160,8 +211,8 @@ def _special_points(graph, special_nodes):
 ########## loading and saving ###########
 
 
-def _load_roadmaps(roadmap_run):
-    """Load every saved roadmap graph from a roadmap-generation run."""
+def _load_roadmap_data(roadmap_run):
+    """Load every roadmap graph together with its scenario occupancy context."""
     graph_data_types = {
         "vgraph",
         "dynamic_vgraph",
@@ -171,8 +222,20 @@ def _load_roadmaps(roadmap_run):
         "graph",
     }
     roadmaps = []
+    scenario_run = roadmap_run.parent.parent
+    robot_radius = None
 
     for stage_dir in sorted(roadmap_run.glob("stage_*")):
+        scenario_path = scenario_run / stage_dir.name / "scenario" / "data" / "scenario.pkl"
+
+        with scenario_path.open("rb") as file:
+            scenario_record = pickle.load(file)
+
+        scenario_data = scenario_record["data"]
+        occupancy = scenario_data["occupancy"]
+        if robot_radius is None: # get robot radius from the first stage
+            robot_radius = float(scenario_data["robot_radius"])
+
         for algorithm_dir in sorted(path for path in stage_dir.iterdir() if path.is_dir()):
             records = []
             for path in algorithm_dir.glob("data/*.pkl"):
@@ -180,8 +243,8 @@ def _load_roadmaps(roadmap_run):
                     record = pickle.load(file)
                 if record["data_type"] in graph_data_types:
                     records.append(record)
-                    
-            record = records[-1]
+            # sort records by iteration and timestamp, then take the last one
+            record = max(records, key=lambda item: (item["iteration"], item["timestamp"]))
             graph = _build_graph(record)
             access_nodes, interaction_nodes = _special_nodes(record, graph)
             roadmaps.append({
@@ -189,28 +252,13 @@ def _load_roadmaps(roadmap_run):
                 "stage": stage_dir.name,
                 "algorithm": algorithm_dir.name,
                 "graph": graph,
+                "occupancy": occupancy,
+                "robot_radius": robot_radius,
                 "access_points": _special_points(graph, access_nodes),
                 "interaction_points": _special_points(graph, interaction_nodes),
             })
 
     return roadmaps
-
-
-def _summary(results):
-    """Create a small per-roadmap summary for the two current metrics."""
-    route_lengths = [result["path_length"]["task_route_length"] for result in results]
-    redundancy_values = []
-    
-    for result in results:
-        for value in result["route_redundancy"].values():
-            redundancy_values.append(value)
-    
-    return {
-        "mean_task_route_length": float(np.mean(route_lengths)),
-        "mean_route_redundancy": float(np.mean(redundancy_values)),
-        "minimum_route_redundancy": int(min(redundancy_values)),
-    }
-
 
 def _json_value(value):
     if isinstance(value, np.generic):
@@ -226,16 +274,17 @@ def _json_value(value):
 
 def main():
     roadmap_run = Path(sys.argv[1])
-    roadmaps = _load_roadmaps(roadmap_run)
+    roadmap_data = _load_roadmap_data(roadmap_run)
 
     output = {}
-    for roadmap in roadmaps:
-        results = evaluate_roadmap(roadmap)
+    for roadmap in roadmap_data:
+        task_results = evaluate_tasks(roadmap)
+        roadmap_results = evaluate_roadmap(roadmap)
         output[roadmap["name"]] = {
-            "summary": _summary(results),
-            "tasks": results,
+            "tasks": task_results,
+            "roadmap": roadmap_results,
         }
-        print(roadmap["name"], output[roadmap["name"]]["summary"])
+        print(roadmap["name"], output[roadmap["name"]]["roadmap"])
 
     output_path = roadmap_run / "evaluation_results.json"
     output_path.write_text(json.dumps(_json_value(output), indent=2) + "\n")
