@@ -62,6 +62,8 @@ class ExperimentRecorder:
             self._save_metadata()
 
         self.plot_manager = PlotManager(dynamic_vgraph_plot_buffer_segments=plot_buffer_segments)
+        
+        self.seconds = None
 
     def set_algorithm(self, algorithm, use_iterations=True, plot=None):
         """
@@ -183,6 +185,8 @@ class ExperimentRecorder:
         if not self.algorithm:
             raise RuntimeError("An algorithm must be selected before recording a time.")
 
+        self.seconds = seconds
+
         path = self.experiment_dir / "timings.csv"
         write_header = not path.exists()
 
@@ -197,6 +201,9 @@ class ExperimentRecorder:
                 "phase": phase,
                 "seconds": seconds,
             })
+            
+    def get_recorded_time(self):
+        return self.seconds
 
     def new_iteration(self, iteration=None):
         """

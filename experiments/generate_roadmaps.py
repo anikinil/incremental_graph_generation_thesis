@@ -103,13 +103,13 @@ def run_static_algorithm(name, params, scenario_data, seed, recorder):
     elif name == "prm":
         access_points, interaction_points = continuous_special_points(access_points, interaction_points, robot_radius)
         roadmap = PRM(np.random.default_rng(seed), occupancy, access_points, interaction_points, height, width, params["eps"], params["max_dist"], params["max_neighbors"], robot_radius, params.get("num_buffer_segments", 0), recorder, False)
-        roadmap.construction_step(params["min_num_nodes"], params.get("avoid_cycles", False))
+        roadmap.construction_step(height * width * params["min_num_nodes_factor"], params.get("avoid_cycles", False))
         roadmap.record_graph()
-
+        
     elif name == "gvd":
         roadmap = GVD(np.random.default_rng(seed), occupancy, params.get("scale_factor", 1), access_points, interaction_points, robot_radius, recorder, False)
         roadmap.computeDistanceMap()
-
+        
     elif name == "kings_graph":
         roadmap = IncrementalKingsGraph((0, 0, height, width), robot_radius, occupancy, access_points, interaction_points, recorder, False)
         roadmap.build_graph()
@@ -117,6 +117,8 @@ def run_static_algorithm(name, params, scenario_data, seed, recorder):
 
     else:
         raise ValueError(f"Unknown roadmap algorithm: {name}")
+
+    print(f"Time: {recorder.get_recorded_time()} seconds")
 
 
 def get_obstacle_updates(previous_occupancy, occupancy):
@@ -138,7 +140,7 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
     scenario_data = scenario_record["data"]
     recorder.use_scenario(roadmap_run_dir / scenario_name, scenario_data, scenario_record["iteration"])
     recorder.set_algorithm(name, use_iterations=False, plot=True)
-    print(f"Processing scenario: {scenario_name}")
+    print(f"\nProcessing scenario: {scenario_name}")
 
     occupancy = scenario_data["occupancy"]
     access_points = scenario_data["access_points"]
@@ -152,11 +154,11 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
         roadmap = DynamicVGraph(height, width, occupancy, robot_radius, access_points, interaction_points, recorder, False)
         roadmap.preprocessing()
         roadmap.record_graph(phase="preprocessing")
-
+        
     elif name == "drm":
         access_points, interaction_points = continuous_special_points(access_points, interaction_points, robot_radius)
         roadmap = DRM(np.random.default_rng(seed), occupancy, access_points, interaction_points, height, width, params["max_dist"], params["max_neighbors"], robot_radius, params.get("num_buffer_segments", 0), recorder, False)
-        roadmap.preprocessing_step(params["min_num_nodes"])
+        roadmap.preprocessing_step(height * width * params["min_num_nodes_factor"])
 
     elif name == "dynamic_gvd":
         roadmap = GVD(np.random.default_rng(seed), occupancy, params.get("scale_factor", 1), access_points, interaction_points, robot_radius, recorder, False)
@@ -169,13 +171,16 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
 
     else:
         raise ValueError(f"Unknown dynamic roadmap algorithm: {name}")
+    
+    print(f"Time: {recorder.get_recorded_time()} seconds")
+    
 
     # update the dynamic roadmap for every later scenario stage
     previous_scenario_data = scenario_data
     for scenario_name, scenario_record in scenarios[1:]:
         scenario_data = scenario_record["data"]
         recorder.use_scenario(roadmap_run_dir / scenario_name, scenario_data, scenario_record["iteration"])
-        print(f"Processing scenario: {scenario_name}")
+        print(f"\nProcessing scenario: {scenario_name}")
         obstacle_updates = get_obstacle_updates(previous_scenario_data["occupancy"], scenario_data["occupancy"])
 
         if name == "dynamic_vgraph":
@@ -184,7 +189,8 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
 
         elif name == "drm":
             access_points, interaction_points = continuous_special_points(scenario_data["access_points"], scenario_data["interaction_points"], scenario_data["robot_radius"])
-            roadmap.apply_layout_updates(obstacle_updates, access_points, interaction_points, params["min_num_nodes"])
+            # roadmap.apply_layout_updates(obstacle_updates, access_points, interaction_points, height * width * params["min_num_nodes_factor"])
+            roadmap.apply_layout_updates(obstacle_updates, access_points, interaction_points, None)
 
         elif name == "dynamic_gvd":
             roadmap.apply_layout_updates(obstacle_updates, scenario_data["access_points"], scenario_data["interaction_points"])
@@ -193,6 +199,8 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
         elif name == "dynamic_kings_graph":
             roadmap.apply_layout_updates_and_update_graph(obstacle_updates, scenario_data["access_points"], scenario_data["interaction_points"])
             roadmap.record_graph()
+
+        print(f"Time: {recorder.get_recorded_time()} seconds")
 
         previous_scenario_data = scenario_data
 
@@ -217,22 +225,28 @@ def main():
     
     for algorithm_name, algorithm_params in algorithm_configs.items():
         if algorithm_name in static_algorithms:
-
+            
+            print(f"\n\n-------------------------------------------")
             print(f"Running algorithm: {algorithm_name}")
             for scenario_name, scenario_record in scenarios:
                 scenario_data = scenario_record["data"]
                 recorder.use_scenario(roadmap_run_dir / scenario_name, scenario_data, scenario_record["iteration"])
                 recorder.set_algorithm(algorithm_name, use_iterations=False, plot=True)
-                print(f"Processing scenario stage: {scenario_name}")
+                print(f"\nProcessing scenario stage: {scenario_name}")
                 run_static_algorithm(algorithm_name, algorithm_params, scenario_data, experiment_config["seed"], recorder)
 
     for algorithm_name, algorithm_params in algorithm_configs.items():
         if algorithm_name in dynamic_algorithms:
 
+            print(f"\n\n-------------------------------------------")
             print(f"Running algorithm: {algorithm_name}")
             run_dynamic_algorithm(algorithm_name, algorithm_params, scenarios, experiment_config["seed"], recorder, roadmap_run_dir)
+            
 
     print(f"Saved roadmaps to {roadmap_run_dir}")
+    
+    for _ in range(20):
+        print("###############################################")
 
 
 if __name__ == "__main__":

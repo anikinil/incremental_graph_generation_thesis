@@ -164,6 +164,9 @@ class Scenario(ProgressReportingAlgorithm):
         cell = tuple(candidate_cells[self.rng.integers(len(candidate_cells))])
         return cell
         
+    def get_total_obstacle_count(self):
+        return np.sum(self.occupancy != 0)
+        
     def generate(self):
         # determine the number of obstacles to place
         unit_loads_num = int(self.height * self.width * self.occupancy_rate * (1-self.simple_obstacle_rate))
@@ -307,7 +310,7 @@ class Scenario(ProgressReportingAlgorithm):
                     else:
                         self.access_points.discard(point)
 
-    def make_updates(self, respect_probab_field=True, number_of_updates=100):
+    def make_updates(self, respect_prio_field=True, number_of_updates=100):
         """Make random updates to the scenario by adding, moving, or removing obstacles."""
         self.iteration += 1
         changed_cells = set()  # track changed cells to update access points after map updates
@@ -327,7 +330,7 @@ class Scenario(ProgressReportingAlgorithm):
                 # only respect the priority field when adding or moving obstacles
                 # removal cannot violate forbidden areas
                 if action == "add" or action == "move":
-                    if respect_probab_field:
+                    if respect_prio_field:
                         to_cell = self._get_best_obstacle_location()
                     else: # select random free cell
                         to_cell = self._get_random_cell(free=True)

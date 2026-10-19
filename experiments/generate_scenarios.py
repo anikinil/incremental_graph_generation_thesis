@@ -10,6 +10,20 @@ from artifacts.record import ExperimentRecorder
 from scenario.scenario_generation import Scenario
 
 
+def _interaction_points_from_warehouse_dimensions(height, width):
+    """Return interaction points at positions relative to the warehouse dimensions."""
+    return {
+        (height * 0.1, width * 0.05),
+        (height * 0.14, width * 0.05),
+        (height * 0.2, width * 0.05),
+        
+        (height * 0.95, width * 0.75),
+        (height * 0.95, width * 0.78),
+        (height * 0.95, width * 0.84),
+        (height * 0.95, width * 0.93)
+    }
+
+
 def load_scenario_config(toml_path):
     with Path(toml_path).open("rb") as file:
         config = tomllib.load(file)
@@ -18,8 +32,7 @@ def load_scenario_config(toml_path):
     scenario_config = config["scenario"]
 
     scenario_params = {key: value for key, value in scenario_config.items() if key != "stages"}
-
-    scenario_params["interaction_points"] = {tuple(point) for point in scenario_params["interaction_points"]}
+    scenario_params["interaction_points"] = _interaction_points_from_warehouse_dimensions(scenario_params["height"], scenario_params["width"])
 
     for key in ("ordered_aisle_widths", "ordered_aisle_spacing", "ordered_aisle_offset"):
         scenario_params[key] = tuple(scenario_params.get(key, (0, 0)))
@@ -88,9 +101,9 @@ def main():
 
     for stage in stages:
         if stage["type"] == "add_random_obstacles":
-            scenario.add_obstacles_randomly(count=stage["count"])
+            scenario.add_obstacles_randomly(count=int(stage["percentage"] * scenario.get_total_obstacle_count()))
         elif stage["type"] == "remove_random_obstacles":
-            scenario.remove_obstacles_randomly(count=stage["count"])
+            scenario.remove_obstacles_randomly(count=int(stage["percentage"] * scenario.get_total_obstacle_count()))
         else:
             raise ValueError(f"Unknown scenario stage type: {stage['type']}")
 

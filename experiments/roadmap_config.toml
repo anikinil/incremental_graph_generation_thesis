@@ -1,6 +1,6 @@
 [experiment]
-scenario_run = "test3"
-seed = 22
+scenario_run = "eval_scenario_4_seed_10"
+seed = 10
 
 [algorithms.vgraph]
 num_buffer_segments = 0
@@ -11,8 +11,8 @@ num_buffer_segments = 0
 eps = 0.05
 max_dist = 5
 max_neighbors = 10
-num_buffer_segments = 2
-min_num_nodes = 100
+num_buffer_segments = 8
+min_num_nodes_factor = 2
 avoid_cycles = false
 
 [algorithms.gvd]
@@ -28,6 +28,6 @@ scale_factor = 1
 [algorithms.drm]
 max_dist = 5
 max_neighbors = 10
-num_buffer_segments = 3
-min_num_nodes = 100
+num_buffer_segments = 16 # relevant for plotting only
+min_num_nodes_factor = 2
 

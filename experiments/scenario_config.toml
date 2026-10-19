@@ -1,31 +1,32 @@
 [experiment]
-name = "test3"
+name = "eval_scenario_4_seed_10"
 seed = 10
 
-
 [scenario]
-height = 30
-width = 40
-occupancy_rate = 0.7
+height = 50
+width = 100
+occupancy_rate = 0.6
 sigma_coarse = 3
 sigma_fine = 1
 noisy_aisles_num = 0
-noisy_aisle_sigma = 1
-interaction_points = [[3, 3], [10, 18]]
+noisy_aisle_sigma = 0
 interaction_points_radius = 3
-simple_obstacle_rate = 0.1
+simple_obstacle_rate = 0.05
 robot_radius = 0.3
 
 
 [[scenario.stages]]
 type = "add_random_obstacles"
-count = 10
-
+percentage = 0.05
 
 [[scenario.stages]]
 type = "remove_random_obstacles"
-count = 10
+percentage = 0.05
 
 [[scenario.stages]]
 type = "add_random_obstacles"
-count = 10
+percentage = 0.1
+
+[[scenario.stages]]
+type = "remove_random_obstacles"
+percentage = 0.1
