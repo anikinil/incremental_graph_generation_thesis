@@ -146,7 +146,7 @@ def main():
 
                 print("\n\n=========================================")
                 print(f"\nSeed {seed} | {warehouse_id} | {condition_id}")
-                print("\n\n=========================================")
+                print("\n=========================================")
                 
                 _record_scenarios(case_dir, config_path, batch_name, timestamp, seed, warehouse_id, condition_id, scenario_params, stages)
                 roadmap_run_dir = _record_roadmaps(case_dir, config_path, timestamp, seed, algorithm_configs, skipped_algorithms)
