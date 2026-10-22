@@ -378,31 +378,60 @@ class Scenario(ProgressReportingAlgorithm):
     
 
     def add_obstacles_randomly(self, count, type=None, max_attempts=None):
-        """Add a specified number of specified types of obstacles at random locations to the scenario while preserving connectivity.
-        If type is not specified, a random type will be chosen based on the simple_obstacle_rate.
-        """
+        """Add compact obstacles, preferring cells with two occupied 4-neighbours."""
         if max_attempts is None:
             max_attempts = count * 1000
 
         added_cells = []
         attempts = 0
         while len(added_cells) < count:
-            if attempts >= max_attempts:
-                raise RuntimeError( f"Could only add {len(added_cells)}/{count} obstacles after {max_attempts} attempts.")
+            occupied = self.occupancy != 0
+            occupied_neighbours = np.zeros(self.occupancy.shape, dtype=np.uint8)
+            occupied_neighbours[1:, :] += occupied[:-1, :]
+            occupied_neighbours[:-1, :] += occupied[1:, :]
+            occupied_neighbours[:, 1:] += occupied[:, :-1]
+            occupied_neighbours[:, :-1] += occupied[:, 1:]
+
+            free_cells = self.occupancy == 0
             
-            cell = self._get_random_cell(free=True)
-            if cell is None:
-                raise RuntimeError("No more free cells available.")
+            # try to place obstacles in cells with two occupied neighbours first: prevents formation of obstacle peninsulae or islands
+            preferred_growth_cells = free_cells & (occupied_neighbours == 2)
+            # but also consider cells with one or four occupied neighbours as a fallback, if no good cells available
+            fallback_cells = free_cells & ((occupied_neighbours == 1) | (occupied_neighbours == 4))
+            if not np.any(preferred_growth_cells | fallback_cells):
+                raise RuntimeError("No free cells have one, two, or four occupied orthogonal neighbours.")
 
             if type is None:
                 obst_type = 2 if self.rng.random() > self.simple_obstacle_rate else 1
             else:
                 obst_type = type
 
-            success = self._add_obstacle(cell, type=obst_type)
-            if success:
-                added_cells.append(cell)
-            attempts += 1
+            placed = False
+            for available_cells in (preferred_growth_cells, fallback_cells):
+                while np.any(available_cells):
+                    if attempts >= max_attempts:
+                        raise RuntimeError( f"Could only add {len(added_cells)}/{count} obstacles after {max_attempts} attempts.")
+
+                    candidate_cells = np.argwhere(available_cells)
+                    cell = tuple(candidate_cells[self.rng.integers(len(candidate_cells))])
+
+                    if self._add_obstacle(cell, type=obst_type):
+                        added_cells.append(cell)
+                        attempts += 1
+                        placed = True
+                        break
+
+                    # if adding the obstacle failed, mark the cell as unavailable, to avoid trying it again during this update
+                    available_cells[cell] = False
+                    attempts += 1
+
+                if placed:
+                    break
+
+            if not placed:
+                raise RuntimeError("No adjacent free cell can accept another obstacle.")
+
+        return added_cells
 
     def _obstacle_blocks_interaction_point(self, cell):
         row, column = cell
@@ -412,26 +441,84 @@ class Scenario(ProgressReportingAlgorithm):
                 return True
         return False
             
-    def remove_obstacles_randomly(self, count, max_attempts=None):
-        """Remove a specified number of obstacles at random locations from the scenario while preserving connectivity."""
+    def remove_obstacles_randomly(self, count, max_attempts=None, excluded_cells=None):
+        """Remove boundary obstacles while preserving free-space connectivity."""
         if max_attempts is None:
             max_attempts = count * 1000
+
+        # mark cells that have been newly added as protected so they are not removed in the same update
+        protected_cells = np.zeros(self.occupancy.shape, dtype=bool)
+        if excluded_cells is not None:
+            for row, column in excluded_cells:
+                protected_cells[row, column] = True
 
         removed_cells = []
         attempts = 0
         while len(removed_cells) < count:
-            if attempts >= max_attempts:
-                raise RuntimeError(f"Could only remove {len(removed_cells)}/{count} obstacles after {max_attempts} attempts.")
+            occupied = self.occupancy != 0
+            occupied_neighbours = np.zeros(self.occupancy.shape, dtype=np.uint8)
+            occupied_neighbours[1:, :] += occupied[:-1, :]
+            occupied_neighbours[:-1, :] += occupied[1:, :]
+            occupied_neighbours[:, 1:] += occupied[:, :-1]
+            occupied_neighbours[:, :-1] += occupied[:, 1:]
 
-            cell = self._get_random_cell(free=False)
-            if cell is None:
-                raise RuntimeError("No obstacles remain to remove.")
+            # identify removable obstacles: occupied cells that are not protected and have at least one occupied neighbour
+            removable_cells = occupied & ~protected_cells
+            # prefer removing obstacles that have two occupied neighbours, but also allow removing obstacles with one occupied neighbour as a fallback
+            # (avoids digging long free corridors which adds unnatural complexity)
+            preferred_removal_cells = removable_cells & (occupied_neighbours == 2)
+            fallback_removal_cells = removable_cells & (occupied_neighbours == 1)
+            if not np.any(preferred_removal_cells | fallback_removal_cells):
+                raise RuntimeError("No removable obstacles have one or two occupied orthogonal neighbours.")
 
-            if self._remove_obstacle(cell):
-                removed_cells.append(cell)
-            attempts += 1
-            
-            
+            removed = False
+            for available_cells in (preferred_removal_cells, fallback_removal_cells):
+                while np.any(available_cells):
+                    if attempts >= max_attempts:
+                        raise RuntimeError(f"Could only remove {len(removed_cells)}/{count} obstacles after {max_attempts} attempts.")
+
+                    candidate_cells = np.argwhere(available_cells)
+                    cell = tuple(candidate_cells[self.rng.integers(len(candidate_cells))])
+
+                    if self._remove_obstacle(cell):
+                        removed_cells.append(cell)
+                        attempts += 1
+                        removed = True
+                        break
+                    
+                    # if removing the obstacle failed, mark the cell as unavailable
+                    available_cells[cell] = False
+                    attempts += 1
+
+                if removed:
+                    break
+
+            if not removed:
+                raise RuntimeError("No boundary obstacle can be removed without disconnecting free space.")
+
+        return removed_cells
+
+    def change_obstacles_randomly(self, percentage, max_attempts=None):
+        """Replace a rounded percentage of the original obstacle cells."""
+
+        initial_count = self.get_total_obstacle_count()
+        change_count = int(round(percentage * initial_count))
+
+        original_occupancy = self.occupancy.copy()
+        original_obstacle_count = self.obstacle_count
+        original_update_count = len(self.updates)
+
+        try:
+            added_cells = self.add_obstacles_randomly(change_count, max_attempts=max_attempts)
+            removed_cells = self.remove_obstacles_randomly(change_count, max_attempts=max_attempts, excluded_cells=added_cells)
+        except Exception: # if any error occurs, restore the original state and re-raise the exception
+            self.occupancy = original_occupancy
+            self.obstacle_count = original_obstacle_count
+            del self.updates[original_update_count:]
+            raise
+
+        return added_cells, removed_cells
+
     def _add_obstacle(self, cell, type):
         """Add an obstacle of the specified type at the given cell if it does not disconnect the free space."""
         if self._obstacle_blocks_interaction_point(cell):

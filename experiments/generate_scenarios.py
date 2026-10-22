@@ -78,6 +78,21 @@ def _save_run_metadata(run_dir, config_path, experiment_config, scenario_params,
     (run_dir / "metadata.json").write_text(json.dumps(json_value(metadata), indent=4) + "\n")
 
 
+def apply_scenario_stage(scenario, stage):
+    """Apply one configured scenario update stage."""
+    stage_type = stage["type"]
+    percentage = stage["percentage"]
+
+    if stage_type == "add_random_obstacles":
+        scenario.add_obstacles_randomly(count=int(percentage * scenario.get_total_obstacle_count()))
+    elif stage_type == "remove_random_obstacles":
+        scenario.remove_obstacles_randomly(count=int(percentage * scenario.get_total_obstacle_count()))
+    elif stage_type == "change_random_obstacles":
+        scenario.change_obstacles_randomly(percentage)
+    else:
+        raise ValueError(f"Unknown scenario stage type: {stage_type}")
+
+
 def main():
     config_path = Path("experiments/scenario_config.toml")
     experiment_config, scenario_params, stages = load_scenario_config(config_path)
@@ -91,7 +106,7 @@ def main():
 
     _save_run_metadata(run_dir, config_path, experiment_config, scenario_params, stages, timestamp)
 
-    recorder = ExperimentRecorder(seed=seed, experiment_name=f"{experiment_name}/{timestamp}")
+    recorder = ExperimentRecorder(seed=seed, experiment_name=f"{experiment_name}/{timestamp}", save_metadata=False, show_priority_map=False)
     recorder.set_algorithm("scenario", use_iterations=True, plot=True)
 
     scenario = Scenario(rng=np.random.default_rng(seed), recorder=recorder, print_progress=False, **scenario_params)
@@ -100,12 +115,7 @@ def main():
         raise RuntimeError("Initial scenario generation failed.")
 
     for stage in stages:
-        if stage["type"] == "add_random_obstacles":
-            scenario.add_obstacles_randomly(count=int(stage["percentage"] * scenario.get_total_obstacle_count()))
-        elif stage["type"] == "remove_random_obstacles":
-            scenario.remove_obstacles_randomly(count=int(stage["percentage"] * scenario.get_total_obstacle_count()))
-        else:
-            raise ValueError(f"Unknown scenario stage type: {stage['type']}")
+        apply_scenario_stage(scenario, stage)
 
         scenario.update_access_points()
         scenario.iteration += 1

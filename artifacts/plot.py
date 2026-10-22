@@ -494,7 +494,7 @@ def _draw_continuous_special_points(ax, access_points, interaction_points, *, gr
                    zorder=POINT_ZORDER, label="Interaction points")
 
 
-def _draw_scenario_access_points(ax, access_points):
+def _draw_scenario_access_points(ax, access_points, *, marker_size=RESULT_SPECIAL_POINT_SIZE):
     """Draw scenario access points as circles at their shared cell-edge midpoints."""
     if not access_points:
         return None
@@ -505,12 +505,47 @@ def _draw_scenario_access_points(ax, access_points):
     return ax.scatter(
         points[:, 0],
         points[:, 1],
-        s=RESULT_SPECIAL_POINT_SIZE,
+        s=marker_size,
         color=ACCESS_POINT_COLOR,
         edgecolors="none",
         zorder=POINT_ZORDER,
         label="Access points",
     )
+
+
+def _scenario_special_point_sizes(ax, height, width):
+    """Return special-point marker areas scaled to a scenario grid cell.
+
+    Matplotlib scatter sizes are areas in points squared.  Measuring a unit
+    cell after the axes aspect has been applied keeps the points proportional
+    to the cells on both small and large scenario maps.
+    """
+    if height <= 0 or width <= 0:
+        return RESULT_SPECIAL_POINT_SIZE, RESULT_INTERACTION_POINT_SIZE
+
+    ax.apply_aspect()
+    origin = ax.transData.transform((0, 0))
+    cell_width = abs(ax.transData.transform((1, 0))[0] - origin[0])
+    cell_height = abs(ax.transData.transform((0, 1))[1] - origin[1])
+    cell_size_points = min(cell_width, cell_height) * 72 / ax.figure.dpi
+
+    access_diameter = np.clip(0.35 * cell_size_points, 1.5, 9.0)
+    interaction_diameter = np.clip(0.45 * cell_size_points, 2.0, 11.0)
+    return access_diameter ** 2, interaction_diameter ** 2
+
+
+def _scenario_legend_point_entries():
+    """Keep scenario legend point markers independent of grid marker scaling."""
+    return [
+        Line2D(
+            [], [], marker="o", linestyle="", markersize=np.sqrt(RESULT_SPECIAL_POINT_SIZE),
+            markerfacecolor=ACCESS_POINT_COLOR, markeredgecolor="none", label="Access points",
+        ),
+        Line2D(
+            [], [], marker="o", linestyle="", markersize=np.sqrt(RESULT_INTERACTION_POINT_SIZE),
+            markerfacecolor=IO_POINT_COLOR, markeredgecolor="none", label="Interaction points",
+        ),
+    ], ["Access points", "Interaction points"]
 
 
 def _draw_grid_special_points(ax, access_points, interaction_points):
@@ -593,9 +628,17 @@ class BasePlotter:
         _move_legend_to_result_margin(fig)
 
 class ScenarioPlotter(BasePlotter):
-    """Plots the priority color bar, priority field, and occupancy map."""
+    """Plots a scenario, optionally alongside its obstacle-priority field."""
+
+    def __init__(self, show_priority_map=True):
+        self.show_priority_map = show_priority_map
 
     def setup_figure(self):
+        if not self.show_priority_map:
+            fig, ax_occupancy = plt.subplots(figsize=(12, 10))
+            fig.subplots_adjust(left=0.11, right=LEGEND_RIGHT, bottom=0.07, top=0.95)
+            return fig, ax_occupancy
+
         fig = plt.figure(figsize=(12, 10))
         fig.subplots_adjust(left=0.11, right=0.98, bottom=0.07, top=0.95)
         gs = fig.add_gridspec(
@@ -611,38 +654,71 @@ class ScenarioPlotter(BasePlotter):
         ax_occupancy = fig.add_subplot(gs[1, 1])
         return fig, (ax_cbar, ax_prob, ax_occupancy)
 
-    def draw(self, ax, data):
-        ax_cbar, ax_prob, ax_occupancy = ax
+    @staticmethod
+    def _draw_occupancy_map(ax, occupancy, access_points, interaction_points, height, width):
+        ax.set_title("Occupancy map")
 
+        _draw_continuous_environment(ax, occupancy, bounds=(0, 0, width, height),)
+        access_marker_size, interaction_marker_size = _scenario_special_point_sizes(ax, height, width)
+        _draw_scenario_access_points(ax, access_points, marker_size=access_marker_size)
+        _draw_continuous_special_points(
+            ax,
+            [],
+            interaction_points,
+            grid_coordinates=True,
+            interaction_marker_size=interaction_marker_size,
+        )
+        all_legend_handles, all_legend_labels = _scenario_legend_point_entries()
+        legend_handles = []
+        legend_labels = []
+        if access_points:
+            legend_handles.append(all_legend_handles[0])
+            legend_labels.append(all_legend_labels[0])
+        if interaction_points:
+            legend_handles.append(all_legend_handles[1])
+            legend_labels.append(all_legend_labels[1])
+        _register_result_legend(
+            ax,
+            handles=legend_handles,
+            labels=legend_labels,
+            cell_entries=[
+                (_free_cell_legend_handle(), "Free cell"),
+                (_obstacle_legend_handle(SIMPLE_OBSTACLE_COLOR, "Obstacle"), "Obstacle"),
+            ],
+        )
+
+    def draw(self, ax, data):
         occupancy = data.get("occupancy") if isinstance(data, dict) else data
         access_points = data.get("access_points", []) if isinstance(data, dict) else []
         interaction_points = data.get("interaction_points", []) if isinstance(data, dict) else []
-        priority_field = data.get("priority_field") if isinstance(data, dict) else None
-
         height, width = occupancy.shape if occupancy is not None else (0, 0)
 
+        if not self.show_priority_map:
+            self._draw_occupancy_map(ax, occupancy, access_points, interaction_points, height, width)
+            return
+
+        ax_cbar, ax_prob, ax_occupancy = ax
+        priority_field = data.get("priority_field") if isinstance(data, dict) else None
+
         ax_prob.set_title("Priority map")
-        ax_occupancy.set_title("Occupancy map")
 
         # The QuadMesh keeps the priority map vector-based in the PDF.
         mesh = ax_prob.pcolormesh(priority_field, cmap="viridis", shading="flat", zorder=1)
         mesh.set_edgecolor("none")
         mesh.set_antialiased(False)
 
-        _draw_continuous_environment(ax_occupancy, occupancy, bounds=(0, 0, width, height),)
+        self._draw_occupancy_map(
+            ax_occupancy,
+            occupancy,
+            access_points,
+            interaction_points,
+            height,
+            width,
+        )
         ax_occupancy.set_anchor("W")
 
         _setup_continuous_axes(ax_prob, bounds=(0, 0, width, height))
         ax_prob.set_anchor("W")
-        _draw_scenario_access_points(ax_occupancy, access_points)
-        _draw_continuous_special_points(ax_occupancy, [], interaction_points, grid_coordinates=True)
-        _register_result_legend(
-            ax_occupancy,
-            cell_entries=[
-                (_free_cell_legend_handle(), "Free cell"),
-                (_obstacle_legend_handle(SIMPLE_OBSTACLE_COLOR, "Obstacle"), "Obstacle"),
-            ],
-        )
 
         colorbar = ax_occupancy.figure.colorbar(mesh, cax=ax_cbar, label="Priority")
         colorbar.ax.yaxis.set_ticks_position("left")
@@ -675,7 +751,7 @@ class ScenarioPlotter(BasePlotter):
         _move_legend_to_result_margin(
             fig,
             position=SCENARIO_LEGEND_POSITION,
-            subplots_right=None,
+            subplots_right=None if self.show_priority_map else LEGEND_RIGHT,
         )
 
 
@@ -1287,11 +1363,13 @@ class DynamicVisibilityGraphPlotter(_ContinuousGraphPlotter):
 class PlotManager:
     """Dispatches recorder.save(...) calls to the plotter registered for that data_type."""
 
-    def __init__(self, scenario=None, dynamic_vgraph_plot_buffer_segments=None):
+    def __init__(self, scenario=None, dynamic_vgraph_plot_buffer_segments=None, show_priority_map=True):
         self.scenario = scenario
 
         self.plotters = {
-            "scenario": ScenarioPlotter(),
+            "scenario": ScenarioPlotter(
+                show_priority_map=show_priority_map,
+            ),
             "distance_map": DistanceMapPlotter(),
             "voronoi_skeleton": VoronoiSkeletonPlotter(),
             "voronoi_skeleton_with_bridges": VoronoiSkeletonWithBridgeCells(),

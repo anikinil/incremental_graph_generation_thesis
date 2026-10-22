@@ -139,7 +139,7 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
     scenario_name, scenario_record = scenarios[0]
     scenario_data = scenario_record["data"]
     recorder.use_scenario(roadmap_run_dir / scenario_name, scenario_data, scenario_record["iteration"])
-    recorder.set_algorithm(name, use_iterations=False, plot=True)
+    recorder.set_algorithm(name, use_iterations=False, plot=False)
     print(f"\nProcessing scenario: {scenario_name}")
 
     occupancy = scenario_data["occupancy"]
@@ -231,7 +231,7 @@ def main():
             for scenario_name, scenario_record in scenarios:
                 scenario_data = scenario_record["data"]
                 recorder.use_scenario(roadmap_run_dir / scenario_name, scenario_data, scenario_record["iteration"])
-                recorder.set_algorithm(algorithm_name, use_iterations=False, plot=True)
+                recorder.set_algorithm(algorithm_name, use_iterations=False, plot=False)
                 print(f"\nProcessing scenario stage: {scenario_name}")
                 run_static_algorithm(algorithm_name, algorithm_params, scenario_data, experiment_config["seed"], recorder)
 

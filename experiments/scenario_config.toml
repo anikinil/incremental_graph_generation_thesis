@@ -1,6 +1,6 @@
 [experiment]
-name = "eval_scenario_4_seed_10"
-seed = 10
+name = "eval_scenario_5_3_seed_7522"
+seed = 7522
 
 [scenario]
 height = 50
@@ -12,21 +12,33 @@ noisy_aisles_num = 0
 noisy_aisle_sigma = 0
 interaction_points_radius = 3
 simple_obstacle_rate = 0.05
-robot_radius = 0.3
+robot_radius = 0.49
 
 
 [[scenario.stages]]
-type = "add_random_obstacles"
+type = "change_random_obstacles"
 percentage = 0.05
 
 [[scenario.stages]]
-type = "remove_random_obstacles"
+type = "change_random_obstacles"
 percentage = 0.05
 
 [[scenario.stages]]
-type = "add_random_obstacles"
-percentage = 0.1
+type = "change_random_obstacles"
+percentage = 0.05
 
 [[scenario.stages]]
-type = "remove_random_obstacles"
-percentage = 0.1
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05

@@ -23,6 +23,7 @@ class ExperimentRecorder:
         plot_buffer_segments=None, # visual buffer resolution for dynamic-vgraph plots only
         save_metadata=True,
         root="artifacts/results",
+        show_priority_map=True,
     ):
 
         self.root = Path(root)
@@ -61,7 +62,7 @@ class ExperimentRecorder:
         if save_metadata:
             self._save_metadata()
 
-        self.plot_manager = PlotManager(dynamic_vgraph_plot_buffer_segments=plot_buffer_segments)
+        self.plot_manager = PlotManager(dynamic_vgraph_plot_buffer_segments=plot_buffer_segments, show_priority_map=show_priority_map)
         
         self.seconds = None
 

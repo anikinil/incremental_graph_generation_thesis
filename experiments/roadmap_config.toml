@@ -1,6 +1,6 @@
 [experiment]
-scenario_run = "eval_scenario_4_seed_10"
-seed = 10
+scenario_run = "eval_scenario_5_3_seed_7522"
+seed = 7522
 
 [algorithms.vgraph]
 num_buffer_segments = 0
