@@ -81,14 +81,13 @@ def _save_run_metadata(run_dir, config_path, experiment_config, scenario_params,
 def apply_scenario_stage(scenario, stage):
     """Apply one configured scenario update stage."""
     stage_type = stage["type"]
-    percentage = stage["percentage"]
 
     if stage_type == "add_random_obstacles":
-        scenario.add_obstacles_randomly(count=int(percentage * scenario.get_total_obstacle_count()))
+        scenario.add_obstacles_randomly(count=int(stage["percentage"] * scenario.get_total_obstacle_count()))
     elif stage_type == "remove_random_obstacles":
-        scenario.remove_obstacles_randomly(count=int(percentage * scenario.get_total_obstacle_count()))
+        scenario.remove_obstacles_randomly(count=int(stage["percentage"] * scenario.get_total_obstacle_count()))
     elif stage_type == "change_random_obstacles":
-        scenario.change_obstacles_randomly(percentage)
+        scenario.change_obstacles_randomly(percentage=stage.get("percentage"), count=stage.get("count"))
     else:
         raise ValueError(f"Unknown scenario stage type: {stage_type}")
 

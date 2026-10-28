@@ -13,8 +13,8 @@ from shapely.geometry import Point, box
 from algorithms.geometry import buffered_obstacle_space
 
 
-TASK_NUM = 11
-SEED = 69
+TASK_NUM = 40
+SEED = 8599
 CLEARANCE_SAMPLE_SPACING = 0.1 # clearance samples are sampled every 0.1 units along the roadmap edges
 
 ########## evaluation ###########
@@ -178,7 +178,7 @@ def _build_graph(record):
         active_edges = [edge for edge in data["edges"] if data["edge_active"][edge]]
         _add_weighted_edges(graph, active_edges)
 
-    elif data_type == "dynamic_vgraph": # dynamic vgraph
+    elif data_type == "dynamic_vgraph": #roadmap_run dynamic vgraph
         active_edges = [edge for edge in data["edges"] if data["edge_active"][edge]]
         # add only nodes that are part of active edges to the graph
         active_nodes = {node for edge in active_edges for node in edge}

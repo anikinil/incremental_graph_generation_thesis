@@ -20,7 +20,7 @@ DYNAMIC_ALGORITHMS = ["dynamic_vgraph", "drm", "dynamic_gvd", "dynamic_kings_gra
 def _scenario_params(config, warehouse, condition):
     scenario_params = {
         key: value for key, value in config["scenario"].items()
-        if key != "stages"}
+        if key != "stages" }
     
     scenario_params.update({
         key: value for key, value in warehouse.items()
@@ -56,7 +56,7 @@ def _record_scenarios(case_dir, config_path, batch_name, timestamp, seed, wareho
     _save_json(metadata_path, metadata)
 
     recorder = ExperimentRecorder(seed=seed, experiment_name=case_dir.name, save_metadata=False, root=case_dir.parent, show_priority_map=False)
-    recorder.set_algorithm("scenario", use_iterations=True, plot=True)
+    recorder.set_algorithm("scenario", use_iterations=True, plot=False)
     scenario = Scenario(rng=np.random.default_rng(seed), recorder=recorder, print_progress=False, **scenario_params)
 
     scenario.generate()
@@ -135,8 +135,8 @@ def main():
     batch_metadata = {"batch_name": batch_name, "timestamp": timestamp, "seeds": seeds, "cases": []}
     _save_json(batch_dir / "metadata.json", batch_metadata)
 
-    for seed in seeds:
-        for warehouse in config["warehouses"]:
+    for warehouse in config["warehouses"]:
+        for seed in seeds:
             for condition in config["conditions"]:
                 warehouse_id = warehouse["id"]
                 condition_id = condition["id"]

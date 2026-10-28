@@ -5,6 +5,15 @@ LEGEND_FONT_SIZE = 24
 LEGEND_POSITION = (0.78, 0.5)
 LEGEND_RIGHT = 0.76
 
+# Algorithm-family colors for comparative evaluation plots. Static
+# variants use a lighter tint of the same family color.
+ALGORITHM_FAMILY_COLORS = {
+    "vgraph": "#0072B2",       # blue
+    "prm": "#D55E00",          # orange
+    "gvd": "#009E73",          # teal
+    "kings_graph": "#AA3377",  # magenta
+}
+
 # Result plots centre their legends beside the centred graph.  The canvas
 # boundary is tailored only for algorithm families whose later iterations add
 # legend entries; static figures use no unnecessary reserved space.

@@ -379,12 +379,15 @@ class Scenario(ProgressReportingAlgorithm):
 
     def add_obstacles_randomly(self, count, type=None, max_attempts=None):
         """Add compact obstacles, preferring cells with two occupied 4-neighbours."""
+        # only attempt placing each obstacle a limited number of times, then throw an error
         if max_attempts is None:
             max_attempts = count * 1000
 
         added_cells = []
         attempts = 0
         while len(added_cells) < count:
+            
+            # get all occupied cells and their number of occupied 4-neighbours
             occupied = self.occupancy != 0
             occupied_neighbours = np.zeros(self.occupancy.shape, dtype=np.uint8)
             occupied_neighbours[1:, :] += occupied[:-1, :]
@@ -392,29 +395,34 @@ class Scenario(ProgressReportingAlgorithm):
             occupied_neighbours[:, 1:] += occupied[:, :-1]
             occupied_neighbours[:, :-1] += occupied[:, 1:]
 
+            # get all free cells
             free_cells = self.occupancy == 0
             
-            # try to place obstacles in cells with two occupied neighbours first: prevents formation of obstacle peninsulae or islands
+            # try to place obstacles in cells with two occupied neighbours first: avoids formation of obstacle peninsulae or islands
             preferred_growth_cells = free_cells & (occupied_neighbours == 2)
             # but also consider cells with one or four occupied neighbours as a fallback, if no good cells available
             fallback_cells = free_cells & ((occupied_neighbours == 1) | (occupied_neighbours == 4))
             if not np.any(preferred_growth_cells | fallback_cells):
                 raise RuntimeError("No free cells have one, two, or four occupied orthogonal neighbours.")
 
+            # identify the type of obstacle to place
             if type is None:
                 obst_type = 2 if self.rng.random() > self.simple_obstacle_rate else 1
             else:
                 obst_type = type
 
+            # try to place the obstacle in a preferred cell (then fallback cell if no preferred cells available)
             placed = False
             for available_cells in (preferred_growth_cells, fallback_cells):
                 while np.any(available_cells):
-                    if attempts >= max_attempts:
+                    if attempts >= max_attempts: # number of attempts exceeded, give up
                         raise RuntimeError( f"Could only add {len(added_cells)}/{count} obstacles after {max_attempts} attempts.")
-
+                    
+                    # select a random candidate cell from the available cells
                     candidate_cells = np.argwhere(available_cells)
                     cell = tuple(candidate_cells[self.rng.integers(len(candidate_cells))])
 
+                    # attempt to add the obstacle at the selected cell
                     if self._add_obstacle(cell, type=obst_type):
                         added_cells.append(cell)
                         attempts += 1
@@ -425,9 +433,11 @@ class Scenario(ProgressReportingAlgorithm):
                     available_cells[cell] = False
                     attempts += 1
 
+                # if the obstacle was placed successfully leave inner loop to go to next obstacle
                 if placed:
                     break
-
+            
+            # if no obstacle could be placed, the scenario generation failed
             if not placed:
                 raise RuntimeError("No adjacent free cell can accept another obstacle.")
 
@@ -451,10 +461,13 @@ class Scenario(ProgressReportingAlgorithm):
         if excluded_cells is not None:
             for row, column in excluded_cells:
                 protected_cells[row, column] = True
-
+                
+        # attempt to remove obstacles until the desired number is reached or no more valid removals are possible
         removed_cells = []
         attempts = 0
         while len(removed_cells) < count:
+            
+            # get all occupied cells and their number of occupied 4-neighbours
             occupied = self.occupancy != 0
             occupied_neighbours = np.zeros(self.occupancy.shape, dtype=np.uint8)
             occupied_neighbours[1:, :] += occupied[:-1, :]
@@ -498,19 +511,23 @@ class Scenario(ProgressReportingAlgorithm):
 
         return removed_cells
 
-    def change_obstacles_randomly(self, percentage, max_attempts=None):
-        """Replace a rounded percentage of the original obstacle cells."""
+    def change_obstacles_randomly(self, percentage=None, max_attempts=None, count=None):
+        """Replace either a rounded percentage or a fixed count of obstacles."""
 
-        initial_count = self.get_total_obstacle_count()
-        change_count = int(round(percentage * initial_count))
-
+        # determine the number of obstacles to change
+        if count is None:
+            if percentage is None:
+                raise ValueError("Either percentage or count must be specified.")
+            count = int(round(percentage * self.get_total_obstacle_count()))
+        
+        # save the original state, so it can be restored in case of failure
         original_occupancy = self.occupancy.copy()
         original_obstacle_count = self.obstacle_count
         original_update_count = len(self.updates)
 
         try:
-            added_cells = self.add_obstacles_randomly(change_count, max_attempts=max_attempts)
-            removed_cells = self.remove_obstacles_randomly(change_count, max_attempts=max_attempts, excluded_cells=added_cells)
+            added_cells = self.add_obstacles_randomly(count, max_attempts=max_attempts)
+            removed_cells = self.remove_obstacles_randomly(count, max_attempts=max_attempts, excluded_cells=added_cells)
         except Exception: # if any error occurs, restore the original state and re-raise the exception
             self.occupancy = original_occupancy
             self.obstacle_count = original_obstacle_count

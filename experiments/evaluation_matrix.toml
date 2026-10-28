@@ -1,8 +1,7 @@
 [batch]
-name = "evaluation_matrix"
+name = "evaluation_matrix_one_obstacle_change"
 seeds = [
-    # 7522, 
-    6933, 2862, 7204, 5733, 5778, 1277, 7138, 4392, 2288
+    7522, 6933, 2862, 7204, 5733, 5778, 1277, 7138, 4392, 2288
 ]
 
 [scenario]
@@ -13,33 +12,41 @@ noisy_aisle_sigma = 0
 interaction_points_radius = 3
 simple_obstacle_rate = 0.05
 
+# Each stage replaces one obstacle: one addition and one removal.
 [[scenario.stages]]
 type = "change_random_obstacles"
-percentage = 0.05
+# percentage = 0.05
+count = 1
 
 [[scenario.stages]]
 type = "change_random_obstacles"
-percentage = 0.05
+# percentage = 0.05
+count = 1
 
 [[scenario.stages]]
 type = "change_random_obstacles"
-percentage = 0.05
+# percentage = 0.05
+count = 1
 
 [[scenario.stages]]
 type = "change_random_obstacles"
-percentage = 0.05
+# percentage = 0.05
+count = 1
 
 [[scenario.stages]]
 type = "change_random_obstacles"
-percentage = 0.05
+# percentage = 0.05
+count = 1
 
 [[scenario.stages]]
 type = "change_random_obstacles"
-percentage = 0.05
+# percentage = 0.05
+count = 1
 
 [[scenario.stages]]
 type = "change_random_obstacles"
-percentage = 0.05
+# percentage = 0.05
+count = 1
 
 # omit dynamic_vgraph for the 50x100 warehouse, since it runs out of memory
 [[warehouses]]
@@ -136,5 +143,5 @@ scale_factor = 1
 [algorithms.drm]
 max_dist = 5
 max_neighbors = 10
-num_buffer_segments = 16
+num_buffer_segments = 16  # relevant for plotting only
 min_num_nodes_factor = 2
