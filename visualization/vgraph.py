@@ -297,7 +297,10 @@ def plot_buffer_space():
 
     legend_handles = [
         _free_cell_legend_handle(),
-        _obstacle_legend_handle(SIMPLE_OBSTACLE_COLOR, "Obstacle"),
+        _obstacle_legend_handle(
+            SIMPLE_OBSTACLE_COLOR,
+            "Obstacle cell (simple or unit-load)",
+        ),
         _buffer_zone_legend_handle(),
         _arrow_legend_handle("Obstacle buffer offset = robot radius", ROBOT_RADIUS_ARROW_COLOR),
         _vertex_legend_handle(

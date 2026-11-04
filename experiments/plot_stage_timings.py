@@ -44,12 +44,12 @@ from artifacts.presentation import (
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 ALGORITHM_FAMILIES = (
-    ("vgraph", "dynamic_vgraph", "VGRAPH (static)", "Dynamic VGRAPH", ALGORITHM_FAMILY_COLORS["vgraph"]),
-    ("prm", "drm", "PRM (static)", "DRM", ALGORITHM_FAMILY_COLORS["prm"]),
-    ("gvd", "dynamic_gvd", "GVD (static)", "Dynamic GVD", ALGORITHM_FAMILY_COLORS["gvd"]),
+    ("vgraph", "dynamic_vgraph", "VGRAPH (static)", "VGRAPH (dynamic)", ALGORITHM_FAMILY_COLORS["vgraph"]),
+    ("prm", "drm", "PRM (static)", "DRM (dynamic)", ALGORITHM_FAMILY_COLORS["prm"]),
+    ("gvd", "dynamic_gvd", "GVD (static)", "GVD (dynamic)", ALGORITHM_FAMILY_COLORS["gvd"]),
     (
         "kings_graph", "dynamic_kings_graph",
-        "King's graph (static)", "Dynamic King's graph", ALGORITHM_FAMILY_COLORS["kings_graph"],
+        "King's graph (static)", "King's graph (dynamic)", ALGORITHM_FAMILY_COLORS["kings_graph"],
     ),
 )
 ALGORITHMS = tuple(name for family in ALGORITHM_FAMILIES for name in family[:2])

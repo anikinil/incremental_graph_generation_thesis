@@ -7,7 +7,7 @@ Run from the repository root with::
 Shared parameters and interaction-point positions come from the evaluation
 configuration. The second example intentionally uses the requested 50 percent
 occupancy, rather than one of the evaluation matrix's 40/60 percent conditions.
-PDFs, PNG previews, and the parameter record are written directly to
+PDFs and the parameter record are written directly to
 ``artifacts/visualization``.
 """
 
@@ -148,7 +148,6 @@ def _plot_layout(scenario, gap, output_stem, seed):
             "Creator": "experiments.evaluation_layout_figures",
         },
     )
-    fig.savefig(Path(f"{output_stem}.png"), dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 

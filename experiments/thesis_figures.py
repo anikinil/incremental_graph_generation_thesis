@@ -4,22 +4,16 @@ Run this module from the repository root:
 
     python -m experiments.thesis_figures
 
-Each run writes PDF files only to a timestamped directory below
-``artifacts/results/thesis_figures``.  That directory contains
-``scenario_with_aisles.pdf``, ``scenario_without_aisles.pdf``, ``vgraph.pdf``,
-``dynamic_vgraph_0.pdf``, ``dynamic_vgraph_1.pdf``, ``drm_0.pdf``,
-``drm_1.pdf``, ``prm.pdf``, ``gvd_distance_map.pdf``,
-``gvd_voronoi_skeleton.pdf``, ``gvd_roadmap.pdf``, ``gvd_connections.pdf``,
-``dynamic_gvd_0.pdf``,
-``dynamic_gvd_1.pdf``, ``kings_graph.pdf``, ``dynamic_kings_graph_0.pdf``,
-and ``dynamic_kings_graph_1.pdf``—with no pickle files, metadata, or
-per-scenario subdirectories.
+Generate only the compact, unlabelled topology change GVD figure with:
+
+    python -m experiments.thesis_figures --topology-change-only
 """
 
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+from matplotlib.collections import LineCollection, PathCollection
 
 from algorithms.dynamic_vgraph import DynamicVGraph
 from algorithms.drm import DRM
@@ -28,7 +22,7 @@ from algorithms.gvd import GVD
 from algorithms.kings_graph import IncrementalKingsGraph
 from algorithms.prm import PRM
 from algorithms.vgraph import VGraph
-from artifacts.plot import PlotManager
+from artifacts.plot import GraphPlotter, PlotManager
 from scenario.scenario_generation import Scenario
 
 
@@ -568,6 +562,115 @@ def _apply_gvd_update(graph, scenario):
     graph.updateDistanceMap()
 
 
+def _apply_random_unit_load_changes(scenario, *, count):
+    """Remove and add unit loads at shuffled valid cells across the whole map."""
+    if count < 0:
+        raise ValueError("The number of unit-load changes must be non-negative.")
+    if count == 0:
+        return
+
+    # Capture both sets before editing so an addition cannot undo a removal.
+    removable_cells = [
+        (int(row), int(column))
+        for row, column in np.argwhere(scenario.occupancy == 2)
+    ]
+    free_cells = [
+        (int(row), int(column))
+        for row, column in np.argwhere(scenario.occupancy == 0)
+    ]
+    scenario.rng.shuffle(removable_cells)
+    scenario.rng.shuffle(free_cells)
+
+    removals = 0
+    for cell in removable_cells:
+        if scenario._remove_obstacle(cell):
+            removals += 1
+            if removals == count:
+                break
+
+    additions = 0
+    for cell in free_cells:
+        if scenario._add_obstacle(cell, type=2):
+            additions += 1
+            if additions == count:
+                break
+
+    if removals != count or additions != count:
+        raise RuntimeError("Could not apply every requested random unit-load change.")
+
+    scenario.update_access_points()
+    scenario._record_scenario()
+
+
+class _TopologyChangeGVDPlotter(GraphPlotter):
+    """Use the usual GVD update overlays on a compact, unlabelled canvas."""
+
+    element_scale = 0.4
+
+    def setup_figure(self):
+        fig, ax = super().setup_figure()
+        fig.set_size_inches(6, 4)
+        return fig, ax
+
+    def draw(self, ax, data):
+        super().draw(ax, data)
+        for collection in ax.collections:
+            if isinstance(collection, PathCollection):
+                # Scatter sizes are areas, so square the diameter scale.
+                collection.set_sizes(collection.get_sizes() * self.element_scale ** 2)
+            elif (
+                isinstance(collection, LineCollection)
+                and collection.get_label() == "Roadmap edges"
+            ):
+                collection.set_linewidths(
+                    np.asarray(collection.get_linewidths()) * self.element_scale
+                )
+
+    def finalize(self, fig, ax):
+        legend = ax.get_legend()
+        if legend is not None:
+            legend.remove()
+        ax.set_axis_off()
+        fig.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.99)
+
+
+class _TopologyChangeGVDRecorder(ThesisFigureRecorder):
+    """Write only the updated GVD with its special-point connections."""
+
+    def __init__(self):
+        super().__init__(None)
+        self.plot_manager.plotters["graph"] = _TopologyChangeGVDPlotter()
+
+    def save(self, data_type, data, plot=False, algorithm=None, iteration=None):
+        iteration = data.get("iteration", self.iteration) if iteration is None else iteration
+        if data_type != "graph" or iteration != 1:
+            return None
+        return self.save_named(
+            data_type, data, "topology_change_gvd_1.pdf",
+            algorithm=algorithm, iteration=iteration,
+        )
+
+
+def generate_topology_change_gvd_figure():
+    """Generate one updated GVD with special points connected to its skeleton."""
+    height, width = 20, 30
+    rng = np.random.default_rng(4)
+    recorder = _TopologyChangeGVDRecorder()
+    scenario = _generate_scenario(
+        recorder,
+        **_roadmap_scenario_parameters(
+            rng, height, width, occupancy_rate=0.2, interaction_points=set(),
+        ),
+    )
+    recorder.set_algorithm("dynamic_gvd", use_iterations=True, plot=True)
+    graph = _build_gvd(rng, scenario, recorder)
+    graph.computeDistanceMap()
+
+    _apply_random_unit_load_changes(scenario, count=3)
+    _apply_gvd_update(graph, scenario)
+    return RUN_DIRECTORY / "topology_change_gvd_1.pdf"
+
+
 def _add_gvd_l_shape_above_interaction_points(scenario, *, distance=4):
     """Queue a three-cell unit-load L shape above the lower interaction points.
 
@@ -753,9 +856,18 @@ def main():
     generate_prm_figure()
     generate_gvd_figure()
     generate_dynamic_gvd_figures()
+    generate_topology_change_gvd_figure()
     generate_kings_graph_figure()
     generate_dynamic_kings_graph_figures()
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--topology-change-only", action="store_true")
+    args = parser.parse_args()
+    if args.topology_change_only:
+        print(f"Saving topology change figure to {generate_topology_change_gvd_figure()}")
+    else:
+        main()
