@@ -8,10 +8,11 @@ import sys
 
 
 ALGORITHM_PAIRS = [
-    ("VG / DVG", "vgraph", "dynamic_vgraph"),
+    ("King's graph", "kings_graph", "dynamic_kings_graph"),
     ("PRM / DRM", "prm", "drm"),
+    ("VGRAPH", "vgraph", "dynamic_vgraph"),
     ("GVD", "gvd", "dynamic_gvd"),
-    ("King's graph", "kings_graph", "dynamic_kings_graph")]
+]
 
 
 
@@ -74,7 +75,6 @@ def build_summary(results):
             row["incremental_seconds_std"] = None
             row["speedup"] = None
 
-            # dynamic vgraph was not run for the largest warehouse, so skip
             if incremental is not None:
                 row["incremental_seconds"] = incremental["seconds"]
                 row["incremental_seconds_std"] = incremental["seconds_std"]
@@ -140,13 +140,14 @@ def render_latex(rows):
     return "\n".join(lines)
 
 
-def export_summary(results_dir):
+def export_summary(results_dir, output_path=None):
     results = load_timings(results_dir / "timing_results.csv")
     summary = build_summary(results)
-    table_path = results_dir / "latex_tables" / "timing_summary.tex"
+    table_path = output_path if output_path is not None else results_dir / "latex_tables" / "timing_summary.tex"
     table_path.parent.mkdir(parents=True, exist_ok=True)
     table_path.write_text(render_latex(summary))
     print(f"{table_path}: {len(summary)} rows")
+    return table_path
 
 
 def main():

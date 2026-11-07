@@ -28,7 +28,7 @@ from experiments.plot_stage_timings import (
 
 
 SINGLE_RESULTS = REPOSITORY_ROOT / "artifacts/results/evaluation_matrix_one_obstacle_change/2026-10-26_09-37-47"
-PERCENT_RESULTS = REPOSITORY_ROOT / "artifacts/results/evaluation_matrix/2026-10-21_00-59-27"
+PERCENT_RESULTS = REPOSITORY_ROOT / "artifacts/results/evaluation_matrix_5_percent_change/2026-10-21_00-59-27"
 OUTPUT_DIR = REPOSITORY_ROOT / "artifacts/visualization/computation_time_comparison"
 WAREHOUSES = ("10x20", "40x80")
 STAGES = tuple(range(1, 9))

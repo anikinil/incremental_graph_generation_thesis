@@ -5,8 +5,17 @@ from statistics import mean, stdev
 import sys
 
 
-METRICS = ["average_task_route_length", "average_non_bridge_path_percentage", "geometric_roadmap_density", "data_structure_density"]
-ALGORITHMS = [("VG", "vgraph"), ("DVG", "dynamic_vgraph"), ("PRM", "prm"), ("DRM", "drm"), ("GVD", "gvd"), ("Incr. GVD", "dynamic_gvd"), ("King's graph", "kings_graph"), ("Incr. King's graph", "dynamic_kings_graph")]
+METRICS = ["average_task_route_length", "average_non_bridge_path_percentage"]
+ALGORITHMS = [
+    ("King's Graph (static)", "kings_graph"),
+    ("King's Graph (dynamic)", "dynamic_kings_graph"),
+    ("PRM (static)", "prm"),
+    ("DRM (dynamic)", "drm"),
+    ("VGRAPH (static)", "vgraph"),
+    ("VGRAPH (dynamic)", "dynamic_vgraph"),
+    ("GVD (static)", "gvd"),
+    ("GVD (dynamic)", "dynamic_gvd"),
+]
 
 
 def load_quality(path):
@@ -94,7 +103,7 @@ def _get_metric_column(rows, metric):
 
 
 def render_latex(rows):
-    metric_headers = [r"\multicolumn{2}{c}{\shortstack{Task route\\length (units)}}", r"\multicolumn{2}{c}{\shortstack{Non-bridge\\path (\%)}}", r"\multicolumn{2}{c}{\shortstack{Geom. roadmap\\density (units/units$^2$)}}", r"\multicolumn{2}{c}{\shortstack{Data structure\\density (1/units$^2$)}}"]
+    metric_headers = [r"\multicolumn{2}{c}{\shortstack{Task route\\length (units)}}", r"\multicolumn{2}{c}{\shortstack{Non-bridge\\path (\%)}}"]
     header = r"{\shortstack{$\mathrm{W}\times\mathrm{H}$\\(units)}} & {\shortstack{Occup.\\rate}} & {\shortstack{Radius\\(units)}} & Algorithm & " + " & ".join(metric_headers) + r" \\"
     metric_columns = " ".join(_get_metric_column(rows, metric) for metric in METRICS)
 
@@ -145,13 +154,14 @@ def render_latex(rows):
     return "\n".join(lines)
 
 
-def export_summary(results_dir):
+def export_summary(results_dir, output_path=None):
     results = load_quality(results_dir / "quality_results.csv")
     summary = build_summary(results)
-    table_path = results_dir / "latex_tables" / "quality_summary.tex"
+    table_path = output_path if output_path is not None else results_dir / "latex_tables" / "quality_summary_task_metrics_only.tex"
     table_path.parent.mkdir(parents=True, exist_ok=True)
     table_path.write_text(render_latex(summary))
     print(f"{table_path}: {len(summary)} rows")
+    return table_path
 
 
 def main():

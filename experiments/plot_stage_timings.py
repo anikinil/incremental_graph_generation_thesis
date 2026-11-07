@@ -242,7 +242,7 @@ def main():
     args = parser.parse_args()
 
     if args.results_dir is None:
-        candidates = sorted((REPOSITORY_ROOT / "artifacts/results/evaluation_matrix").glob("*/timing_results.csv"))
+        candidates = sorted((REPOSITORY_ROOT / "artifacts/results/evaluation_matrix_5_percent_change").glob("*/timing_results.csv"))
         if not candidates:
             parser.error("No timing_results.csv found; provide --results-dir.")
         args.results_dir = candidates[-1].parent

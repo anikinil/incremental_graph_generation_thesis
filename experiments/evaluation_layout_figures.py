@@ -5,8 +5,8 @@ Run from the repository root with::
     MPLCONFIGDIR=/tmp/codex-layout-matplotlib venv/bin/python -m experiments.evaluation_layout_figures
 
 Shared parameters and interaction-point positions come from the evaluation
-configuration. The second example intentionally uses the requested 50 percent
-occupancy, rather than one of the evaluation matrix's 40/60 percent conditions.
+configuration. The examples use the evaluation matrix's 40 and 60 percent
+occupancy conditions.
 PDFs and the parameter record are written directly to
 ``artifacts/visualization``.
 """
@@ -44,7 +44,7 @@ from scenario.scenario_generation import Scenario
 
 EXAMPLES = (
     {"height": 10, "width": 20, "occupancy_rate": 0.40, "robot_radius": 0.45},
-    {"height": 20, "width": 40, "occupancy_rate": 0.50, "robot_radius": 0.30},
+    {"height": 20, "width": 40, "occupancy_rate": 0.60, "robot_radius": 0.30},
 )
 DEFAULT_SEED = 7522
 
