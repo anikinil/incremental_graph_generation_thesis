@@ -14,7 +14,7 @@ from algorithms.gvd import GVD
 from algorithms.kings_graph import IncrementalKingsGraph
 from algorithms.prm import PRM
 from algorithms.vgraph import VGraph
-from artifacts.record import ExperimentRecorder
+from logs.record import ExperimentRecorder
 
 
 def load_roadmap_config(toml_path):
@@ -206,7 +206,7 @@ def run_dynamic_algorithm(name, params, scenarios, seed, recorder, roadmap_run_d
 
 
 def main():
-    config_path = Path("experiments/roadmap_config.toml")
+    config_path = Path("configs/roadmap_config.toml")
     experiment_config, algorithm_configs = load_roadmap_config(config_path)
 
     scenario_run_dir = find_scenario_run(experiment_config["scenario_run"])

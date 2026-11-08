@@ -23,7 +23,7 @@ from shapely.geometry import LineString, box
 from shapely.ops import unary_union
 
 from algorithms.geometry import buffered_obstacle_space, navigation_space
-from artifacts.plot import (
+from visualization.plot import (
     _area_legend_handler_map,
     _buffer_zone_legend_handle,
     _draw_continuous_environment,

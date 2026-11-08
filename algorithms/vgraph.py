@@ -3,7 +3,7 @@ from matplotlib.colors import ListedColormap
 from itertools import combinations
 import networkx as nx
 import geopandas as gpd
-from artifacts.progress import ProgressReportingAlgorithm
+from logs.progress import ProgressReportingAlgorithm
 from algorithms.geometry import navigation_space
 from shapely.geometry import LineString
 

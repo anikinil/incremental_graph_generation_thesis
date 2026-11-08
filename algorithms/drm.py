@@ -7,7 +7,7 @@ from scipy.spatial import KDTree
 from shapely.geometry import Point, box
 from shapely.ops import unary_union
 
-from artifacts.progress import ProgressReportingAlgorithm
+from logs.progress import ProgressReportingAlgorithm
 from algorithms.geometry import buffered_edge_cells
 
 

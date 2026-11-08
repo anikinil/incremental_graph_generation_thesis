@@ -7,7 +7,7 @@ import tomllib
 
 import numpy as np
 
-from artifacts.record import ExperimentRecorder
+from logs.record import ExperimentRecorder
 from experiments.generate_roadmaps import load_scenarios, run_dynamic_algorithm, run_static_algorithm, save_roadmap_metadata
 from experiments.generate_scenarios import _interaction_points_from_warehouse_dimensions, _save_run_metadata, apply_scenario_stage
 from scenario.scenario_generation import Scenario
@@ -168,7 +168,7 @@ def run_evaluation_matrix(config_path):
 
 
 def main():
-    config_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("experiments/evaluation_matrix_one_obstacle_change.toml")
+    config_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("configs/evaluation_matrix_one_obstacle_change.toml")
     run_evaluation_matrix(config_path)
 
 

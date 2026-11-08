@@ -7,7 +7,7 @@ import geopandas as gpd
 import numpy as np
 from scipy.spatial import KDTree
 from collections import defaultdict
-from artifacts.progress import ProgressReportingAlgorithm
+from logs.progress import ProgressReportingAlgorithm
 from algorithms.geometry import navigation_space
 
 

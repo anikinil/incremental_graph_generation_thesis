@@ -1,6 +1,6 @@
 import networkx as nx
 
-from artifacts.progress import ProgressReportingAlgorithm
+from logs.progress import ProgressReportingAlgorithm
 from algorithms.geometry import offset_access_points
 
 

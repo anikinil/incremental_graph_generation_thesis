@@ -1,7 +1,7 @@
 import numpy as np
 from math import ceil
 
-from artifacts.progress import ProgressReportingAlgorithm
+from logs.progress import ProgressReportingAlgorithm
 from algorithms.geometry import buffered_edge_cells, navigation_space
 
 

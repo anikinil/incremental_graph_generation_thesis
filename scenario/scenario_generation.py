@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.ndimage import binary_closing, distance_transform_edt, gaussian_filter, label
 from shapely.geometry import Point, box
-from artifacts.progress import ProgressReportingAlgorithm
+from logs.progress import ProgressReportingAlgorithm
 
 
 class Scenario(ProgressReportingAlgorithm):

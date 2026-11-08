@@ -1,6 +1,6 @@
 """Shared presentation metadata for the handcrafted visualizations."""
 
-from artifacts.plot import (
+from visualization.plot import (
     ACCESS_POINT_COLOR,
     ROBOT_RADIUS_BUFFER_COLOR,
     GRAPH_NODE_COLOR,
@@ -12,7 +12,7 @@ from artifacts.plot import (
     UNIT_LOAD_COLOR,
     VISIBILITY_EDGE_COLOR,
 )
-from artifacts.presentation import LEGEND_FONT_SIZE, LEGEND_POSITION, LEGEND_RIGHT
+from visualization.presentation import LEGEND_FONT_SIZE, LEGEND_POSITION, LEGEND_RIGHT
 
 
 # Typography and layout

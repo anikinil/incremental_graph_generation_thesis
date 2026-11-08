@@ -1,6 +1,6 @@
 """Handcrafted visualization of unit-load access points.
 
-Run from the repository root with ``python -m experiments.visualization``.
+Run from the repository root with ``python -m visualization.access_points_arrows``.
 """
 
 from pathlib import Path
@@ -10,7 +10,7 @@ from matplotlib.legend_handler import HandlerBase, HandlerPatch
 from matplotlib.patches import FancyArrowPatch, Patch, Rectangle
 import numpy as np
 
-from artifacts.plot import (
+from visualization.plot import (
     _LARGE_ZONE_LEGEND_HANDLER,
     _draw_continuous_environment,
     _draw_scenario_access_points,

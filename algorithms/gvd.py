@@ -8,7 +8,7 @@ import numpy as np
 from collections import defaultdict, deque
 
 from algorithms.geometry import offset_access_points
-from artifacts.progress import ProgressReportingAlgorithm
+from logs.progress import ProgressReportingAlgorithm
 
 
 class BucketPriorityQueue:

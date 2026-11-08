@@ -6,7 +6,7 @@ import tomllib
 
 import numpy as np
 
-from artifacts.record import ExperimentRecorder
+from logs.record import ExperimentRecorder
 from scenario.scenario_generation import Scenario
 
 
@@ -93,7 +93,7 @@ def apply_scenario_stage(scenario, stage):
 
 
 def main():
-    config_path = Path("experiments/scenario_config.toml")
+    config_path = Path("configs/scenario_config.toml")
     experiment_config, scenario_params, stages = load_scenario_config(config_path)
 
     experiment_name = experiment_config["name"]

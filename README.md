@@ -34,15 +34,15 @@ venv/bin/python -m experiments.run_experiments
 
 `run_experiments.py` generates roadmaps and evaluates timings and quality for both matrices:
 
-- `experiments/evaluation_matrix_one_obstacle_change.toml` (one obstacle)
-- `experiments/evaluation_matrix_5_percent_change.toml` (5%).
+- `configs/evaluation_matrix_one_obstacle_change.toml` (one obstacle)
+- `configs/evaluation_matrix_5_percent_change.toml` (5%).
 
 ### Running small experiments (for testing)
 
 A small test experiment can be run with the following command:
 
 ```bash
-venv/bin/python -m experiments.run_experiments experiments/evaluation_matrix_test.toml
+venv/bin/python -m experiments.run_experiments configs/evaluation_matrix_test.toml
 ```
 
 The test matrix uses three seeds, 10x20 and 20x40 layouts, occupancy rate 0.6, robot radius 0.3 and two single-obstacle updates.
@@ -56,7 +56,7 @@ Results are saved to `artifacts/results/<batch>/<timestamp>/`, including roadmap
 Additionally, LaTeX tables can be generated from a timestamped results directory:
 
 ```bash
-venv/bin/python -m experiments.export_latex_tables <results-path>
+venv/bin/python -m evaluation.export_latex_tables <results-path>
 ```
 
 `export_latex_tables.py` writes quality and timing tables to `<results-path>/latex_tables/`.
