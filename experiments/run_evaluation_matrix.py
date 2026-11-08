@@ -2,6 +2,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import shutil
+import sys
 import tomllib
 
 import numpy as np
@@ -118,9 +119,9 @@ def _record_roadmaps(case_dir, config_path, timestamp, seed, algorithm_configs, 
     return roadmap_run_dir
 
 
-def main():
-    
-    config_path = Path("experiments/evaluation_matrix.toml")
+def run_evaluation_matrix(config_path):
+
+    config_path = Path(config_path)
 
     with Path(config_path).open("rb") as file:
         config = tomllib.load(file)
@@ -163,9 +164,13 @@ def main():
                 _save_json(batch_dir / "metadata.json", batch_metadata)
 
     print(f"\nSaved results to {batch_dir}")
+    return batch_dir
 
+
+def main():
+    config_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("experiments/evaluation_matrix_one_obstacle_change.toml")
+    run_evaluation_matrix(config_path)
 
 
 if __name__ == "__main__":
     main()
-

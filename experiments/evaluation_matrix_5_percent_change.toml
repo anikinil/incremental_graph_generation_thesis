@@ -1,0 +1,118 @@
+[batch]
+name = "evaluation_matrix_5_percent_change"
+seeds = [7522, 6933, 2862, 7204, 5733, 5778, 1277, 7138, 4392, 2288]
+
+[scenario]
+sigma_coarse = 3
+sigma_fine = 1
+noisy_aisles_num = 0
+noisy_aisle_sigma = 0
+interaction_points_radius = 3
+simple_obstacle_rate = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[scenario.stages]]
+type = "change_random_obstacles"
+percentage = 0.05
+
+[[warehouses]]
+id = "10x20"
+height = 10
+width = 20
+run_dynamic_vgraph = true
+
+[[warehouses]]
+id = "20x40"
+height = 20
+width = 40
+run_dynamic_vgraph = true
+
+[[warehouses]]
+id = "30x60"
+height = 30
+width = 60
+run_dynamic_vgraph = true
+
+[[warehouses]]
+id = "40x80"
+height = 40
+width = 80
+run_dynamic_vgraph = true
+
+[[warehouses]]
+id = "50x100"
+height = 50
+width = 100
+run_dynamic_vgraph = false
+
+[[conditions]]
+id = "or0_6__rr0_3"
+occupancy_rate = 0.6
+robot_radius = 0.3
+
+[[conditions]]
+id = "or0_4__rr0_3"
+occupancy_rate = 0.4
+robot_radius = 0.3
+
+[[conditions]]
+id = "or0_6__rr0_45"
+occupancy_rate = 0.6
+robot_radius = 0.45
+
+[[conditions]]
+id = "or0_4__rr0_45"
+occupancy_rate = 0.4
+robot_radius = 0.45
+
+[algorithms.vgraph]
+num_buffer_segments = 0
+
+[algorithms.dynamic_vgraph]
+
+[algorithms.prm]
+eps = 0.05
+max_dist = 5
+max_neighbors = 10
+num_buffer_segments = 8
+min_num_nodes_factor = 2
+avoid_cycles = false
+
+[algorithms.gvd]
+scale_factor = 1
+
+[algorithms.dynamic_gvd]
+scale_factor = 1
+
+[algorithms.kings_graph]
+
+[algorithms.dynamic_kings_graph]
+
+[algorithms.drm]
+max_dist = 5
+max_neighbors = 10
+num_buffer_segments = 16
+min_num_nodes_factor = 2

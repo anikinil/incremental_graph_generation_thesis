@@ -1,5 +1,5 @@
 {
-  "config": "experiments/evaluation_matrix.toml",
+  "config": "experiments/evaluation_matrix_one_obstacle_change.toml",
   "seed": 7522,
   "snapshot": "initial",
   "versions": {

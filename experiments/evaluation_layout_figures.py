@@ -153,7 +153,7 @@ def _plot_layout(scenario, gap, output_stem, seed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=Path("experiments/evaluation_matrix.toml"))
+    parser.add_argument("--config", type=Path, default=Path("experiments/evaluation_matrix_one_obstacle_change.toml"))
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--output-dir", type=Path, default=Path("artifacts/visualization"))
     args = parser.parse_args()

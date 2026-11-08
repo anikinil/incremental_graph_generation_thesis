@@ -99,13 +99,15 @@ def _save_csv(path, rows, fields):
         writer.writerows(rows)
 
 
-def main():
+def evaluate_results(results_dir):
 
-    results_dir = Path(sys.argv[1])
+    results_dir = Path(results_dir)
     quality_results = []
     timing_results = []
     runs = _get_roadmap_runs(results_dir)
 
+    print("\n------------------------------------------------")
+    print("\nEvaluating roadmap quality and collecting timing measurements...\n")
     for run in runs:
         quality_results.extend(_evaluate_roadmap_run(run))
         timing_results.extend(_load_timing_results(run))
@@ -134,6 +136,11 @@ def main():
     # save the timing averages together with their standard deviations
     timing_average_fields = ["warehouse", "condition", "stage", "algorithm", "seed_count", "seconds", "seconds_std"]
     _save_csv(results_dir / "timing_averages.csv", timing_averages, timing_average_fields)
+    print(f"\nSaved quality and timing CSVs to {results_dir}")
+
+
+def main():
+    evaluate_results(Path(sys.argv[1]))
 
 
 if __name__ == "__main__":
