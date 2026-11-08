@@ -6,7 +6,7 @@ This repository contains the implementation and experiments for a bachelor's the
 
 To reproduce the experiments, clone the repository, install the dependencies and run the thesis experiments or the smaller test experiments.
 
-### Prerequisites
+### Setup
 
 Required Python version: 3.12.
 
@@ -24,7 +24,17 @@ python3 -m venv venv
 venv/bin/pip install numpy scipy matplotlib shapely networkx geopandas
 ```
 
-### Running the thesis experiments
+### Running small experiments (for testing)
+
+A small test experiment can be run with the following command:
+
+```bash
+venv/bin/python -m experiments.run_experiments configs/evaluation_matrix_test.toml
+```
+
+The test matrix uses three seeds, a 10x20 layout, occupancy rate 0.6, robot radius 0.3 and two single-obstacle updates.
+
+### Running the full experiments (as in the thesis)
 
 The experiments performed in the thesis can be run with the following command:
 
@@ -36,16 +46,6 @@ venv/bin/python -m experiments.run_experiments
 
 - `configs/evaluation_matrix_one_obstacle_change.toml` (one obstacle)
 - `configs/evaluation_matrix_5_percent_change.toml` (5%).
-
-### Running small experiments (for testing)
-
-A small test experiment can be run with the following command:
-
-```bash
-venv/bin/python -m experiments.run_experiments configs/evaluation_matrix_test.toml
-```
-
-The test matrix uses three seeds, 10x20 and 20x40 layouts, occupancy rate 0.6, robot radius 0.3 and two single-obstacle updates.
 
 ### Results
 
