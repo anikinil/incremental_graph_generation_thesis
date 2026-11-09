@@ -1,5 +1,7 @@
 # Bachelor's Thesis: Incremental Graph Generation for Autonomous Robots in Dynamic Environments
 
+![Illustration](artifacts/visualization/readme_illustration.pdf)
+
 This repository contains the implementation and experiments for a bachelor's thesis on scenario generation and static and incremental roadmap algorithms for robot navigation in changing warehouse environments. The experiments compare their computation times and roadmap quality in different scenarios.
 
 ## Reproducing the experiments
